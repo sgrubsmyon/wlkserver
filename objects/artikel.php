@@ -38,10 +38,10 @@ class Artikel {
      // execute query
     if ($stmt->execute()) {
       $row = $stmt->fetch(PDO::FETCH_ASSOC);
-      return $row['ex'];
+      return $row['ex'] == '1' ? true : false;
      }
 
-     return NULL;
+     return null;
   }
 
   function exists_by_lief_kurzname($lieferant_kurzname, $artikel_nr) {
@@ -76,7 +76,7 @@ class Artikel {
   //     }
   //     return $artikel_arr;
   //   }
-  //   return NULL;
+  //   return null;
   // }
 
   // // read products from one product group
@@ -111,7 +111,7 @@ class Artikel {
   //     }
   //     return $artikel_arr;
   //   }
-  //   return NULL;
+  //   return null;
   // }
 }
 ?>
