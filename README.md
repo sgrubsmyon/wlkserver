@@ -14,5 +14,5 @@ Need to install `php` (e.g. `php7.4`) and `php7.4-mysql` packages in Ubuntu/Debi
 ## Deploy
 
 ```
-$ sudo rsync -rtlPvi ./ /var/www/html/wlkserver/ && sudo chown www-data:www-data -R /var/www/html/wlkserver/
+$ sudo rsync -rtlPvi --exclude=.git ./ /var/www/html/wlkserver/ && sudo chown www-data:www-data -R /var/www/html/wlkserver/
 ```

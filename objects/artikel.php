@@ -20,14 +20,29 @@ class Artikel {
   }
 
   // check if a product already exists in the DB
-  function exists_by_lief_id($lieferant_id, $artikel_nr) {
+  public function exists_by_lief_id($lieferant_id, $artikel_nr) {
+    $query = "SELECT COUNT(*) > 0 AS ex FROM artikel
+    WHERE lieferant_id = ? AND artikel_nr = ?
+    AND artikel.aktiv = TRUE;";
 
+    // prepare query statement
+    $stmt = $this->conn->prepare($query);
+    $stmt->bindParam(1, $lieferant_id);
+    $stmt->bindParam(2, $artikel_nr);
+
+     // execute query
+    if ($stmt->execute()) {
+      $row = $stmt->fetch(PDO::FETCH_ASSOC);
+      return $row['ex'] == '1' ? true : false;
+    }
+
+    return null;
   }
 
-  function exists_by_lief_name($lieferant_name, $artikel_nr) {
+  function exists_by_lief_some_name($lieferant_name, $artikel_nr, $which_name) {
     $query = "SELECT COUNT(*) > 0 AS ex FROM artikel
     INNER JOIN lieferant USING (lieferant_id)
-    WHERE lieferant_name = ? AND artikel_nr = ?
+    WHERE ".$which_name." = ? AND artikel_nr = ?
     AND artikel.aktiv = TRUE;";
 
     // prepare query statement
@@ -39,13 +54,19 @@ class Artikel {
     if ($stmt->execute()) {
       $row = $stmt->fetch(PDO::FETCH_ASSOC);
       return $row['ex'] == '1' ? true : false;
-     }
+    }
 
-     return null;
+    return null;
   }
 
-  function exists_by_lief_kurzname($lieferant_kurzname, $artikel_nr) {
+  public function exists_by_lief_name($lieferant_name, $artikel_nr) {
+    $res = $this->exists_by_lief_some_name($lieferant_name, $artikel_nr, "lieferant_name");
+    return $res;
+  }
 
+  public function exists_by_lief_kurzname($lieferant_kurzname, $artikel_nr) {
+    $res = $this->exists_by_lief_some_name($lieferant_kurzname, $artikel_nr, "lieferant_kurzname");
+    return $res;
   }
 
   // // read all products
