@@ -2,7 +2,6 @@
 class Artikel {
   // database connection and table name
   private $conn;
-  private $table_name = "artikel";
 
   // these properties are useful for creating products
   // object properties
@@ -23,7 +22,7 @@ class Artikel {
   public function exists_by_lief_id($lieferant_id, $artikel_nr) {
     $query = "SELECT COUNT(*) > 0 AS ex FROM artikel
     WHERE lieferant_id = ? AND artikel_nr = ?
-    AND artikel.aktiv = TRUE;";
+    AND artikel.aktiv = TRUE";
 
     // prepare query statement
     $stmt = $this->conn->prepare($query);
@@ -42,8 +41,8 @@ class Artikel {
   function exists_by_lief_some_name($lieferant_name, $artikel_nr, $which_name) {
     $query = "SELECT COUNT(*) > 0 AS ex FROM artikel
     INNER JOIN lieferant USING (lieferant_id)
-    WHERE ".$which_name." = ? AND artikel_nr = ?
-    AND artikel.aktiv = TRUE;";
+    WHERE " . $which_name . " = ? AND artikel_nr = ?
+    AND artikel.aktiv = TRUE";
 
     // prepare query statement
     $stmt = $this->conn->prepare($query);
@@ -67,6 +66,46 @@ class Artikel {
   public function exists_by_lief_kurzname($lieferant_kurzname, $artikel_nr) {
     $res = $this->exists_by_lief_some_name($lieferant_kurzname, $artikel_nr, "lieferant_kurzname");
     return $res;
+  }
+
+  private $get_query = "SELECT
+  artikel_id, produktgruppen_name AS produktgruppe, lieferant_name AS lieferant,
+  artikel_nr, artikel_name, kurzname, menge, barcode, herkunft, vpe, setgroesse,
+  vk_preis, empf_vk_preis, ek_rabatt, ek_preis, variabler_preis,
+  sortiment, lieferbar, beliebtheit, bestand, von, bis, artikel.aktiv, einheit
+  FROM artikel
+  INNER JOIN produktgruppe USING (produktgruppen_id)
+  INNER JOIN lieferant USING (lieferant_id)";
+
+  public function get_by_lief_id($lieferant_id, $artikel_nr) {
+    $query = $this->get_query . " WHERE lieferant_id = ? AND artikel_nr = ?
+    AND artikel.aktiv = TRUE";
+    // return array("message" => $query);
+
+    // prepare query statement
+    $stmt = $this->conn->prepare($query);
+    $stmt->bindParam(1, $lieferant_id);
+    $stmt->bindParam(2, $artikel_nr);
+
+     // execute query
+    if ($stmt->execute()) {
+      $row = $stmt->fetch(PDO::FETCH_ASSOC);
+      return $row;
+    }
+
+    return null;
+  }
+
+  function get_by_lief_some_name() {
+
+  }
+
+  public function get_by_lief_name() {
+    
+  }
+
+  public function get_by_lief_kurzname() {
+    
   }
 
   // // read all products

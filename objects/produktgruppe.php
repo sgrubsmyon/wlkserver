@@ -2,7 +2,6 @@
 class Produktgruppe {
   // database connection and table name
   private $conn;
-  private $table_name = "artikel";
 
   // constructor with $db as database connection
   public function __construct($db) {
@@ -14,7 +13,7 @@ class Produktgruppe {
     // select all query
     $query = "SELECT DISTINCT
         produktgruppen_name
-      FROM " . $this->table_name . "
+      FROM produktgruppe
       WHERE typ = ?
       ORDER BY produktgruppen_name";
     $stmt = $this->conn->prepare($query);
