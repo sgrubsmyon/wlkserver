@@ -70,14 +70,15 @@ class Artikel {
 
   private $get_query = "SELECT
   artikel_id, produktgruppen_name AS produktgruppe, lieferant_name AS lieferant,
-  artikel_nr, artikel_name, kurzname, menge, barcode, herkunft, vpe, setgroesse,
+  artikel_nr, artikel_name, kurzname, barcode, menge, einheit, vpe, setgroesse,
   vk_preis, empf_vk_preis, ek_rabatt, ek_preis, variabler_preis,
-  sortiment, lieferbar, beliebtheit, bestand, von, bis, artikel.aktiv, einheit
+  herkunft,
+  sortiment, lieferbar, beliebtheit, bestand, von, bis, artikel.aktiv
   FROM artikel
   INNER JOIN produktgruppe USING (produktgruppen_id)
   INNER JOIN lieferant USING (lieferant_id)";
 
-  public function get_by_lief_id($lieferant_id, $artikel_nr) {
+  public function get_active_by_lief_id($lieferant_id, $artikel_nr) {
     $query = $this->get_query . " WHERE lieferant_id = ? AND artikel_nr = ?
     AND artikel.aktiv = TRUE";
     // return array("message" => $query);
@@ -96,16 +97,33 @@ class Artikel {
     return null;
   }
 
-  function get_by_lief_some_name() {
+  function get_active_by_lief_some_name($lieferant_name, $artikel_nr, $which_name) {
+    $query = $this->get_query . " WHERE " . $which_name . " = ? AND artikel_nr = ?
+    AND artikel.aktiv = TRUE";
+    // return array("message" => $query);
 
+    // prepare query statement
+    $stmt = $this->conn->prepare($query);
+    $stmt->bindParam(1, $lieferant_name);
+    $stmt->bindParam(2, $artikel_nr);
+
+     // execute query
+    if ($stmt->execute()) {
+      $row = $stmt->fetch(PDO::FETCH_ASSOC);
+      return $row;
+    }
+
+    return null;
   }
 
-  public function get_by_lief_name() {
-    
+  public function get_active_by_lief_name($lieferant_name, $artikel_nr) {
+    $res = $this->get_active_by_lief_some_name($lieferant_name, $artikel_nr, "lieferant_name");
+    return $res;
   }
 
-  public function get_by_lief_kurzname() {
-    
+  public function get_active_by_lief_kurzname($lieferant_kurzname, $artikel_nr) {
+    $res = $this->get_active_by_lief_some_name($lieferant_kurzname, $artikel_nr, "lieferant_kurzname");
+    return $res;
   }
 
   // // read all products

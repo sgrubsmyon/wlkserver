@@ -50,11 +50,11 @@ if (is_null($lieferant_id) && is_null($lieferant_name) && is_null($lieferant_kur
 
 $artikel_data = null;
 if (!is_null($lieferant_id)) {
-  $artikel_data = $artikel->get_by_lief_id($lieferant_id, $artikel_nr);
+  $artikel_data = $artikel->get_active_by_lief_id($lieferant_id, $artikel_nr);
 } else if (!is_null($lieferant_name)) {
-  $artikel_data = $artikel->get_by_lief_name($lieferant_name, $artikel_nr);
+  $artikel_data = $artikel->get_active_by_lief_name($lieferant_name, $artikel_nr);
 } else if (!is_null($lieferant_kurzname)) {
-  $artikel_data = $artikel->get_by_lief_kurzname($lieferant_kurzname, $artikel_nr);
+  $artikel_data = $artikel->get_active_by_lief_kurzname($lieferant_kurzname, $artikel_nr);
 }
 
 if (is_null($artikel_data)) {
