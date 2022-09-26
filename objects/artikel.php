@@ -126,6 +126,75 @@ class Artikel {
     return $res;
   }
 
+  // return all articles, not only the currently active one (this is the 'article history')
+  public function get_all_by_lief_id($lieferant_id, $artikel_nr) {
+    $query = $this->get_query . " WHERE lieferant_id = ? AND artikel_nr = ?";
+    // return array("message" => $query);
+
+    // prepare query statement
+    $stmt = $this->conn->prepare($query);
+    $stmt->bindParam(1, $lieferant_id);
+    $stmt->bindParam(2, $artikel_nr);
+
+     // execute query
+    if ($stmt->execute()) {
+      // artikel array
+      $artikel_arr = array();
+
+      $num = $stmt->rowCount();
+      if ($num > 0) {
+        // retrieve our table contents
+        // fetch() is faster than fetchAll()
+        // http://stackoverflow.com/questions/2770630/pdofetchall-vs-pdofetch-in-a-loop
+        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+          array_push($artikel_arr, $row);
+        }
+      }
+      return $artikel_arr;
+    }
+
+    return null;
+  }
+
+  function get_all_by_lief_some_name($lieferant_name, $artikel_nr, $which_name) {
+    $query = $this->get_query . " WHERE " . $which_name . " = ? AND artikel_nr = ?";
+    // return array("message" => $query);
+
+    // prepare query statement
+    $stmt = $this->conn->prepare($query);
+    $stmt->bindParam(1, $lieferant_name);
+    $stmt->bindParam(2, $artikel_nr);
+
+     // execute query
+    if ($stmt->execute()) {
+      // artikel array
+      $artikel_arr = array();
+
+      $num = $stmt->rowCount();
+      if ($num > 0) {
+        // retrieve our table contents
+        // fetch() is faster than fetchAll()
+        // http://stackoverflow.com/questions/2770630/pdofetchall-vs-pdofetch-in-a-loop
+        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+          array_push($artikel_arr, $row);
+        }
+      }
+      return $artikel_arr;
+    }
+
+    return null;
+  }
+
+  public function get_all_by_lief_name($lieferant_name, $artikel_nr) {
+    $res = $this->get_all_by_lief_some_name($lieferant_name, $artikel_nr, "lieferant_name");
+    return $res;
+  }
+
+  public function get_all_by_lief_kurzname($lieferant_kurzname, $artikel_nr) {
+    $res = $this->get_all_by_lief_some_name($lieferant_kurzname, $artikel_nr, "lieferant_kurzname");
+    return $res;
+  }
+
   // // read all products
   // function read_all() {
   //   // select all query
