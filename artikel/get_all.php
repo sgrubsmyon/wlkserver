@@ -27,29 +27,24 @@ $artikel_nr = isset($_GET['an']) ? $_GET['an'] : null;
 
 if (is_null($artikel_nr)) {
   // artikel_nr obligatory, so die() (exit) if not present
-  
   // set response code - 400 bad request
   http_response_code(400);
-
   // tell the user
   echo json_encode(array(
     "error" => "Need to provide `artikel_nr` with parameter `an`."
   ));
-
   die();
 }
 
 if (is_null($lieferant_id) && is_null($lieferant_name) && is_null($lieferant_kurzname)) {
   // set response code - 400 bad request
   http_response_code(400);
-  
   // tell the user
   echo json_encode(array(
     "error" => "Need to provide either `lieferant_id` with parameter `li` " .
     "or `lieferant_name` with parameter `ln` " .
     "or `lieferant_kurzname` with parameter `lkn`."
   ));
-  
   die();
 }
 
@@ -64,10 +59,8 @@ if (!is_null($lieferant_id)) {
 
 if (is_null($artikel_data)) {
   // there was a DB error
-
   // set response code - 503 service unavailable
   http_response_code(503);
-
   // tell the user
   echo json_encode(array(
     "error" => "Unable to access DB."
@@ -75,11 +68,7 @@ if (is_null($artikel_data)) {
 } else {
   // set response code - 200 OK
   http_response_code(200);
-
   // show product data in json format
-  // echo json_encode(array(
-  //   "result" => $exists
-  // ));
   echo json_encode($artikel_data);
 }
 ?>

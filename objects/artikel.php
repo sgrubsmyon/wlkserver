@@ -18,6 +18,10 @@ class Artikel {
     $this->conn = $db;
   }
 
+  /**************
+   * EXISTS     *
+   **************/
+
   // check if a product already exists in the DB
   public function exists_by_lief_id($lieferant_id, $artikel_nr) {
     $query = "SELECT COUNT(*) > 0 AS ex FROM artikel
@@ -67,6 +71,14 @@ class Artikel {
     $res = $this->exists_by_lief_some_name($lieferant_kurzname, $artikel_nr, "lieferant_kurzname");
     return $res;
   }
+
+  /**************
+   * CREATE     *
+   **************/
+
+  /**************
+   * READ       *
+   **************/
 
   private $get_query = "SELECT
   artikel_id, produktgruppen_name AS produktgruppe, lieferant_name AS lieferant,
@@ -128,7 +140,7 @@ class Artikel {
 
   // return all articles, not only the currently active one (this is the 'article history')
   public function get_all_by_lief_id($lieferant_id, $artikel_nr) {
-    $query = $this->get_query . " WHERE lieferant_id = ? AND artikel_nr = ?";
+    $query = $this->get_query . " WHERE lieferant_id = ? AND artikel_nr = ? ORDER BY artikel_id DESC";
     // return array("message" => $query);
 
     // prepare query statement
@@ -157,7 +169,7 @@ class Artikel {
   }
 
   function get_all_by_lief_some_name($lieferant_name, $artikel_nr, $which_name) {
-    $query = $this->get_query . " WHERE " . $which_name . " = ? AND artikel_nr = ?";
+    $query = $this->get_query . " WHERE " . $which_name . " = ? AND artikel_nr = ? ORDER BY artikel_id DESC";
     // return array("message" => $query);
 
     // prepare query statement
@@ -260,5 +272,13 @@ class Artikel {
   //   }
   //   return null;
   // }
+
+  /**************
+   * UPDATE     *
+   **************/
+
+  /**************
+   * DELETE     *
+   **************/
 }
 ?>
