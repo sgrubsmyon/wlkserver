@@ -31,7 +31,7 @@ if (is_null($artikel_nr)) {
   http_response_code(400);
   // tell the user
   echo json_encode(array(
-    "error" => "Need to provide `artikel_nr` with parameter `an`."
+    "error" => "Need to provide `artikel_nr` with GET parameter `an`."
   ));
   die();
 }
@@ -41,9 +41,9 @@ if (is_null($lieferant_id) && is_null($lieferant_name) && is_null($lieferant_kur
   http_response_code(400);
   // tell the user
   echo json_encode(array(
-    "error" => "Need to provide either `lieferant_id` with parameter `li` " .
-    "or `lieferant_name` with parameter `ln` " .
-    "or `lieferant_kurzname` with parameter `lkn`."
+    "error" => "Need to provide either `lieferant_id` with GET parameter `li` " .
+    "or `lieferant_name` with GET parameter `ln` " .
+    "or `lieferant_kurzname` with GET parameter `lkn`."
   ));
   die();
 }
