@@ -25,8 +25,7 @@ class Artikel {
   // check if a product already exists in the DB
   public function exists_by_lief_id($lieferant_id, $artikel_nr) {
     $query = "SELECT COUNT(*) > 0 AS ex FROM artikel
-    WHERE lieferant_id = ? AND artikel_nr = ?
-    AND artikel.aktiv = TRUE";
+    WHERE lieferant_id = ? AND artikel_nr = ? AND artikel.aktiv";
 
     // prepare query statement
     $stmt = $this->conn->prepare($query);
@@ -45,8 +44,7 @@ class Artikel {
   function exists_by_lief_some_name($lieferant_name, $artikel_nr, $which_name) {
     $query = "SELECT COUNT(*) > 0 AS ex FROM artikel
     INNER JOIN lieferant USING (lieferant_id)
-    WHERE " . $which_name . " = ? AND artikel_nr = ?
-    AND artikel.aktiv = TRUE";
+    WHERE " . $which_name . " = ? AND artikel_nr = ? AND artikel.aktiv";
 
     // prepare query statement
     $stmt = $this->conn->prepare($query);
@@ -76,6 +74,16 @@ class Artikel {
    * CREATE     *
    **************/
 
+  public function create_by_lief_id($lieferant_id, $artikel_nr, $data) {
+    if ($this->exists_by_lief_id($lieferant_id, $artikel_nr)) {
+      // Throw error and do not create the article, as it exists already
+      return false;
+    }
+    $query = "INSERT INTO artikel SET 
+    lieferant_id = ?, artikel_nr = ?";
+    return true;
+  }
+
   /**************
    * READ       *
    **************/
@@ -91,8 +99,7 @@ class Artikel {
   INNER JOIN lieferant USING (lieferant_id)";
 
   public function read_active_by_lief_id($lieferant_id, $artikel_nr) {
-    $query = $this->read_query . " WHERE lieferant_id = ? AND artikel_nr = ?
-    AND artikel.aktiv = TRUE";
+    $query = $this->read_query . " WHERE lieferant_id = ? AND artikel_nr = ? AND artikel.aktiv";
     // return array("message" => $query);
 
     // prepare query statement
@@ -110,8 +117,7 @@ class Artikel {
   }
 
   function read_active_by_lief_some_name($lieferant_name, $artikel_nr, $which_name) {
-    $query = $this->read_query . " WHERE " . $which_name . " = ? AND artikel_nr = ?
-    AND artikel.aktiv = TRUE";
+    $query = $this->read_query . " WHERE " . $which_name . " = ? AND artikel_nr = ? AND artikel.aktiv";
     // return array("message" => $query);
 
     // prepare query statement
