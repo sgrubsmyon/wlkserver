@@ -48,7 +48,8 @@ class Artikel
   {
     $query = "SELECT COUNT(*) > 0 AS ex FROM artikel
     INNER JOIN lieferant USING (lieferant_id)
-    WHERE LOWER(" . $which_name . ") = LOWER(?) AND LOWER(artikel_nr) = LOWER(?) AND artikel.aktiv";
+    WHERE LOWER(" . $which_name . ") = LOWER(?)
+    AND LOWER(artikel_nr) = LOWER(?) AND artikel.aktiv";
 
     // prepare query statement
     $stmt = $this->conn->prepare($query);
@@ -94,27 +95,37 @@ class Artikel
     $query = "INSERT INTO artikel SET 
     lieferant_id = ?, artikel_nr = ?";
     foreach ($data as $field => $value) {
-      $query = $query . ", " . $field . " = " . $value;
+      $query .= ", " . $field . " = ?";
     }
-    print($query);
+    $query .= ", von = NOW()";
 
-    // // prepare query statement
-    // $stmt = $this->conn->prepare($query);
-    // $stmt->bindParam(1, $lieferant_id);
-    // $stmt->bindParam(2, $artikel_nr);
+    // prepare query statement
+    $stmt = $this->conn->prepare($query);
+    $stmt->bindParam(1, $lieferant_id);
+    $stmt->bindParam(2, $artikel_nr);
+    $i = 3;
+    foreach ($data as $field => $value) {
+      $stmt->bindParam($i, $value);
+      $i++;
+    }
 
-    // // execute query
-    // if ($stmt->execute()) {
-    //   $row = $stmt->fetch(PDO::FETCH_ASSOC);
-    //   return $row['ex'] == '1' ? true : false;
-    // }
-
+    // execute query
+    if ($stmt->execute()) {
     return [
       "success" => true,
+        // OK
       "status" => 200,
-      // OK
       "error" => ""
     ];
+    } else {
+      return [
+        "success" => false,
+        // Internal server error
+        "status" => 500,
+        "error" => "Unable to create record"
+      ];
+    }
+  }
   }
 
   /**************
