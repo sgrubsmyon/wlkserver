@@ -41,7 +41,7 @@ class Artikel
       return $row['ex'] == '1' ? true : false;
     }
 
-    return null;
+    return NULL;
   }
 
   function exists_by_lief_some_name($lieferant_name, $artikel_nr, $which_name)
@@ -62,7 +62,7 @@ class Artikel
       return $row['ex'] == '1' ? true : false;
     }
 
-    return null;
+    return NULL;
   }
 
   public function exists_by_lief_name($lieferant_name, $artikel_nr)
@@ -93,7 +93,7 @@ class Artikel
       ];
     }
     $query = "INSERT INTO artikel SET 
-    lieferant_id = ?, artikel_nr = ?";
+      lieferant_id = ?, artikel_nr = ?";
     foreach ($data as $field => $value) {
       $query .= ", " . $field . " = ?";
     }
@@ -111,12 +111,12 @@ class Artikel
 
     // execute query
     if ($stmt->execute()) {
-    return [
-      "success" => true,
+      return [
+        "success" => true,
         // OK
-      "status" => 200,
-      "error" => ""
-    ];
+        "status" => 200,
+        "error" => ""
+      ];
     } else {
       return [
         "success" => false,
@@ -141,9 +141,10 @@ class Artikel
   INNER JOIN produktgruppe USING (produktgruppen_id)
   INNER JOIN lieferant USING (lieferant_id)";
 
-  public function read_active_by_lief_id($lieferant_id, $artikel_nr)
+  public function read_by_lief_id($lieferant_id, $artikel_nr, $aktiv)
   {
-    $query = $this->read_query . " WHERE lieferant_id = ? AND LOWER(artikel_nr) = LOWER(?) AND artikel.aktiv";
+    $query = $this->read_query . " WHERE lieferant_id = ? AND LOWER(artikel_nr) = LOWER(?) " .
+      ($aktiv ? "AND artikel.aktiv " : "") . "ORDER BY artikel_id DESC";
     // return array("message" => $query);
 
     // prepare query statement
@@ -157,13 +158,13 @@ class Artikel
       return $row;
     }
 
-    return null;
+    return NULL;
   }
 
-  function read_active_by_lief_some_name($lieferant_name, $artikel_nr, $which_name)
+  function read_by_lief_some_name($lieferant_name, $artikel_nr, $which_name, $aktiv = true)
   {
-    $query = $this->read_query . " WHERE LOWER(" . $which_name . ") = LOWER(?) AND LOWER(artikel_nr) = LOWER(?) AND artikel.aktiv";
-    // return array("message" => $query);
+    $query = $this->read_query . " WHERE LOWER(" . $which_name . ") = LOWER(?) AND LOWER(artikel_nr) = LOWER(?) " .
+      ($aktiv ? "AND artikel.aktiv " : "") . "ORDER BY artikel_id DESC";
 
     // prepare query statement
     $stmt = $this->conn->prepare($query);
@@ -172,95 +173,25 @@ class Artikel
 
     // execute query
     if ($stmt->execute()) {
+      // retrieve our table contents
+      // fetch() is faster than fetchAll()
+      // http://stackoverflow.com/questions/2770630/pdofetchall-vs-pdofetch-in-a-loop
       $row = $stmt->fetch(PDO::FETCH_ASSOC);
       return $row;
     }
 
-    return null;
+    return NULL;
   }
 
-  public function read_active_by_lief_name($lieferant_name, $artikel_nr)
+  public function read_by_lief_name($lieferant_name, $artikel_nr, $aktiv = true)
   {
-    $res = $this->read_active_by_lief_some_name($lieferant_name, $artikel_nr, "lieferant_name");
+    $res = $this->read_by_lief_some_name($lieferant_name, $artikel_nr, "lieferant_name", $aktiv);
     return $res;
   }
 
-  public function read_active_by_lief_kurzname($lieferant_kurzname, $artikel_nr)
+  public function read_by_lief_kurzname($lieferant_kurzname, $artikel_nr, $aktiv = true)
   {
-    $res = $this->read_active_by_lief_some_name($lieferant_kurzname, $artikel_nr, "lieferant_kurzname");
-    return $res;
-  }
-
-  // return all articles, not only the currently active one (this is the 'article history')
-  public function read_all_by_lief_id($lieferant_id, $artikel_nr)
-  {
-    $query = $this->read_query . " WHERE lieferant_id = ? AND LOWER(artikel_nr) = LOWER(?) ORDER BY artikel_id DESC";
-    // return array("message" => $query);
-
-    // prepare query statement
-    $stmt = $this->conn->prepare($query);
-    $stmt->bindParam(1, $lieferant_id);
-    $stmt->bindParam(2, $artikel_nr);
-
-    // execute query
-    if ($stmt->execute()) {
-      // artikel array
-      $artikel_arr = array();
-
-      $num = $stmt->rowCount();
-      if ($num > 0) {
-        // retrieve our table contents
-        // fetch() is faster than fetchAll()
-        // http://stackoverflow.com/questions/2770630/pdofetchall-vs-pdofetch-in-a-loop
-        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
-          array_push($artikel_arr, $row);
-        }
-      }
-      return $artikel_arr;
-    }
-
-    return null;
-  }
-
-  function read_all_by_lief_some_name($lieferant_name, $artikel_nr, $which_name)
-  {
-    $query = $this->read_query . " WHERE LOWER(" . $which_name . ") = LOWER(?) AND LOWER(artikel_nr) = LOWER(?) ORDER BY artikel_id DESC";
-    // return array("message" => $query);
-
-    // prepare query statement
-    $stmt = $this->conn->prepare($query);
-    $stmt->bindParam(1, $lieferant_name);
-    $stmt->bindParam(2, $artikel_nr);
-
-    // execute query
-    if ($stmt->execute()) {
-      // artikel array
-      $artikel_arr = array();
-
-      $num = $stmt->rowCount();
-      if ($num > 0) {
-        // retrieve our table contents
-        // fetch() is faster than fetchAll()
-        // http://stackoverflow.com/questions/2770630/pdofetchall-vs-pdofetch-in-a-loop
-        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
-          array_push($artikel_arr, $row);
-        }
-      }
-      return $artikel_arr;
-    }
-
-    return null;
-  }
-
-  public function read_all_by_lief_name($lieferant_name, $artikel_nr)
-  {
-    $res = $this->read_all_by_lief_some_name($lieferant_name, $artikel_nr, "lieferant_name");
-    return $res;
-  }
-
-  public function read_all_by_lief_kurzname($lieferant_kurzname, $artikel_nr)
-  {
-    $res = $this->read_all_by_lief_some_name($lieferant_kurzname, $artikel_nr, "lieferant_kurzname");
+    $res = $this->read_by_lief_some_name($lieferant_kurzname, $artikel_nr, "lieferant_kurzname", $aktiv);
     return $res;
   }
 
@@ -292,7 +223,7 @@ class Artikel
   //     }
   //     return $artikel_arr;
   //   }
-  //   return null;
+  //   return NULL;
   // }
 
   // // read products from one product group
@@ -327,7 +258,7 @@ class Artikel
   //     }
   //     return $artikel_arr;
   //   }
-  //   return null;
+  //   return NULL;
   // }
 
   /**************

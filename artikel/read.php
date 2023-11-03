@@ -20,10 +20,10 @@ $db = $database->getConnection();
 $artikel = new Artikel($db);
 
 // read parameters from GET method
-$lieferant_id = isset($_GET['li']) ? $_GET['li'] : null;
-$lieferant_name = isset($_GET['ln']) ? $_GET['ln'] : null;
-$lieferant_kurzname = isset($_GET['lkn']) ? $_GET['lkn'] : null;
-$artikel_nr = isset($_GET['an']) ? $_GET['an'] : null;
+$lieferant_id = isset($_GET['li']) ? $_GET['li'] : NULL;
+$lieferant_name = isset($_GET['ln']) ? $_GET['ln'] : NULL;
+$lieferant_kurzname = isset($_GET['lkn']) ? $_GET['lkn'] : NULL;
+$artikel_nr = isset($_GET['an']) ? $_GET['an'] : NULL;
 
 if (is_null($artikel_nr)) {
   // artikel_nr obligatory, so die() (exit) if not present
@@ -34,7 +34,7 @@ if (is_null($artikel_nr)) {
   // tell the user
   echo json_encode(
     array(
-      "error" => "Need to provide `artikel_nr` with GET parameter `an`."
+      "error" => "Need to provide `artikel_nr` with URL parameter `an`."
     )
   );
 
@@ -48,22 +48,22 @@ if (is_null($lieferant_id) && is_null($lieferant_name) && is_null($lieferant_kur
   // tell the user
   echo json_encode(
     array(
-      "error" => "Need to provide either `lieferant_id` with GET parameter `li` " .
-      "or `lieferant_name` with GET parameter `ln` " .
-      "or `lieferant_kurzname` with GET parameter `lkn`."
+      "error" => "Need to provide either `lieferant_id` with URL parameter `li` " .
+        "or `lieferant_name` with URL parameter `ln` " .
+        "or `lieferant_kurzname` with URL parameter `lkn`."
     )
   );
 
   die();
 }
 
-$artikel_data = null;
+$artikel_data = NULL;
 if (!is_null($lieferant_id)) {
-  $artikel_data = $artikel->read_active_by_lief_id($lieferant_id, $artikel_nr);
+  $artikel_data = $artikel->read_by_lief_id($lieferant_id, $artikel_nr, true);
 } else if (!is_null($lieferant_name)) {
-  $artikel_data = $artikel->read_active_by_lief_name($lieferant_name, $artikel_nr);
+  $artikel_data = $artikel->read_by_lief_name($lieferant_name, $artikel_nr, true);
 } else if (!is_null($lieferant_kurzname)) {
-  $artikel_data = $artikel->read_active_by_lief_kurzname($lieferant_kurzname, $artikel_nr);
+  $artikel_data = $artikel->read_by_lief_kurzname($lieferant_kurzname, $artikel_nr, true);
 }
 
 if (is_null($artikel_data)) {
