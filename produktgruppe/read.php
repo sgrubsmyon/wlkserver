@@ -1,8 +1,10 @@
 <?php
 
-/************************************************/
-/* Read only the currently active produktgruppe */
-/************************************************/
+/*****************************/
+/* Read single produktgruppe */
+/*****************************/
+/* Set aktiv=true to select only the currently active ones */
+/* Set aktiv=false to show also the history of inactive ones */
 
 // required headers
 header("Access-Control-Allow-Origin: *");
@@ -21,6 +23,7 @@ $produktgruppe = new Produktgruppe($db);
 
 // read parameters from GET method
 $produktgruppen_id = isset($_GET['id']) ? $_GET['id'] : NULL;
+$aktiv = isset($_GET['aktiv']) ? $_GET['aktiv'] : true;
 
 if (is_null($produktgruppen_id)) {
     // produktgruppen_id obligatory, so die() (exit) if not present
@@ -39,7 +42,7 @@ if (is_null($produktgruppen_id)) {
 }
 
 $produktgruppen_data = NULL;
-$produktgruppen_data = $produktgruppe->read_single_by_id($produktgruppen_id, true);
+$produktgruppen_data = $produktgruppe->read_single_by_id($produktgruppen_id, $aktiv);
 
 if (is_null($produktgruppen_data)) {
     // there was a DB error

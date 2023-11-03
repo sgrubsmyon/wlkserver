@@ -1,8 +1,10 @@
 <?php
 
-/******************************************/
-/* Read only the currently active article */
-/******************************************/
+/***********************/
+/* Read single article */
+/***********************/
+/* Set aktiv=true to select only the currently active ones */
+/* Set aktiv=false to show also the history of inactive ones */
 
 // required headers
 header("Access-Control-Allow-Origin: *");
@@ -24,6 +26,7 @@ $lieferant_id = isset($_GET['li']) ? $_GET['li'] : NULL;
 $lieferant_name = isset($_GET['ln']) ? $_GET['ln'] : NULL;
 $lieferant_kurzname = isset($_GET['lkn']) ? $_GET['lkn'] : NULL;
 $artikel_nr = isset($_GET['an']) ? $_GET['an'] : NULL;
+$aktiv = isset($_GET['aktiv']) ? $_GET['aktiv'] : true;
 
 if (is_null($artikel_nr)) {
   // artikel_nr obligatory, so die() (exit) if not present
@@ -59,11 +62,11 @@ if (is_null($lieferant_id) && is_null($lieferant_name) && is_null($lieferant_kur
 
 $artikel_data = NULL;
 if (!is_null($lieferant_id)) {
-  $artikel_data = $artikel->read_by_lief_id($lieferant_id, $artikel_nr, true);
+  $artikel_data = $artikel->read_by_lief_id($lieferant_id, $artikel_nr, $aktiv);
 } else if (!is_null($lieferant_name)) {
-  $artikel_data = $artikel->read_by_lief_name($lieferant_name, $artikel_nr, true);
+  $artikel_data = $artikel->read_by_lief_name($lieferant_name, $artikel_nr, $aktiv);
 } else if (!is_null($lieferant_kurzname)) {
-  $artikel_data = $artikel->read_by_lief_kurzname($lieferant_kurzname, $artikel_nr, true);
+  $artikel_data = $artikel->read_by_lief_kurzname($lieferant_kurzname, $artikel_nr, $aktiv);
 }
 
 if (is_null($artikel_data)) {
