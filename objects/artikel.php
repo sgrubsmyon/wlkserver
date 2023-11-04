@@ -368,6 +368,98 @@ class Artikel
    * UPDATE     *
    **************/
 
+   public function update_by_lief_id($lieferant_id, $artikel_nr, $data)
+   {
+    if (!$this->exists_by_lief_id($lieferant_id, $artikel_nr)) {
+      // Throw error and do not create the article, as it exists already
+      return [
+        "success" => FALSE,
+        "status" => 400,
+        // bad request
+        "error" => "Article with (lieferant_id, artikel_nr) = (" . $lieferant_id . ", " . $artikel_nr . ") does not exist."
+      ];
+    }
+    $old_data = $this->read_by_lief_id($lieferant_id, $artikel_nr);
+    $this->update($old_data, $data);
+   }
+
+   public function update($old_data, $data)
+   {
+    // Step 1: Set old article inactive
+    $query = "UPDATE artikel
+      SET aktiv = FALSE, bis = NOW()
+      WHERE artikel_id = ?";
+
+    // prepare query statement
+    $stmt = $this->conn->prepare($query);
+    $stmt->bindParam(1, $old_data["artikel_id"]);
+    
+    try {
+      // execute query
+      if (!$stmt->execute()) {
+        return [
+          "success" => FALSE,
+          // Internal server error
+          "status" => 500,
+          "error" => "Unable to create deactivate old article."
+        ];
+      }
+    } catch (PDOException $e) {
+      return [
+        "success" => FALSE,
+        // Internal server error
+        "status" => 500,
+        "error" => $e->getMessage()
+      ];
+    }
+
+    // Step 2: Find produktgruppen_id and lieferant_id
+    // (only if not directly provided in $data)
+
+    // Step 3: Create new article
+    // (replace original data in $old_data with new data in $data,
+    //  adopt values not provided in $data from $old_data)
+    $query = "INSERT INTO artikel
+        SET lieferant_id = :lieferant_id,
+            artikel_nr = :artikel_nr,
+            aktiv = TRUE,
+            von = NOW(),
+            bis = NULL";
+
+    // prepare query statement
+    $stmt = $this->conn->prepare($query);
+
+    // bind parameters
+    $stmt->bindParam(":lieferant_id", $old_data["lieferant_id"]);
+    $stmt->bindParam(":artikel_nr", $old_data["artikel_nr"]);
+
+    try {
+        // execute query
+        if ($stmt->execute()) {
+            return [
+                "success" => TRUE,
+                // OK
+                "status" => 200,
+                "error" => ""
+            ];
+        } else {
+            return [
+                "success" => FALSE,
+                // Internal server error
+                "status" => 500,
+                "error" => "Unable to create new article"
+            ];
+        }
+    } catch (PDOException $e) {
+        return [
+            "success" => FALSE,
+            // Internal server error
+            "status" => 500,
+            "error" => $e->getMessage()
+        ];
+    }
+   }
+
   /**************
    * DELETE     *
    **************/
