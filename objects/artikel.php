@@ -126,7 +126,27 @@ class Artikel
       ];
     }
   }
-  }
+
+  // function create_by_lief_some_name($lieferant_name, $artikel_nr, $which_name)
+  // {
+  //   if ($this->exists_by_lief_some_name($lieferant_name, $artikel_nr, $which_name)) {
+  //     // Throw error and do not create the article, as it exists already
+  //     return [
+  //       "success" => false,
+  //       "status" => 400,
+  //       // bad request
+  //       "error" => "Article with (" . $which_name . ", artikel_nr) = (" . $lieferant_name . ", " . $artikel_nr . ") already exists."
+  //     ];
+  //   }
+  //   $query = "INSERT INTO artikel
+  //   INNER JOIN lieferant USING (lieferant_id)
+  //   SET 
+  //     lieferant_id = ?, artikel_nr = ?";
+  //   foreach ($data as $field => $value) {
+  //     $query .= ", " . $field . " = ?";
+  //   }
+  //   $query .= ", von = NOW()";
+  // }
 
   /**************
    * READ       *
@@ -141,7 +161,33 @@ class Artikel
   INNER JOIN produktgruppe USING (produktgruppen_id)
   INNER JOIN lieferant USING (lieferant_id)";
 
-  public function read_by_lief_id($lieferant_id, $artikel_nr, $aktiv)
+  public function read_all($count, $page, $aktiv = true)
+  {
+    $query = $this->read_query . ($aktiv ? " WHERE artikel.aktiv " : " ") .
+      "LIMIT ? OFFSET ?";
+
+    // prepare query statement
+    $stmt = $this->conn->prepare($query);
+    $stmt->bindParam(1, $count, PDO::PARAM_INT);
+    $offset = ($page - 1) * $count;
+    $stmt->bindParam(2, $offset, PDO::PARAM_INT);
+
+    // execute query
+    if ($stmt->execute()) {
+      $arr = array();
+      $num = $stmt->rowCount();
+      if ($num > 0) {
+        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+          array_push($arr, $row);
+        }
+      }
+      return $arr;
+    }
+
+    return NULL;
+  }
+
+  public function read_by_lief_id($lieferant_id, $artikel_nr, $aktiv = true)
   {
     $query = $this->read_query . " WHERE lieferant_id = ? AND LOWER(artikel_nr) = LOWER(?) " .
       ($aktiv ? "AND artikel.aktiv " : "") . "ORDER BY artikel_id DESC";

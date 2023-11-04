@@ -1,8 +1,10 @@
 <?php
 
 /***************************/
-/* Read all produktgruppen */
+/* Read all product groups */
 /***************************/
+/* Set aktiv=true to select only the currently active ones */
+/* Set aktiv=false to show also the history of inactive ones */
 
 // required headers
 header("Access-Control-Allow-Origin: *");

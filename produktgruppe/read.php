@@ -1,7 +1,7 @@
 <?php
 
 /*****************************/
-/* Read single produktgruppe */
+/* Read single product group */
 /*****************************/
 /* Set aktiv=true to select only the currently active ones */
 /* Set aktiv=false to show also the history of inactive ones */
