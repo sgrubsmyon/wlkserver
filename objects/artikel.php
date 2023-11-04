@@ -109,20 +109,29 @@ class Artikel
       $i++;
     }
 
-    // execute query
-    if ($stmt->execute()) {
-      return [
-        "success" => TRUE,
-        // OK
-        "status" => 200,
-        "error" => ""
-      ];
-    } else {
+    try {
+      // execute query
+      if ($stmt->execute()) {
+        return [
+          "success" => TRUE,
+          // OK
+          "status" => 200,
+          "error" => ""
+        ];
+      } else {
+        return [
+          "success" => FALSE,
+          // Internal server error
+          "status" => 500,
+          "error" => "Unable to create record"
+        ];
+      }
+    } catch (PDOException $e) {
       return [
         "success" => FALSE,
         // Internal server error
         "status" => 500,
-        "error" => "Unable to create record"
+        "error" => $e->getMessage()
       ];
     }
   }
