@@ -27,6 +27,8 @@ $page = isset($_GET['page']) ? (int)$_GET['page'] : 1; // first page: 1
 $aktiv = isset($_GET['aktiv']) ? filter_var($_GET['aktiv'], FILTER_VALIDATE_BOOLEAN) : TRUE;
 $order_by = isset($_GET['order_by']) ? $_GET['order_by'] : "artikel_id";
 $order_asc = isset($_GET['order_asc']) ? filter_var($_GET['order_asc'], FILTER_VALIDATE_BOOLEAN) : TRUE;
+// XXXTODO Later:
+// Add parameters to show only articles from one product group or from one lieferant
 
 $ret = $artikel->read_all($count, $page, $aktiv, $order_by, $order_asc);
 
