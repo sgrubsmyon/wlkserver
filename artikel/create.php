@@ -19,10 +19,9 @@ $db = $database->getConnection();
 // initialize object
 $artikel = new Artikel($db);
 
-// read parameters from POST method
-$POST_DATA = json_decode(file_get_contents('php://input'), TRUE); // https://stackoverflow.com/questions/18866571/receive-json-post-with-php
-$lieferant_id = isset($POST_DATA['lieferant_id']) ? $POST_DATA['lieferant_id'] : NULL;
-$artikel_nr = isset($POST_DATA['artikel_nr']) ? $POST_DATA['artikel_nr'] : NULL;
+// read URL parameters from POST method
+$lieferant_id = isset($_GET['li']) ? $_GET['li'] : NULL;
+$artikel_nr = isset($_GET['an']) ? $_GET['an'] : NULL;
 
 if (is_null($lieferant_id)) {
   // set response code - 400 bad request
@@ -40,33 +39,44 @@ if (is_null($lieferant_id)) {
 
 if (is_null($artikel_nr)) {
   // artikel_nr obligatory, so die() (exit) if not present
-
+  
   // set response code - 400 bad request
   http_response_code(400);
-
+  
   // tell the user
   echo json_encode(
     array(
       "error" => "Need to provide parameter `artikel_nr`."
-    )
+      )
   );
 
   die();
 }
 
-$artikel_data = isset($POST_DATA['data']) ? $POST_DATA['data'] : NULL;
-$ret = $artikel->create_by_lief_id($lieferant_id, $artikel_nr, $artikel_data);
+// Read parameters from HTTP body of POST method
+$artikel_data = json_decode(file_get_contents('php://input'), TRUE); // https://stackoverflow.com/questions/18866571/receive-json-post-with-php
 
+if (is_null($artikel_data)) {
+  // 400 bad request
+  http_response_code(400);
+  echo json_encode(
+    array(
+      "error" => "Need to provide article data as JSON inside HTTP body."
+    )
+  );
+  die();
+}
+
+$ret = $artikel->create_by_lief_id($lieferant_id, $artikel_nr, $artikel_data);
 http_response_code($ret["status"]);
 
 if (!$ret["success"]) {
-  // there was a DB error
-  // tell the user
   echo json_encode(
     array(
       "error" => $ret["error"]
     )
   );
+  die();
 } else {
   echo json_encode(array(
     "message" => "Success",
