@@ -21,35 +21,30 @@ $artikel = new Artikel($db);
 
 // read URL parameters from POST method
 $lieferant_id = isset($_GET['li']) ? $_GET['li'] : NULL;
+// $lieferant_name = isset($_GET['ln']) ? $_GET['ln'] : NULL;
+// $lieferant_kurzname = isset($_GET['lkn']) ? $_GET['lkn'] : NULL;
 $artikel_nr = isset($_GET['an']) ? $_GET['an'] : NULL;
 
 if (is_null($lieferant_id)) {
-  // set response code - 400 bad request
+  // 400 bad request
   http_response_code(400);
-
-  // tell the user
   echo json_encode(
     array(
       "error" => "Need to provide parameter `lieferant_id`."
     )
   );
-
   die();
 }
 
 if (is_null($artikel_nr)) {
   // artikel_nr obligatory, so die() (exit) if not present
-  
-  // set response code - 400 bad request
+  // 400 bad request
   http_response_code(400);
-  
-  // tell the user
   echo json_encode(
     array(
       "error" => "Need to provide parameter `artikel_nr`."
       )
   );
-
   die();
 }
 
