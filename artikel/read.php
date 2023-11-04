@@ -22,11 +22,11 @@ $db = $database->getConnection();
 $artikel = new Artikel($db);
 
 // read parameters from GET method
-$lieferant_id = isset($_GET['li']) ? $_GET['li'] : NULL;
+$lieferant_id = isset($_GET['li']) ? (int)$_GET['li'] : NULL;
 $lieferant_name = isset($_GET['ln']) ? $_GET['ln'] : NULL;
 $lieferant_kurzname = isset($_GET['lkn']) ? $_GET['lkn'] : NULL;
 $artikel_nr = isset($_GET['an']) ? $_GET['an'] : NULL;
-$aktiv = isset($_GET['aktiv']) ? $_GET['aktiv'] : true;
+$aktiv = isset($_GET['aktiv']) ? filter_var($_GET['aktiv'], FILTER_VALIDATE_BOOLEAN) : TRUE;
 
 if (is_null($artikel_nr)) {
   // artikel_nr obligatory, so die() (exit) if not present

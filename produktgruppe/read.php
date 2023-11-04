@@ -22,8 +22,8 @@ $db = $database->getConnection();
 $produktgruppe = new Produktgruppe($db);
 
 // read parameters from GET method
-$produktgruppen_id = isset($_GET['id']) ? $_GET['id'] : NULL;
-$aktiv = isset($_GET['aktiv']) ? $_GET['aktiv'] : true;
+$produktgruppen_id = isset($_GET['id']) ? (int)$_GET['id'] : NULL;
+$aktiv = isset($_GET['aktiv']) ? filter_var($_GET['aktiv'], FILTER_VALIDATE_BOOLEAN) : TRUE;
 
 if (is_null($produktgruppen_id)) {
     // produktgruppen_id obligatory, so die() (exit) if not present

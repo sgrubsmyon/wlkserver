@@ -22,7 +22,7 @@ $db = $database->getConnection();
 $produktgruppe = new Produktgruppe($db);
 
 // read parameters from GET method
-$aktiv = isset($_GET['aktiv']) ? $_GET['aktiv'] : true;
+$aktiv = isset($_GET['aktiv']) ? filter_var($_GET['aktiv'], FILTER_VALIDATE_BOOLEAN) : TRUE;
 
 $produktgruppen_data = NULL;
 $produktgruppen_data = $produktgruppe->read_all($aktiv);

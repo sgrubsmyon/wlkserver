@@ -15,7 +15,7 @@ $db = $database->getConnection();
 $artikel = new Artikel($db);
 
 // read parameters from GET method
-$lieferant_id = isset($_GET['li']) ? $_GET['li'] : NULL;
+$lieferant_id = isset($_GET['li']) ? (int)$_GET['li'] : NULL;
 $lieferant_name = isset($_GET['ln']) ? $_GET['ln'] : NULL;
 $lieferant_kurzname = isset($_GET['lkn']) ? $_GET['lkn'] : NULL;
 $artikel_nr = isset($_GET['an']) ? $_GET['an'] : NULL;

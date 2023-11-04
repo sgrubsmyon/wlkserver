@@ -38,7 +38,7 @@ class Artikel
     // execute query
     if ($stmt->execute()) {
       $row = $stmt->fetch(PDO::FETCH_ASSOC);
-      return $row['ex'] == '1' ? true : false;
+      return $row['ex'] == '1' ? TRUE : FALSE;
     }
 
     return NULL;
@@ -59,7 +59,7 @@ class Artikel
     // execute query
     if ($stmt->execute()) {
       $row = $stmt->fetch(PDO::FETCH_ASSOC);
-      return $row['ex'] == '1' ? true : false;
+      return $row['ex'] == '1' ? TRUE : FALSE;
     }
 
     return NULL;
@@ -86,7 +86,7 @@ class Artikel
     if ($this->exists_by_lief_id($lieferant_id, $artikel_nr)) {
       // Throw error and do not create the article, as it exists already
       return [
-        "success" => false,
+        "success" => FALSE,
         "status" => 400,
         // bad request
         "error" => "Article with (lieferant_id, artikel_nr) = (" . $lieferant_id . ", " . $artikel_nr . ") already exists."
@@ -112,14 +112,14 @@ class Artikel
     // execute query
     if ($stmt->execute()) {
       return [
-        "success" => true,
+        "success" => TRUE,
         // OK
         "status" => 200,
         "error" => ""
       ];
     } else {
       return [
-        "success" => false,
+        "success" => FALSE,
         // Internal server error
         "status" => 500,
         "error" => "Unable to create record"
@@ -132,7 +132,7 @@ class Artikel
   //   if ($this->exists_by_lief_some_name($lieferant_name, $artikel_nr, $which_name)) {
   //     // Throw error and do not create the article, as it exists already
   //     return [
-  //       "success" => false,
+  //       "success" => FALSE,
   //       "status" => 400,
   //       // bad request
   //       "error" => "Article with (" . $which_name . ", artikel_nr) = (" . $lieferant_name . ", " . $artikel_nr . ") already exists."
@@ -161,13 +161,50 @@ class Artikel
   INNER JOIN produktgruppe USING (produktgruppen_id)
   INNER JOIN lieferant USING (lieferant_id)";
 
-  public function read_all($count, $page, $aktiv = true)
+  public function read_all($count, $page, $aktiv = TRUE, $order_by = "artikel_id", $order_asc = TRUE)
   {
+    $orders = array(
+      "artikel_id",
+      "produktgruppe",
+      "lieferant",
+      "artikel_nr",
+      "artikel_name",
+      "kurzname",
+      "barcode",
+      "menge",
+      "einheit",
+      "vpe",
+      "setgroesse",
+      "vk_preis",
+      "empf_vk_preis",
+      "ek_rabatt",
+      "ek_preis",
+      "variabler_preis",
+      "herkunft",
+      "sortiment",
+      "lieferbar",
+      "beliebtheit",
+      "bestand",
+      "von",
+      "bis",
+      "artikel.aktiv"
+    );
+    $key = array_search($order_by, $orders);
+    if ($key === FALSE) { // column not found
+      return [
+        "success" => FALSE,
+        // bad request
+        "status" => 400,
+        "error" => "Unknown `order_by` column '$order_by'."
+      ];
+    }
+    $order = $orders[$key];
     $query = $this->read_query . ($aktiv ? " WHERE artikel.aktiv " : " ") .
-      "LIMIT ? OFFSET ?";
+      "ORDER BY $order " . ($order_asc ? "ASC" : "DESC") . " LIMIT ? OFFSET ?";
 
     // prepare query statement
     $stmt = $this->conn->prepare($query);
+    // instead of PDO::PARAM_INT explicitly, could also try `$db->setAttribute(PDO::ATTR_EMULATE_PREPARES, FALSE);` globally
     $stmt->bindParam(1, $count, PDO::PARAM_INT);
     $offset = ($page - 1) * $count;
     $stmt->bindParam(2, $offset, PDO::PARAM_INT);
@@ -181,13 +218,24 @@ class Artikel
           array_push($arr, $row);
         }
       }
-      return $arr;
+      return [
+        "success" => TRUE,
+        // OK
+        "status" => 200,
+        "error" => "",
+        "data" => $arr
+      ];
     }
 
-    return NULL;
+    return [
+      "success" => FALSE,
+      // service unavailable
+      "status" => 503,
+      "error" => "Unable to access DB."
+    ];
   }
 
-  public function read_by_lief_id($lieferant_id, $artikel_nr, $aktiv = true)
+  public function read_by_lief_id($lieferant_id, $artikel_nr, $aktiv = TRUE)
   {
     $query = $this->read_query . " WHERE lieferant_id = ? AND LOWER(artikel_nr) = LOWER(?) " .
       ($aktiv ? "AND artikel.aktiv " : "") . "ORDER BY artikel_id DESC";
@@ -207,7 +255,7 @@ class Artikel
     return NULL;
   }
 
-  function read_by_lief_some_name($lieferant_name, $artikel_nr, $which_name, $aktiv = true)
+  function read_by_lief_some_name($lieferant_name, $artikel_nr, $which_name, $aktiv = TRUE)
   {
     $query = $this->read_query . " WHERE LOWER(" . $which_name . ") = LOWER(?) AND LOWER(artikel_nr) = LOWER(?) " .
       ($aktiv ? "AND artikel.aktiv " : "") . "ORDER BY artikel_id DESC";
@@ -229,13 +277,13 @@ class Artikel
     return NULL;
   }
 
-  public function read_by_lief_name($lieferant_name, $artikel_nr, $aktiv = true)
+  public function read_by_lief_name($lieferant_name, $artikel_nr, $aktiv = TRUE)
   {
     $res = $this->read_by_lief_some_name($lieferant_name, $artikel_nr, "lieferant_name", $aktiv);
     return $res;
   }
 
-  public function read_by_lief_kurzname($lieferant_kurzname, $artikel_nr, $aktiv = true)
+  public function read_by_lief_kurzname($lieferant_kurzname, $artikel_nr, $aktiv = TRUE)
   {
     $res = $this->read_by_lief_some_name($lieferant_kurzname, $artikel_nr, "lieferant_kurzname", $aktiv);
     return $res;

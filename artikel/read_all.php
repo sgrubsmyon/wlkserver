@@ -22,33 +22,25 @@ $db = $database->getConnection();
 $artikel = new Artikel($db);
 
 // read parameters from GET method
-$count = isset($_GET['count']) ? $_GET['count'] : 10;
-$page = isset($_GET['page']) ? $_GET['page'] : 1; // first page: 1
-$aktiv = isset($_GET['aktiv']) ? $_GET['aktiv'] : true;
+$count = isset($_GET['count']) ? (int)$_GET['count'] : 10;
+$page = isset($_GET['page']) ? (int)$_GET['page'] : 1; // first page: 1
+$aktiv = isset($_GET['aktiv']) ? filter_var($_GET['aktiv'], FILTER_VALIDATE_BOOLEAN) : TRUE;
+$order_by = isset($_GET['order_by']) ? $_GET['order_by'] : "artikel_id";
+$order_asc = isset($_GET['order_asc']) ? filter_var($_GET['order_asc'], FILTER_VALIDATE_BOOLEAN) : TRUE;
 
-$artikel_data = NULL;
-$artikel_data = $artikel->read_all($count, $page, $aktiv);
+$ret = $artikel->read_all($count, $page, $aktiv, $order_by, $order_asc);
 
-if (is_null($artikel_data)) {
+http_response_code($ret["status"]);
+
+if (!$ret["success"]) {
   // there was a DB error
-
-  // set response code - 503 service unavailable
-  http_response_code(503);
-
   // tell the user
   echo json_encode(
     array(
-      "error" => "Unable to access DB."
+      "error" => $ret["error"]
     )
   );
 } else {
-  // set response code - 200 OK
-  http_response_code(200);
-
-  // show product data in json format
-  // echo json_encode(array(
-  //   "result" => $exists
-  // ));
-  echo json_encode($artikel_data);
+  echo json_encode($ret["data"]);
 }
 ?>

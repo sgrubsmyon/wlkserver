@@ -20,7 +20,7 @@ $db = $database->getConnection();
 $artikel = new Artikel($db);
 
 // read parameters from POST method
-$POST_DATA = json_decode(file_get_contents('php://input'), true); // https://stackoverflow.com/questions/18866571/receive-json-post-with-php
+$POST_DATA = json_decode(file_get_contents('php://input'), TRUE); // https://stackoverflow.com/questions/18866571/receive-json-post-with-php
 $lieferant_id = isset($POST_DATA['lieferant_id']) ? $POST_DATA['lieferant_id'] : NULL;
 $artikel_nr = isset($POST_DATA['artikel_nr']) ? $POST_DATA['artikel_nr'] : NULL;
 

@@ -12,7 +12,7 @@ class Produktgruppe
 
   // read all produktgruppen, choose with $aktiv whether
   //   only the active ones or also the inactive ones
-  public function read_all($aktiv = true)
+  public function read_all($aktiv = TRUE)
   {
     // select all query
     $query = "SELECT * FROM produktgruppe" . ($aktiv ? " WHERE aktiv" : "") . "
@@ -35,7 +35,7 @@ class Produktgruppe
 
   // read single produktgruppe, choose with $aktiv whether
   //   only the active ones or also the inactive ones
-  public function read_single_by_id($produktgruppen_id, $aktiv = true)
+  public function read_single_by_id($produktgruppen_id, $aktiv = TRUE)
   {
     $query = "SELECT * FROM produktgruppe
       WHERE produktgruppen_id = ?" . ($aktiv ? " AND aktiv" : "");
