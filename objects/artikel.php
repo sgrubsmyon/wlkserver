@@ -371,5 +371,52 @@ class Artikel
   /**************
    * DELETE     *
    **************/
+
+  public function delete_by_lief_id($lieferant_id, $artikel_nr)
+  {
+    if (!$this->exists_by_lief_id($lieferant_id, $artikel_nr)) {
+      // Throw error and do not create the article, as it exists already
+      return [
+        "success" => FALSE,
+        "status" => 400,
+        // bad request
+        "error" => "Article with (lieferant_id, artikel_nr) = (" . $lieferant_id . ", " . $artikel_nr . ") does not exist."
+      ];
+    }
+    $query = "UPDATE artikel
+      SET aktiv = FALSE, bis = NOW()
+      WHERE lieferant_id = ? AND artikel_nr = ?";
+
+    // prepare query statement
+    $stmt = $this->conn->prepare($query);
+    $stmt->bindParam(1, $lieferant_id);
+    $stmt->bindParam(2, $artikel_nr);
+    
+    try {
+      // execute query
+      if ($stmt->execute()) {
+        return [
+          "success" => TRUE,
+          // OK
+          "status" => 200,
+          "error" => ""
+        ];
+      } else {
+        return [
+          "success" => FALSE,
+          // Internal server error
+          "status" => 500,
+          "error" => "Unable to create record"
+        ];
+      }
+    } catch (PDOException $e) {
+      return [
+        "success" => FALSE,
+        // Internal server error
+        "status" => 500,
+        "error" => $e->getMessage()
+      ];
+    }
+  }
 }
 ?>
