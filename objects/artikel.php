@@ -368,8 +368,45 @@ class Artikel
    * UPDATE     *
    **************/
 
-   public function update_by_lief_id($lieferant_id, $artikel_nr, $data)
-   {
+  public function deactivate_by_artikel_id($artikel_id)
+  {
+    $query = "UPDATE artikel
+      SET aktiv = FALSE, bis = NOW()
+      WHERE artikel_id = ?";
+
+    // prepare query statement
+    $stmt = $this->conn->prepare($query);
+    $stmt->bindParam(1, $artikel_id);
+
+    try {
+      // execute query
+      if (!$stmt->execute()) {
+        return [
+          "success" => FALSE,
+          // Internal server error
+          "status" => 500,
+          "error" => "Unable to deactivate old article."
+        ];
+      }
+    } catch (PDOException $e) {
+      return [
+        "success" => FALSE,
+        // Internal server error
+        "status" => 500,
+        "error" => $e->getMessage()
+      ];
+    }
+
+    return [
+      "success" => TRUE,
+      // OK
+      "status" => 200,
+      "error" => ""
+    ];
+  }
+
+  public function update_by_lief_id($lieferant_id, $artikel_nr, $data)
+  {
     if (!$this->exists_by_lief_id($lieferant_id, $artikel_nr)) {
       // Throw error and do not create the article, as it exists already
       return [
@@ -381,36 +418,15 @@ class Artikel
     }
     $old_data = $this->read_by_lief_id($lieferant_id, $artikel_nr);
     $this->update($old_data, $data);
-   }
+  }
 
-   public function update($old_data, $data)
-   {
+  public function update($old_data, $data)
+  {
     // Step 1: Set old article inactive
-    $query = "UPDATE artikel
-      SET aktiv = FALSE, bis = NOW()
-      WHERE artikel_id = ?";
+    $res = $this->deactivate_by_artikel_id($old_data["artikel_id"]);
 
-    // prepare query statement
-    $stmt = $this->conn->prepare($query);
-    $stmt->bindParam(1, $old_data["artikel_id"]);
-    
-    try {
-      // execute query
-      if (!$stmt->execute()) {
-        return [
-          "success" => FALSE,
-          // Internal server error
-          "status" => 500,
-          "error" => "Unable to create deactivate old article."
-        ];
-      }
-    } catch (PDOException $e) {
-      return [
-        "success" => FALSE,
-        // Internal server error
-        "status" => 500,
-        "error" => $e->getMessage()
-      ];
+    if (!$res["success"]) {
+      return $res;
     }
 
     // Step 2: Find produktgruppen_id and lieferant_id
@@ -434,31 +450,31 @@ class Artikel
     $stmt->bindParam(":artikel_nr", $old_data["artikel_nr"]);
 
     try {
-        // execute query
-        if ($stmt->execute()) {
-            return [
-                "success" => TRUE,
-                // OK
-                "status" => 200,
-                "error" => ""
-            ];
-        } else {
-            return [
-                "success" => FALSE,
-                // Internal server error
-                "status" => 500,
-                "error" => "Unable to create new article"
-            ];
-        }
-    } catch (PDOException $e) {
+      // execute query
+      if ($stmt->execute()) {
         return [
-            "success" => FALSE,
-            // Internal server error
-            "status" => 500,
-            "error" => $e->getMessage()
+          "success" => TRUE,
+          // OK
+          "status" => 200,
+          "error" => ""
         ];
+      } else {
+        return [
+          "success" => FALSE,
+          // Internal server error
+          "status" => 500,
+          "error" => "Unable to create new article"
+        ];
+      }
+    } catch (PDOException $e) {
+      return [
+        "success" => FALSE,
+        // Internal server error
+        "status" => 500,
+        "error" => $e->getMessage()
+      ];
     }
-   }
+  }
 
   /**************
    * DELETE     *
@@ -483,7 +499,7 @@ class Artikel
     $stmt = $this->conn->prepare($query);
     $stmt->bindParam(1, $lieferant_id);
     $stmt->bindParam(2, $artikel_nr);
-    
+
     try {
       // execute query
       if ($stmt->execute()) {
