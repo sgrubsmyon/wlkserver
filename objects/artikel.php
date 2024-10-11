@@ -162,7 +162,7 @@ class Artikel
    **************/
 
   private $read_query = "SELECT
-  artikel_id, produktgruppen_name AS produktgruppe, lieferant_name AS lieferant,
+  artikel_id, produktgruppen_id, produktgruppen_name AS produktgruppe, lieferant_id, lieferant_name AS lieferant,
   artikel_nr, artikel_name, kurzname, barcode, menge, einheit, vpe, setgroesse,
   vk_preis, empf_vk_preis, ek_rabatt, ek_preis, variabler_preis,
   herkunft, sortiment, lieferbar, beliebtheit, bestand, von, bis, artikel.aktiv
@@ -411,8 +411,8 @@ class Artikel
       // Throw error and do not create the article, as it exists already
       return [
         "success" => FALSE,
-        "status" => 400,
         // bad request
+        "status" => 400,
         "error" => "Article with (lieferant_id, artikel_nr) = (" . $lieferant_id . ", " . $artikel_nr . ") does not exist."
       ];
     }
@@ -431,6 +431,20 @@ class Artikel
 
     // Step 2: Find produktgruppen_id and lieferant_id
     // (only if not directly provided in $data)
+    if (!array_key_exists("lieferant_id", $data)) {
+      if (array_key_exists("lieferant_name", $data)) {
+        // new lieferant was specified, find lieferant_id
+        $res = $this->read_by_lief_name($data["lieferant_name"]);
+        if (!$res["success"]) {
+          return $res;
+        }
+        $data["lieferant_id"] = $res["data"]["lieferant_id"];
+      }
+      $data["lieferant_id"] = $old_data["lieferant_id"];
+    }
+    if (!array_key_exists("artikel_nr", $data)) {
+      $data["artikel_nr"] = $old_data["artikel_nr"];
+    }
 
     // Step 3: Create new article
     // (replace original data in $old_data with new data in $data,
