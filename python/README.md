@@ -20,3 +20,6 @@ fastapi dev main.py
 ```
 fastapi run
 ```
+
+* https://fastapi.tiangolo.com/tutorial/bigger-applications/#another-module-with-apirouter
+* https://fastapi.tiangolo.com/tutorial/sql-databases/
