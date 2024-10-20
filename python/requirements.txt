@@ -1,1 +1,3 @@
 fastapi[standard]
+sqlmodel
+mariadb # the Python MariaDB Connector
