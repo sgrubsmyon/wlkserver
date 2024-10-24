@@ -1,6 +1,6 @@
 from typing import Annotated, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlmodel import Field, Session, SQLModel, Relationship, create_engine, select
 from sqlalchemy import DECIMAL, Column
 from datetime import datetime
@@ -115,6 +115,22 @@ router = APIRouter(
     # dependencies=[Depends(get_token_header)],
     responses={404: {"description": "Not found"}},
 )
+
+
+@router.get("/")
+def read_artikel(session: SessionDep, offset: int = 0,
+        limit: Annotated[int, Query(le=100)] = 100) -> list[Artikel]:
+    artikel = session.exec(select(Artikel).offset(offset).limit(limit)).all()
+    return artikel
+
+
+@router.get("/{artikel_id}")
+def read_single_artikle(artikel_id: int, session: SessionDep) -> Artikel:
+    artikel = session.get(Artikel, artikel_id)
+    if not artikel:
+        raise HTTPException(status_code=404, detail="Artikel not found")
+    return artikel
+
 
 
 @router.get("/")
