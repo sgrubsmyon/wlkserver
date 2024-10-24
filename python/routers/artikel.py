@@ -1,3 +1,6 @@
+from dotenv import load_dotenv
+import os
+
 from typing import Annotated, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -6,6 +9,9 @@ from sqlalchemy import DECIMAL, Column
 from datetime import datetime
 
 # from ..dependencies import get_token_header
+
+load_dotenv()  # take environment variables from .env file
+
 
 class Lieferant(SQLModel, table=True):
     __tablename__ = 'lieferant'
@@ -93,9 +99,13 @@ class Artikel(SQLModel, table=True):
     pfand: Pfand = Relationship(back_populates="artikel")
 
 
-# engine = create_engine("mysql+pymysql://mitarbeiter:p@localhost/kasse?charset=utf8mb4")
+dbhost = os.getenv("DBHOST")
+dbname = os.getenv("DBNAME")
+dbuser = os.getenv("DBUSER")
+dbpass = os.getenv("DBPASS")
+# engine = create_engine("mysql+pymysql://<user>:<password>@<host>/<dbname>?charset=utf8mb4")
 # engine = create_engine("mariadb+mariadbconnector://<user>:<password>@<host>[:<port>]/<dbname>")
-engine = create_engine("mariadb+mariadbconnector://mitarbeiter:p@localhost/kasse")
+engine = create_engine(f"mariadb+mariadbconnector://{dbuser}:{dbpass}@{dbhost}/{dbname}")
 print("engine: ")
 print(engine)
 
