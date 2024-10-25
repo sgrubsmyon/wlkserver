@@ -128,9 +128,12 @@ router = APIRouter(
 
 
 @router.get("/")
-def read_artikel(session: SessionDep, offset: int = 0,
+def read_artikel(session: SessionDep, aktiv_only: bool = True, offset: int = 0,
         limit: Annotated[int, Query(le=100)] = 100) -> list[Artikel]:
-    artikel = session.exec(select(Artikel).offset(offset).limit(limit)).all()
+    selection = select(Artikel)
+    if aktiv_only:
+        selection = selection.where(Artikel.aktiv == True)
+    artikel = session.exec(selection.offset(offset).limit(limit)).all()
     return artikel
 
 
@@ -140,19 +143,6 @@ def read_single_artikle(artikel_id: int, session: SessionDep) -> Artikel:
     if not artikel:
         raise HTTPException(status_code=404, detail="Artikel not found")
     return artikel
-
-
-
-@router.get("/")
-async def read_artikel():
-    return fake_artikel_db
-
-
-@router.get("/{artikel_id}")
-async def read_single_artikel(artikel_id: str):
-    if artikel_id not in fake_artikel_db:
-        raise HTTPException(status_code=404, detail="Artikel not found")
-    return {"bezeichnung": fake_artikel_db[artikel_id]["bezeichnung"], "artikel_id": artikel_id}
 
 
 @router.put(
