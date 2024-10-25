@@ -128,12 +128,37 @@ router = APIRouter(
 
 
 @router.get("/")
-def read_artikel(session: SessionDep, aktiv_only: bool = True, offset: int = 0,
-        limit: Annotated[int, Query(le=100)] = 100) -> list[Artikel]:
+def read_artikel(
+    session: SessionDep, aktiv_only: bool = True,
+    search_string: str = "", barcode: str = "", artikel_nr: str = "", artikel_name: str = "",
+    offset: int = 0, limit: Annotated[int, Query(le=100)] = 100
+    ) -> list[Artikel]:
     selection = select(Artikel)
     if aktiv_only:
         selection = selection.where(Artikel.aktiv == True)
-    artikel = session.exec(selection.offset(offset).limit(limit)).all()
+    if search_string:
+        # Split the search string into space separated terms
+        search_terms = search_string.split()
+        # Each search term must be present in one of the searchable columns
+        for (term) in search_terms:
+            selection = selection.where(
+                Artikel.artikel_name.contains(term) |
+                Artikel.kurzname.contains(term) |
+                Artikel.artikel_nr.contains(term) |
+                Artikel.herkunft.contains(term) |
+                Artikel.barcode.contains(term)
+            )
+    elif barcode:
+        selection = selection.where(Artikel.barcode == barcode)
+    elif artikel_nr:
+        selection = selection.where(Artikel.artikel_nr.contains(artikel_nr))
+    elif artikel_name:
+        selection = selection.where(Artikel.artikel_name.contains(artikel_name) | Artikel.kurzname.contains(artikel_name))
+    artikel = session.exec(
+        selection.offset(offset).limit(limit)
+            .order_by(Artikel.artikel_name, Artikel.lieferant_id)).all()
+    for art in artikel:
+        print(art.produktgruppe.produktgruppen_name)
     return artikel
 
 
