@@ -157,8 +157,6 @@ def read_artikel(
     artikel = session.exec(
         selection.offset(offset).limit(limit)
             .order_by(Artikel.artikel_name, Artikel.lieferant_id)).all()
-    for art in artikel:
-        print(art.produktgruppe.produktgruppen_name)
     return artikel
 
 
