@@ -15,6 +15,12 @@ pip install -r requirements.txt
 fastapi dev main.py
 ```
 
+Or simply:
+
+```
+fastapi dev
+```
+
 ## Run API in production mode
 
 ```
