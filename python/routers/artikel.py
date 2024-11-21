@@ -1,5 +1,6 @@
 from dotenv import load_dotenv
 import os
+from datetime import datetime
 
 from typing import Annotated, Optional
 
@@ -8,7 +9,7 @@ from sqlmodel import Field, Session, SQLModel, Relationship, create_engine, sele
 
 # from ..dependencies import get_token_header
 
-from ..models import Artikel
+from ..models import Artikel, ArtikelPublic, ArtikelCreate, ArtikelUpdate
 
 load_dotenv()  # take environment variables from .env file
 
@@ -75,29 +76,67 @@ def read_artikel(
 
 
 @router.get("/{artikel_id}")
-def read_single_artikle(artikel_id: int, session: SessionDep) -> Artikel:
+def read_single_artikel(artikel_id: int, session: SessionDep) -> Artikel:
     artikel = session.get(Artikel, artikel_id)
     if not artikel:
         raise HTTPException(status_code=404, detail="Artikel not found")
     return artikel
 
 
-@router.post("/")
-def create_artikel(artikel: Artikel, session: SessionDep) -> Artikel:
+@router.post("/", response_model=ArtikelPublic)
+def create_artikel(artikel: ArtikelCreate, session: SessionDep):
+    new_artikel = Artikel.model_validate(artikel)
+
+    new_artikel.von = datetime.now()
+    new_artikel.bis = None
+    new_artikel.aktiv = True
+
+    session.add(new_artikel)
+    session.commit()
+    session.refresh(new_artikel)
+    return new_artikel
+
+
+def delete_artikel_intern(artikel_id: int, session: SessionDep):
+    artikel = session.get(Artikel, artikel_id)
+    if not artikel:
+        raise HTTPException(status_code=404, detail="Artikel not found")
+    artikel.aktiv = False
+    artikel.bis = datetime.now()
     session.add(artikel)
     session.commit()
-    session.refresh(artikel)
+    # session.refresh(artikel)
     return artikel
 
 
-@router.put(
-    "/{artikel_id}",
-    tags=["artikel"],
-    responses={403: {"description": "Operation forbidden"}},
-)
-async def update_artikel(artikel_id: str):
-    if artikel_id != "cr01":
-        raise HTTPException(
-            status_code=403, detail="You can only update the artikel: cr01"
-        )
-    return {"artikel_id": artikel_id, "name": "The great Costa Rica Cola"}
+@router.delete("/{artikel_id}")
+def delete_artikel(artikel_id: int, session: SessionDep):
+    delete_artikel_intern(artikel_id, session)
+    return {"message": "Artikel deactivated"}
+
+
+@router.patch("/{artikel_id}", response_model=ArtikelPublic)
+def update_artikel(artikel_id: int, artikel: ArtikelUpdate, session: SessionDep):
+    # This would be the code if we would want to really update an article
+    #
+    # old_artikel = session.get(Artikel, artikel_id)
+    # if not old_artikel:
+    #     raise HTTPException(status_code=404, detail="Artikel not found")
+    # artikel_data = artikel.model_dump(exclude_unset=True)
+    # for key, value in artikel_data.items():
+    #     setattr(old_artikel, key, value)
+    # session.add(old_artikel)
+    # session.commit()
+    # session.refresh(old_artikel)
+    # return q
+    #
+    # Instead we just deactivate the article and create a new one
+
+    old_artikel = delete_artikel_intern(artikel_id, session)
+    artikel_data = artikel.model_dump(exclude_unset=True)
+    # for key, value in artikel_data.items():
+    #     setattr(old_artikel, key, value)
+    old_artikel.sqlmodel_update(artikel_data)
+    new_artikel = create_artikel(old_artikel, session)
+
+    return new_artikel
