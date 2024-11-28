@@ -86,7 +86,7 @@ class ArtikelBase(SQLModel):
 class Artikel(ArtikelBase, table=True):
     __tablename__ = 'artikel'
 
-    artikel_id: int = Field(primary_key=True)
+    artikel_id: int | None = Field(default=None, primary_key=True)
     # id = Column(Integer, Sequence('user_id_seq', start=100, increment=1), primary_key=True)
     produktgruppen_id: int = Field(foreign_key="produktgruppe.produktgruppen_id", nullable=False, default=8)
     lieferant_id: int = Field(foreign_key="lieferant.lieferant_id", nullable=False, default=1)
@@ -110,8 +110,8 @@ class Artikel(ArtikelBase, table=True):
     # beliebtheit: int = Field(nullable=False, default=0)
     # bestand: Optional[int] = Field() # sa_column_kwargs={"unsigned": True}
 
-    von: Optional[datetime] = Field()
-    bis: Optional[datetime] = Field()
+    von: Optional[datetime] = Field(nullable=True, default=None)
+    bis: Optional[datetime] = Field(nullable=True, default=None)
     aktiv: bool = Field(nullable=False, default=True)
 
     # relationships
