@@ -87,6 +87,7 @@ def read_single_artikel(artikel_id: int, session: SessionDep) -> Artikel:
 def create_artikel(artikel: ArtikelCreate, session: SessionDep):
     new_artikel = Artikel.model_validate(artikel)
 
+    new_artikel.artikel_id = None # whatever has been set here, unset it so that the ID will be set by the DB
     new_artikel.von = datetime.now()
     new_artikel.bis = None
     new_artikel.aktiv = True
@@ -105,7 +106,7 @@ def delete_artikel_intern(artikel_id: int, session: SessionDep):
     artikel.bis = datetime.now()
     session.add(artikel)
     session.commit()
-    # session.refresh(artikel)
+    session.refresh(artikel) # needed, or returned article will be empty
     return artikel
 
 
@@ -133,10 +134,10 @@ def update_artikel(artikel_id: int, artikel: ArtikelUpdate, session: SessionDep)
     # Instead we just deactivate the article and create a new one
 
     old_artikel = delete_artikel_intern(artikel_id, session)
+    old_artikel_data = old_artikel.model_dump(exclude_unset=False)
     artikel_data = artikel.model_dump(exclude_unset=True)
-    # for key, value in artikel_data.items():
-    #     setattr(old_artikel, key, value)
-    old_artikel.sqlmodel_update(artikel_data)
-    new_artikel = create_artikel(old_artikel, session)
+    for key, value in artikel_data.items():
+        old_artikel_data[key] = value
+    new_artikel = create_artikel(old_artikel_data, session)
 
     return new_artikel
