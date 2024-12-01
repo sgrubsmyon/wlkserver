@@ -45,7 +45,9 @@ router = APIRouter(
 @router.get("/")
 def read_artikel(
     session: SessionDep, aktiv_only: bool = True,
-    search_string: str = "", barcode: str = "", artikel_nr: str = "", artikel_name: str = "",
+    search_string: str = "",
+    barcode: str = "", artikel_nr: str = "", artikel_name: str = "",
+    lieferant_id: int = 0,
     offset: int = 0, limit: Annotated[int, Query(le=100)] = 100
     ) -> list[Artikel]:
     selection = select(Artikel)
@@ -65,8 +67,12 @@ def read_artikel(
             )
     elif barcode:
         selection = selection.where(Artikel.barcode == barcode)
+    elif artikel_nr and lieferant_id:
+        selection = selection.where(Artikel.artikel_nr == artikel_nr).where(Artikel.lieferant_id == lieferant_id)
     elif artikel_nr:
         selection = selection.where(Artikel.artikel_nr.contains(artikel_nr))
+    elif lieferant_id:
+        selection = selection.where(Artikel.lieferant_id == lieferant_id)
     elif artikel_name:
         selection = selection.where(Artikel.artikel_name.contains(artikel_name) | Artikel.kurzname.contains(artikel_name))
     artikel = session.exec(
@@ -86,6 +92,18 @@ def read_single_artikel(artikel_id: int, session: SessionDep) -> Artikel:
 @router.post("/", response_model=ArtikelPublic)
 def create_artikel(artikel: ArtikelCreate, session: SessionDep):
     new_artikel = Artikel.model_validate(artikel)
+
+    # Check if this article already exists (combination of lieferant_id and artikel_nr)
+    # artikel = session.get(Artikel, (new_artikel.lieferant_id, new_artikel.artikel_nr))
+    # if artikel:
+    #     raise HTTPException(status_code=400, detail="Artikel already exists")
+    artikel_list = read_artikel(
+        session,
+        aktiv_only=True,
+        artikel_nr=new_artikel.artikel_nr, lieferant_id=new_artikel.lieferant_id
+    )
+    if len(artikel_list) > 0:
+        raise HTTPException(status_code=400, detail="Artikel already exists")
 
     new_artikel.artikel_id = None # whatever has been set here, unset it so that the ID will be set by the DB
     new_artikel.von = datetime.now()
