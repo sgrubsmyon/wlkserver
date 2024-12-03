@@ -1,38 +1,15 @@
-from dotenv import load_dotenv
-import os
 from datetime import datetime
 
-from typing import Annotated, Optional
+from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlmodel import Field, Session, SQLModel, Relationship, create_engine, select
+from fastapi import APIRouter, HTTPException, Query
+from sqlmodel import select
 
 # from ..dependencies import get_token_header
 
 from ..models import Artikel, ArtikelPublic, ArtikelCreate, ArtikelUpdate
+from ..session import SessionDep
 
-load_dotenv()  # take environment variables from .env file
-
-
-dbhost = os.getenv("DBHOST")
-dbname = os.getenv("DBNAME")
-dbuser = os.getenv("DBUSER")
-dbpass = os.getenv("DBPASS")
-# engine = create_engine("mysql+pymysql://<user>:<password>@<host>/<dbname>?charset=utf8mb4")
-# engine = create_engine("mariadb+mariadbconnector://<user>:<password>@<host>[:<port>]/<dbname>")
-engine = create_engine(f"mariadb+mariadbconnector://{dbuser}:{dbpass}@{dbhost}/{dbname}")
-print("engine: ")
-print(engine)
-
-# fake_artikel_db = {"cr01": {"bezeichnung": "Costa Rica Cola"}, "ros": {"bezeichnung": "Rosinen"}}
-
-
-def get_session():
-    with Session(engine) as session:
-        yield session
-
-
-SessionDep = Annotated[Session, Depends(get_session)]
 
 router = APIRouter(
     prefix="/artikel",
