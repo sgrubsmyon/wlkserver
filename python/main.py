@@ -22,4 +22,4 @@ app.include_router(produktgruppe.router)
 
 @app.get("/")
 async def root():
-    return {"message": "Hello Bigger Applications!"}
+    return {"message": "Welcome to the Weltladenkasse API!"}
