@@ -7,7 +7,7 @@ from datetime import datetime
 class Lieferant(SQLModel, table=True):
     __tablename__ = 'lieferant'
 
-    lieferant_id: int = Field(primary_key=True)
+    lieferant_id: int | None = Field(default=None, primary_key=True)
     lieferant_name: str = Field(max_length=50, nullable=False)
     lieferant_kurzname: Optional[str] = Field(max_length=10)
     n_artikel: Optional[int] = Field() # sa_column_kwargs={"unsigned": True}
@@ -19,7 +19,7 @@ class Lieferant(SQLModel, table=True):
 class Mwst(SQLModel, table=True):
     __tablename__ = 'mwst'
 
-    mwst_id: int = Field(primary_key=True)
+    mwst_id: int | None = Field(default=None, primary_key=True)
     mwst_satz: float = Field(sa_column= Column(DECIMAL(precision=6, scale=5), nullable=True))
     dsfinvk_ust_schluessel: int = Field(nullable=False) # sa_column_kwargs={"unsigned": True}, 
     dsfinvk_ust_beschr: Optional[str] = Field(max_length=55)
@@ -30,7 +30,7 @@ class Mwst(SQLModel, table=True):
 class Pfand(SQLModel, table=True):
     __tablename__ = 'pfand'
 
-    pfand_id: int = Field(primary_key=True)
+    pfand_id: int | None = Field(default=None, primary_key=True)
     artikel_id: int = Field(foreign_key="artikel.artikel_id") # sa_column_kwargs={"unsigned": True}, 
 
     artikel: "Artikel" = Relationship(back_populates="pfand")
@@ -55,7 +55,7 @@ class ProduktgruppeBase(SQLModel):
 class Produktgruppe(ProduktgruppeBase, table=True):
     __tablename__ = 'produktgruppe'
 
-    produktgruppen_id: int = Field(primary_key=True)
+    produktgruppen_id: int | None = Field(default=None, primary_key=True)
     mwst_id: Optional[int] = Field(foreign_key="mwst.mwst_id") # sa_column_kwargs={"unsigned": True}, 
     pfand_id: Optional[int] = Field(foreign_key="pfand.pfand_id") # sa_column_kwargs={"unsigned": True}, 
 
