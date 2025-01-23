@@ -71,9 +71,14 @@ class Produktgruppe(ProduktgruppeBase, table=True):
 class ProduktgruppePublic(ProduktgruppeBase):
     produktgruppen_id: int
     mwst_id: int
-    pfand_id: int
+    # OMG, this took me like a week to find out:
+    # to avoid validation errors, we need to also allow nullable fields
+    # in the response model to be None
+    pfand_id: int | None
 
     aktiv: bool
+    n_artikel: int | None
+    n_artikel_rekursiv: int | None
 
 
 # For creating product groups
