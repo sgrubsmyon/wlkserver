@@ -64,22 +64,19 @@ def read_single_produktgruppe(produktgruppen_id: int, session: SessionDep) -> Pr
 def create_produktgruppe(produktgruppe: ProduktgruppeCreate, session: SessionDep):
     new_produktgruppe = Produktgruppe.model_validate(produktgruppe)
 
-    # Check if this article already exists (combination of lieferant_id and produktgruppe_nr)
-    # produktgruppe = session.get(Produktgruppe, (new_produktgruppe.lieferant_id, new_produktgruppe.produktgruppe_nr))
-    # if produktgruppe:
-    #     raise HTTPException(status_code=400, detail="Produktgruppe already exists")
-    produktgruppe_list = read_produktgruppe(
+    # Check if this product group already exists
+    produktgruppe_list = read_produktgruppen(
         session,
         aktiv_only=True,
-        produktgruppe_nr=new_produktgruppe.produktgruppe_nr, lieferant_id=new_produktgruppe.lieferant_id
+        produktgruppen_name=new_produktgruppe.produktgruppen_name
     )
     if len(produktgruppe_list) > 0:
         raise HTTPException(status_code=400, detail="Produktgruppe already exists")
 
     new_produktgruppe.produktgruppen_id = None # whatever has been set here, unset it so that the ID will be set by the DB
-    new_produktgruppe.von = datetime.now()
-    new_produktgruppe.bis = None
     new_produktgruppe.aktiv = True
+    new_produktgruppe.n_artikel = 0
+    new_produktgruppe.n_artikel_rekursiv = 0
 
     session.add(new_produktgruppe)
     session.commit()
@@ -92,10 +89,9 @@ def delete_produktgruppe_intern(produktgruppen_id: int, session: SessionDep):
     if not produktgruppe:
         raise HTTPException(status_code=404, detail="Produktgruppe not found")
     produktgruppe.aktiv = False
-    produktgruppe.bis = datetime.now()
     session.add(produktgruppe)
     session.commit()
-    session.refresh(produktgruppe) # needed, or returned article will be empty
+    session.refresh(produktgruppe) # needed, or returned produktgruppe will be empty
     return produktgruppe
 
 
@@ -107,7 +103,7 @@ def delete_produktgruppe(produktgruppen_id: int, session: SessionDep):
 
 @router.patch("/{produktgruppen_id}", response_model=ProduktgruppePublic)
 def update_produktgruppe(produktgruppen_id: int, produktgruppe: ProduktgruppeUpdate, session: SessionDep):
-    # This would be the code if we would want to really update an article
+    # This would be the code if we would want to really update a product group
     #
     # old_produktgruppe = session.get(Produktgruppe, produktgruppen_id)
     # if not old_produktgruppe:
