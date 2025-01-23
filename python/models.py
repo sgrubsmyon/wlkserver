@@ -78,7 +78,7 @@ class ProduktgruppePublic(ProduktgruppeBase):
 
 # For creating product groups
 class ProduktgruppeCreate(ProduktgruppeBase):
-    mwst_id: int | None = None
+    mwst_id: int
     pfand_id: int | None = None
 
 
