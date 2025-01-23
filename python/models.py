@@ -92,8 +92,8 @@ class ProduktgruppeUpdate(SQLModel):
     subsub_id: int | None = None
     produktgruppen_name: str | None = None
     std_einheit: str | None = None
-    n_artikel: int | None = None
-    n_artikel_rekursiv: int | None = None
+    # n_artikel: int | None = None
+    # n_artikel_rekursiv: int | None = None
 
 
 #################
