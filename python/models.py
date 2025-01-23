@@ -44,27 +44,28 @@ class Pfand(SQLModel, table=True):
 # The base model, shared by all
 class ProduktgruppeBase(SQLModel):
     toplevel_id: int = Field(default=1) # sa_column_kwargs={"unsigned": True}, 
-    sub_id: Optional[int] = Field() # sa_column_kwargs={"unsigned": True}
-    subsub_id: Optional[int] = Field() # sa_column_kwargs={"unsigned": True}
+    sub_id: Optional[int] = Field(default=None) # sa_column_kwargs={"unsigned": True}
+    subsub_id: Optional[int] = Field(default=None) # sa_column_kwargs={"unsigned": True}
     produktgruppen_name: str = Field(max_length=50, nullable=False)
     std_einheit: Optional[str] = Field(max_length=10)
-    n_artikel: Optional[int] = Field() # sa_column_kwargs={"unsigned": True}
-    n_artikel_rekursiv: Optional[int] = Field() # sa_column_kwargs={"unsigned": True}
+
 
 # The table model
 class Produktgruppe(ProduktgruppeBase, table=True):
     __tablename__ = 'produktgruppe'
 
     produktgruppen_id: int | None = Field(default=None, primary_key=True)
-    mwst_id: Optional[int] = Field(foreign_key="mwst.mwst_id") # sa_column_kwargs={"unsigned": True}, 
-    pfand_id: Optional[int] = Field(foreign_key="pfand.pfand_id") # sa_column_kwargs={"unsigned": True}, 
+    mwst_id: int = Field(default=None, foreign_key="mwst.mwst_id") # sa_column_kwargs={"unsigned": True}, 
+    pfand_id: int | None = Field(default=None, foreign_key="pfand.pfand_id") # sa_column_kwargs={"unsigned": True}, 
 
     aktiv: bool = Field(nullable=False, default=True)
+    n_artikel: int | None = Field(default=None) # sa_column_kwargs={"unsigned": True}
+    n_artikel_rekursiv: int | None = Field(default=None) # sa_column_kwargs={"unsigned": True}
     
     # relationships
     artikel: list["Artikel"] = Relationship(back_populates="produktgruppe")
     mwst: Mwst = Relationship(back_populates="produktgruppe")
-    pfand: Pfand = Relationship(back_populates="produktgruppe")
+    pfand: Pfand | None = Relationship(back_populates="produktgruppe")
 
 # For reading product groups
 class ProduktgruppePublic(ProduktgruppeBase):
