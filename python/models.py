@@ -1,19 +1,43 @@
-from typing import Optional
 from sqlmodel import Field, SQLModel, Relationship
 from sqlalchemy import DECIMAL, Column
 from datetime import datetime
 
+#######################
+# Produktgruppe models
+#######################
 
-class Lieferant(SQLModel, table=True):
+# The base model, shared by all
+class LieferantBase(SQLModel):
+    lieferant_name: str = Field(max_length=50, nullable=False)
+    lieferant_kurzname: str | None = Field(max_length=10)
+
+
+class Lieferant(LieferantBase, table=True):
     __tablename__ = 'lieferant'
 
     lieferant_id: int | None = Field(default=None, primary_key=True)
-    lieferant_name: str = Field(max_length=50, nullable=False)
-    lieferant_kurzname: Optional[str] = Field(max_length=10)
-    n_artikel: Optional[int] = Field() # sa_column_kwargs={"unsigned": True}
+    n_artikel: int | None = Field() # sa_column_kwargs={"unsigned": True}
     aktiv: bool = Field(nullable=False, default=True)
 
     artikel: list["Artikel"] = Relationship(back_populates="lieferant")
+
+
+class LieferantPublic(LieferantBase):
+    lieferant_id: int
+    n_artikel: int | None
+    aktiv: bool
+
+
+class LieferantCreate(LieferantBase):
+    pass
+
+
+class LieferantUpdate(SQLModel):
+    lieferant_name: str | None = None
+    lieferant_kurzname: str | None = None
+
+
+############################################################
 
 
 class Mwst(SQLModel, table=True):
@@ -22,7 +46,7 @@ class Mwst(SQLModel, table=True):
     mwst_id: int | None = Field(default=None, primary_key=True)
     mwst_satz: float = Field(sa_column= Column(DECIMAL(precision=6, scale=5), nullable=True))
     dsfinvk_ust_schluessel: int = Field(nullable=False) # sa_column_kwargs={"unsigned": True}, 
-    dsfinvk_ust_beschr: Optional[str] = Field(max_length=55)
+    dsfinvk_ust_beschr: str | None = Field(max_length=55)
 
     produktgruppe: list["Produktgruppe"] = Relationship(back_populates="mwst")
 
@@ -44,10 +68,10 @@ class Pfand(SQLModel, table=True):
 # The base model, shared by all
 class ProduktgruppeBase(SQLModel):
     toplevel_id: int = Field(default=1) # sa_column_kwargs={"unsigned": True}, 
-    sub_id: Optional[int] = Field(default=None) # sa_column_kwargs={"unsigned": True}
-    subsub_id: Optional[int] = Field(default=None) # sa_column_kwargs={"unsigned": True}
+    sub_id: int | None = Field(default=None) # sa_column_kwargs={"unsigned": True}
+    subsub_id: int | None = Field(default=None) # sa_column_kwargs={"unsigned": True}
     produktgruppen_name: str = Field(max_length=50, nullable=False)
-    std_einheit: Optional[str] = Field(max_length=10)
+    std_einheit: str | None = Field(max_length=10)
 
 
 # The table model
@@ -97,8 +121,6 @@ class ProduktgruppeUpdate(SQLModel):
     subsub_id: int | None = None
     produktgruppen_name: str | None = None
     std_einheit: str | None = None
-    # n_artikel: int | None = None
-    # n_artikel_rekursiv: int | None = None
 
 
 #################
@@ -109,22 +131,22 @@ class ProduktgruppeUpdate(SQLModel):
 class ArtikelBase(SQLModel):
     artikel_nr: str = Field(max_length=30, nullable=False)
     artikel_name: str = Field(max_length=180, nullable=False)
-    kurzname: Optional[str] = Field(max_length=50)
-    menge: Optional[float] = Field(sa_column=DECIMAL(precision=8, scale=5))
-    einheit: Optional[str] = Field(max_length=10)
-    barcode: Optional[str] = Field(max_length=30)
-    herkunft: Optional[str] = Field(max_length=100)
-    vpe: Optional[int] # sa_column_kwargs={"unsigned": True}
+    kurzname: str | None = Field(max_length=50)
+    menge: float | None = Field(sa_column=DECIMAL(precision=8, scale=5))
+    einheit: str | None = Field(max_length=10)
+    barcode: str | None = Field(max_length=30)
+    herkunft: str | None = Field(max_length=100)
+    vpe: int | None # sa_column_kwargs={"unsigned": True}
     setgroesse: int = Field(nullable=False, default=1) # sa_column_kwargs={"unsigned": True}, 
-    vk_preis: Optional[float] = Field(sa_column=DECIMAL(precision=13, scale=2))
-    empf_vk_preis: Optional[float] = Field(sa_column=DECIMAL(precision=13, scale=2))
-    ek_rabatt: Optional[float] = Field(sa_column=DECIMAL(precision=6, scale=5))
-    ek_preis: Optional[float] = Field(sa_column=DECIMAL(precision=13, scale=2))
+    vk_preis: float | None = Field(sa_column=DECIMAL(precision=13, scale=2))
+    empf_vk_preis: float | None = Field(sa_column=DECIMAL(precision=13, scale=2))
+    ek_rabatt: float | None = Field(sa_column=DECIMAL(precision=6, scale=5))
+    ek_preis: float | None = Field(sa_column=DECIMAL(precision=13, scale=2))
     variabler_preis: bool = Field(nullable=False, default=False)
     sortiment: bool = Field(nullable=False, default=False)
     lieferbar: bool = Field(nullable=False, default=False)
     beliebtheit: int = Field(nullable=False, default=0)
-    bestand: Optional[int] = Field() # sa_column_kwargs={"unsigned": True}
+    bestand: int | None = Field() # sa_column_kwargs={"unsigned": True}
 
 # The table model
 class Artikel(ArtikelBase, table=True):
@@ -135,8 +157,8 @@ class Artikel(ArtikelBase, table=True):
     produktgruppen_id: int = Field(foreign_key="produktgruppe.produktgruppen_id", nullable=False, default=8)
     lieferant_id: int = Field(foreign_key="lieferant.lieferant_id", nullable=False, default=1)
 
-    von: Optional[datetime] = Field(nullable=True, default=None)
-    bis: Optional[datetime] = Field(nullable=True, default=None)
+    von: datetime | None = Field(nullable=True, default=None)
+    bis: datetime | None = Field(nullable=True, default=None)
     aktiv: bool = Field(nullable=False, default=True)
 
     # relationships
@@ -151,8 +173,8 @@ class ArtikelPublic(ArtikelBase):
     produktgruppen_id: int
     lieferant_id: int
 
-    von: Optional[datetime] = Field()
-    bis: Optional[datetime] = Field()
+    von: datetime | None = Field()
+    bis: datetime | None = Field()
     aktiv: bool = Field(nullable=False, default=True)
 
 
