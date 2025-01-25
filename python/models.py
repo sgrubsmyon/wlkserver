@@ -16,7 +16,7 @@ class Lieferant(LieferantBase, table=True):
     __tablename__ = 'lieferant'
 
     lieferant_id: int | None = Field(default=None, primary_key=True)
-    n_artikel: int | None = Field() # sa_column_kwargs={"unsigned": True}
+    n_artikel: int | None = Field(default=None) # sa_column_kwargs={"unsigned": True}
     aktiv: bool = Field(nullable=False, default=True)
 
     artikel: list["Artikel"] = Relationship(back_populates="lieferant")
@@ -26,10 +26,6 @@ class LieferantPublic(LieferantBase):
     lieferant_id: int
     n_artikel: int | None
     aktiv: bool
-
-
-class LieferantCreate(LieferantBase):
-    pass
 
 
 class LieferantUpdate(SQLModel):

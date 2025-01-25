@@ -5,7 +5,7 @@ from sqlmodel import select
 
 # from ..dependencies import get_token_header
 
-from ..models import Lieferant, LieferantPublic, LieferantCreate, LieferantUpdate
+from ..models import Lieferant, LieferantPublic, LieferantBase, LieferantUpdate
 from ..session import SessionDep
 
 
@@ -52,7 +52,7 @@ def read_single_lieferant(lieferant_id: int, session: SessionDep) -> Lieferant:
 
 
 @router.post("/", response_model=LieferantPublic)
-def create_lieferant(lieferant: LieferantCreate, session: SessionDep):
+def create_lieferant(lieferant: LieferantBase, session: SessionDep):
     new_lieferant = Lieferant.model_validate(lieferant)
 
     # Check if this product group already exists
@@ -65,9 +65,8 @@ def create_lieferant(lieferant: LieferantCreate, session: SessionDep):
         raise HTTPException(status_code=400, detail="Lieferant already exists")
 
     new_lieferant.lieferant_id = None # whatever has been set here, unset it so that the ID will be set by the DB
-    new_lieferant.aktiv = True
     new_lieferant.n_artikel = 0
-    new_lieferant.n_artikel_rekursiv = 0
+    new_lieferant.aktiv = True
 
     session.add(new_lieferant)
     session.commit()
