@@ -3,7 +3,7 @@ from sqlalchemy import DECIMAL, Column
 from datetime import datetime
 
 #######################
-# Produktgruppe models
+# Lieferant models
 #######################
 
 # The base model, shared by all
@@ -12,6 +12,7 @@ class LieferantBase(SQLModel):
     lieferant_kurzname: str | None = Field(max_length=10)
 
 
+# The table model
 class Lieferant(LieferantBase, table=True):
     __tablename__ = 'lieferant'
 
@@ -22,30 +23,49 @@ class Lieferant(LieferantBase, table=True):
     artikel: list["Artikel"] = Relationship(back_populates="lieferant")
 
 
+# For reading
 class LieferantPublic(LieferantBase):
     lieferant_id: int
     n_artikel: int | None
     aktiv: bool
 
 
+# For updating
 class LieferantUpdate(SQLModel):
     lieferant_name: str | None = None
     lieferant_kurzname: str | None = None
 
+#######################
+# MwSt models
+#######################
 
-############################################################
-
-
-class Mwst(SQLModel, table=True):
-    __tablename__ = 'mwst'
-
-    mwst_id: int | None = Field(default=None, primary_key=True)
-    mwst_satz: float = Field(sa_column= Column(DECIMAL(precision=6, scale=5), nullable=True))
+# The base model, shared by all
+class MwstBase(SQLModel):
+    mwst_satz: float = Field(sa_column=DECIMAL(precision=6, scale=5))
     dsfinvk_ust_schluessel: int = Field(nullable=False) # sa_column_kwargs={"unsigned": True}, 
     dsfinvk_ust_beschr: str | None = Field(max_length=55)
 
+
+# The table model
+class Mwst(MwstBase, table=True):
+    __tablename__ = 'mwst'
+
+    mwst_id: int | None = Field(default=None, primary_key=True)
+    # mwst_satz: float = Field(sa_column= Column(DECIMAL(precision=6, scale=5), nullable=True))
+    # dsfinvk_ust_schluessel: int = Field(nullable=False) # sa_column_kwargs={"unsigned": True}, 
+    # dsfinvk_ust_beschr: str | None = Field(max_length=55)
+
+    # relationships
     produktgruppe: list["Produktgruppe"] = Relationship(back_populates="mwst")
 
+
+# For reading
+class MwstPublic(MwstBase):
+    mwst_id: int
+
+#######################
+# Pfand models
+#######################
 
 class Pfand(SQLModel, table=True):
     __tablename__ = 'pfand'
