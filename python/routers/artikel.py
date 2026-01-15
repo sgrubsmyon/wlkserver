@@ -97,6 +97,8 @@ def delete_artikel_intern(artikel_id: int, session: SessionDep):
     artikel = session.get(Artikel, artikel_id)
     if not artikel:
         raise HTTPException(status_code=404, detail="Artikel not found")
+    if artikel.aktiv == False:
+        raise HTTPException(status_code=400, detail="Artikel already deactivated")
     artikel.aktiv = False
     artikel.bis = datetime.now()
     session.add(artikel)
@@ -113,24 +115,43 @@ def delete_artikel(artikel_id: int, session: SessionDep):
 
 @router.patch("/{artikel_id}", response_model=ArtikelPublic)
 def update_artikel(artikel_id: int, artikel: ArtikelUpdate, session: SessionDep):
-    # This would be the code if we would want to really update an article
-    #
-    # old_artikel = session.get(Artikel, artikel_id)
-    # if not old_artikel:
-    #     raise HTTPException(status_code=404, detail="Artikel not found")
-    # artikel_data = artikel.model_dump(exclude_unset=True)
-    # for key, value in artikel_data.items():
-    #     setattr(old_artikel, key, value)
-    # session.add(old_artikel)
-    # session.commit()
-    # session.refresh(old_artikel)
-    # return q
-    #
-    # Instead we just deactivate the article and create a new one
+    print("Update artikel:", artikel_id, artikel)
 
+    old_artikel = session.get(Artikel, artikel_id)
+    if not old_artikel:
+        raise HTTPException(status_code=404, detail="Artikel not found")
+    if old_artikel.aktiv == False:
+        raise HTTPException(status_code=400, detail="Cannot update deactivated artikel")
+    artikel_data = artikel.model_dump(exclude_unset=True)
+
+    changed_keys = []
+    for key, value in artikel_data.items():
+        if value is not None:
+            print(f"  {key} = {value}")
+            old_value = old_artikel.__dict__.get(key, None)
+            print(f"    old value: {old_value}")
+            if old_value != value:
+                print("    value of", key, "changed")
+                changed_keys.append(key)
+
+    # If there are no changes, just return the old article
+    if len(changed_keys) == 0:
+        # return old_artikel
+        raise HTTPException(status_code=400, detail="No changes to artikel")
+
+    # If the changes were only to fields that do not require a new article, just update the article
+    non_versioned_fields = ['bestand', 'beliebtheit', 'lieferbar', 'sortiment']
+    if all(key in non_versioned_fields for key in changed_keys):
+        for key, value in artikel_data.items():
+            setattr(old_artikel, key, value)
+        session.add(old_artikel)
+        session.commit()
+        session.refresh(old_artikel)
+        return old_artikel
+    
+    # Instead we just deactivate the article and create a new one
     old_artikel = delete_artikel_intern(artikel_id, session)
     old_artikel_data = old_artikel.model_dump(exclude_unset=False)
-    artikel_data = artikel.model_dump(exclude_unset=True)
     for key, value in artikel_data.items():
         old_artikel_data[key] = value
     new_artikel = create_artikel(old_artikel_data, session)
