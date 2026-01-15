@@ -12,18 +12,21 @@ pip install -r requirements.txt
 ## Run API in development mode
 
 ```
+source .venv/bin/activate
 fastapi dev main.py
 ```
 
 Or simply:
 
 ```
+source .venv/bin/activate
 fastapi dev
 ```
 
 ## Run API in production mode
 
 ```
+source .venv/bin/activate
 fastapi run
 ```
 
