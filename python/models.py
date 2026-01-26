@@ -67,14 +67,22 @@ class MwstPublic(MwstBase):
 # Pfand models
 #######################
 
-class Pfand(SQLModel, table=True):
+class PfandBase(SQLModel):
+    pfand_id: int | None = Field(default=None, primary_key=True)
+    artikel_id: int = Field(foreign_key="artikel.artikel_id") # sa_column_kwargs={"unsigned": True},
+
+class Pfand(PfandBase, table=True):
     __tablename__ = 'pfand'
 
-    pfand_id: int | None = Field(default=None, primary_key=True)
-    artikel_id: int = Field(foreign_key="artikel.artikel_id") # sa_column_kwargs={"unsigned": True}, 
+    # pfand_id: int | None = Field(default=None, primary_key=True)
+    # artikel_id: int = Field(foreign_key="artikel.artikel_id") # sa_column_kwargs={"unsigned": True},
 
     artikel: "Artikel" = Relationship(back_populates="pfand")
     produktgruppe: list["Produktgruppe"] = Relationship(back_populates="pfand")
+
+# For reading
+class PfandPublic(PfandBase):
+    wert: float | None = None
 
 
 #######################
