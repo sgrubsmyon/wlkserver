@@ -35,6 +35,7 @@ class LieferantUpdate(SQLModel):
     lieferant_name: str | None = None
     lieferant_kurzname: str | None = None
 
+
 #######################
 # MwSt models
 #######################
@@ -63,25 +64,25 @@ class Mwst(MwstBase, table=True):
 class MwstPublic(MwstBase):
     mwst_id: int
 
+
 #######################
 # Pfand models
 #######################
 
-class PfandBase(SQLModel):
-    pfand_id: int | None = Field(default=None, primary_key=True)
-    artikel_id: int = Field(foreign_key="artikel.artikel_id") # sa_column_kwargs={"unsigned": True},
-
-class Pfand(PfandBase, table=True):
+class Pfand(SQLModel, table=True):
     __tablename__ = 'pfand'
 
-    # pfand_id: int | None = Field(default=None, primary_key=True)
-    # artikel_id: int = Field(foreign_key="artikel.artikel_id") # sa_column_kwargs={"unsigned": True},
+    pfand_id: int | None = Field(default=None, primary_key=True)
+    artikel_id: int = Field(foreign_key="artikel.artikel_id") # sa_column_kwargs={"unsigned": True},
 
     artikel: "Artikel" = Relationship(back_populates="pfand")
     produktgruppe: list["Produktgruppe"] = Relationship(back_populates="pfand")
 
+
 # For reading
-class PfandPublic(PfandBase):
+class PfandPublic(SQLModel):
+    pfand_id: int
+    artikel_id: int
     wert: float | None = None
 
 
@@ -111,9 +112,11 @@ class Produktgruppe(ProduktgruppeBase, table=True):
     n_artikel_rekursiv: int | None = Field(default=None) # sa_column_kwargs={"unsigned": True}
     
     # relationships
-    artikel: list["Artikel"] = Relationship(back_populates="produktgruppe")
     mwst: Mwst = Relationship(back_populates="produktgruppe")
     pfand: Pfand | None = Relationship(back_populates="produktgruppe")
+    artikel: list["Artikel"] = Relationship(back_populates="produktgruppe")
+    rabattaktion: list["Rabattaktion"] = Relationship(back_populates="produktgruppe")
+
 
 # For reading product groups
 class ProduktgruppePublic(ProduktgruppeBase):
@@ -172,6 +175,7 @@ class ArtikelBase(SQLModel):
     beliebtheit: int = Field(nullable=False, default=0)
     bestand: int | None = Field() # sa_column_kwargs={"unsigned": True}
 
+
 # The table model
 class Artikel(ArtikelBase, table=True):
     __tablename__ = 'artikel'
@@ -189,6 +193,7 @@ class Artikel(ArtikelBase, table=True):
     lieferant: "Lieferant" = Relationship(back_populates="artikel")
     produktgruppe: "Produktgruppe" = Relationship(back_populates="artikel")
     pfand: Pfand = Relationship(back_populates="artikel")
+    rabattaktion: list["Rabattaktion"] = Relationship(back_populates="artikel")
 
 
 # For reading articles
@@ -200,7 +205,6 @@ class ArtikelPublic(ArtikelBase):
     von: datetime | None = Field()
     bis: datetime | None = Field()
     aktiv: bool = Field(nullable=False, default=True)
-
 
 
 # For creating articles
@@ -232,3 +236,40 @@ class ArtikelUpdate(SQLModel):
     lieferbar: bool | None = None
     beliebtheit: int | None = None
     bestand: int | None = None
+
+
+######################
+# Rabattaktion models
+######################
+
+# The base model, shared by all
+class RabattaktionBase(SQLModel):
+    aktionsname: str = Field(max_length=50)
+    rabatt_relativ: float | None = Field(sa_column=DECIMAL(precision=6, scale=5))
+    rabatt_absolut: float | None = Field(sa_column=DECIMAL(precision=13, scale=2))
+    mengenrabatt_schwelle: int | None = Field(default=None) # sa_column_kwargs={"unsigned": True}
+    mengenrabatt_anzahl_kostenlos: int | None = Field(default=None) # sa_column_kwargs={"unsigned": True}
+    mengenrabatt_relativ: float | None = Field(sa_column=DECIMAL(precision=6, scale=5))
+    von: datetime = Field(nullable=False)
+    bis: datetime | None = Field(nullable=True)
+
+
+# The table model
+class Rabattaktion(RabattaktionBase, table=True):
+    __tablename__ = 'rabattaktion'
+
+    rabatt_id: int | None = Field(default=None, primary_key=True)
+
+    produktgruppen_id: int | None = Field(default=None, foreign_key="produktgruppe.produktgruppen_id") # sa_column_kwargs={"unsigned": True},
+    artikel_id: int | None = Field(default=None, foreign_key="artikel.artikel_id") # sa_column_kwargs={"unsigned": True},
+
+    # relationships
+    produktgruppe: "Produktgruppe" = Relationship(back_populates="rabattaktion")
+    artikel: "Artikel" = Relationship(back_populates="rabattaktion")
+
+
+# For reading
+class RabattaktionPublic(RabattaktionBase):
+    rabatt_id: int
+    produktgruppen_id: int | None
+    artikel_id: int | None
