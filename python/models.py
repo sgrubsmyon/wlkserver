@@ -190,8 +190,8 @@ class Artikel(ArtikelBase, table=True):
     aktiv: bool = Field(nullable=False, default=True)
 
     # relationships
-    lieferant: "Lieferant" = Relationship(back_populates="artikel")
     produktgruppe: "Produktgruppe" = Relationship(back_populates="artikel")
+    lieferant: "Lieferant" = Relationship(back_populates="artikel")
     pfand: Pfand = Relationship(back_populates="artikel")
     rabattaktion: list["Rabattaktion"] = Relationship(back_populates="artikel")
 
@@ -275,3 +275,9 @@ class RabattaktionPublic(RabattaktionBase):
     artikel_id: int | None
     produktgruppen_name: str | None = None
     artikel_name: str | None = None
+
+
+# For creating
+class RabattaktionCreate(RabattaktionBase):
+    produktgruppen_id: int | None = None
+    artikel_id: int | None = None

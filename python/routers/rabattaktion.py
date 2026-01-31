@@ -5,7 +5,7 @@ from sqlmodel import select
 
 # from ..dependencies import get_token_header
 
-from ..models import Artikel, Produktgruppe, Rabattaktion, RabattaktionPublic, RabattaktionBase #, RabattaktionUpdate
+from ..models import Artikel, Produktgruppe, Rabattaktion, RabattaktionPublic, RabattaktionCreate #, RabattaktionUpdate
 from ..session import SessionDep
 
 
@@ -54,4 +54,12 @@ def read_single_rabattaktion(rabattaktion_id: int, session: SessionDep) -> Rabat
     rabattaktion = session.get(Rabattaktion, rabattaktion_id)
     if not rabattaktion:
         raise HTTPException(status_code=404, detail="Rabattaktion not found")
-    return rabattaktion
+    return 
+
+@router.post("/", response_model=RabattaktionPublic)
+def create_rabattaktion(rabattaktion: RabattaktionCreate, session: SessionDep):
+    new_rabattaktion = Rabattaktion.model_validate(rabattaktion)
+    session.add(new_rabattaktion)
+    session.commit()
+    session.refresh(new_rabattaktion)
+    return new_rabattaktion
