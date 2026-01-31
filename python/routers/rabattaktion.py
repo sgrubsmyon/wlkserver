@@ -5,7 +5,7 @@ from sqlmodel import select
 
 # from ..dependencies import get_token_header
 
-from ..models import Rabattaktion, RabattaktionPublic, RabattaktionBase #, RabattaktionUpdate
+from ..models import Artikel, Produktgruppe, Rabattaktion, RabattaktionPublic, RabattaktionBase #, RabattaktionUpdate
 from ..session import SessionDep
 
 
@@ -20,10 +20,31 @@ router = APIRouter(
 @router.get("/")
 def get_rabattaktionen(
     session: SessionDep,
+    since: str | None = None,
+    until: str | None = None,
     offset: int = 0, limit: Annotated[int, Query(le=100)] = 100
     ) -> list[RabattaktionPublic]:
-    selection = select(Rabattaktion)
+    selection = select(Rabattaktion).join(Artikel).join(Produktgruppe)
+    
+    # Add a where clause if since or until is provided
+    if since:
+        selection = selection.where(Rabattaktion.bis >= since)
+    if until:
+        selection = selection.where(Rabattaktion.von <= until)
+    
+    # Execute the query with offset and limit
     rabattaktionen = session.exec(
         selection.offset(offset).limit(limit)
             .order_by(Rabattaktion.von)).all()
-    return rabattaktionen
+    
+    # Prepare the response
+    # (add data from the joined tables)
+    return_obj = []
+    for ra in rabattaktionen:
+        obj = RabattaktionPublic.model_validate(ra, update={
+            "produktgruppen_name": None if ra.produktgruppe is None else ra.produktgruppe.produktgruppen_name,
+            "artikel_name": ra.artikel.artikel_name if ra.artikel else None
+        })
+        return_obj.append(obj)
+    
+    return return_obj

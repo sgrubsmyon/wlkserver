@@ -273,3 +273,5 @@ class RabattaktionPublic(RabattaktionBase):
     rabatt_id: int
     produktgruppen_id: int | None
     artikel_id: int | None
+    produktgruppen_name: str | None = None
+    artikel_name: str | None = None
