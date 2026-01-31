@@ -48,3 +48,10 @@ def get_rabattaktionen(
         return_obj.append(obj)
     
     return return_obj
+
+@router.get("/{rabattaktion_id}")
+def read_single_rabattaktion(rabattaktion_id: int, session: SessionDep) -> Rabattaktion:
+    rabattaktion = session.get(Rabattaktion, rabattaktion_id)
+    if not rabattaktion:
+        raise HTTPException(status_code=404, detail="Rabattaktion not found")
+    return rabattaktion
