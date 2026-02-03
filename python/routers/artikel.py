@@ -166,6 +166,10 @@ def update_artikel(artikel_id: int, artikel: ArtikelUpdate, session: SessionDep)
         session.add(old_artikel)
         session.commit()
         session.refresh(old_artikel)
+        old_artikel = ArtikelPublic.model_validate(old_artikel, update={
+            "produktgruppen_name": old_artikel.produktgruppe.produktgruppen_name if old_artikel.produktgruppe else None,
+            "lieferant_name": old_artikel.lieferant.lieferant_name if old_artikel.lieferant else None
+        })
         return old_artikel
     
     # Instead we just deactivate the article and create a new one
