@@ -6,7 +6,7 @@ from sqlmodel import select
 
 # from ..dependencies import get_token_header
 
-from ..models import Artikel, Produktgruppe, Rabattaktion, RabattaktionPublic, RabattaktionCreate #, RabattaktionUpdate
+from ..models import Artikel, Produktgruppe, Rabattaktion, RabattaktionPublic, RabattaktionCreate, RabattaktionUpdate
 from ..session import SessionDep
 
 
@@ -98,3 +98,36 @@ def delete_rabattaktion(rabattaktion_id: int, session: SessionDep):
         session.add(rabattaktion)
         session.commit()
         return {"message": "Rabattaktion's bis date set to von date to delete it"}
+
+
+@router.patch("/{rabattaktion_id}", response_model=RabattaktionPublic)
+def update_rabattaktion(rabattaktion_id: int, rabattaktion: RabattaktionUpdate, session: SessionDep):
+    old_rabattaktion = session.get(Rabattaktion, rabattaktion_id)
+    
+    if not old_rabattaktion:
+        raise HTTPException(status_code=404, detail="Rabattaktion not found")
+    if old_rabattaktion.bis is not None and old_rabattaktion.bis <= datetime.now():
+        raise HTTPException(status_code=400, detail="Rabattaktion already ended, cannot update ended Rabattaktion")
+
+    # There are two cases:
+    # 1. If rabattaktion has already started (von in the past), we only allow changing name and bis date
+    # 2. If rabattaktion has not started yet (von in the future), we allow changing all fields
+
+    rabattaktion_data = rabattaktion.model_dump(exclude_unset=True)
+    if (old_rabattaktion.von <= datetime.now()):
+        # Case 1: Rabattaktion hase already started, only allow changing name and bis date
+        allowed_fields = {"aktionsname", "bis"}
+        for key in list(rabattaktion_data.keys()):
+            if key not in allowed_fields:
+                raise HTTPException(status_code=400, detail=f"Cannot change field '{key}' of started Rabattaktion, only 'aktionsname' and 'bis' can be changed")
+    # Case 1 passed the checks or it is Case 2: Rabattaktion has not started yet, all fields can be changed
+    for key, value in rabattaktion_data.items():
+        setattr(old_rabattaktion, key, value)
+    session.add(old_rabattaktion)
+    session.commit()
+    session.refresh(old_rabattaktion)
+    old_rabattaktion = RabattaktionPublic.model_validate(old_rabattaktion, update={
+        "produktgruppen_name": old_rabattaktion.produktgruppe.produktgruppen_name if old_rabattaktion.produktgruppe else None,
+        "artikel_name": old_rabattaktion.artikel.artikel_name if old_rabattaktion.artikel else None
+    })
+    return old_rabattaktion

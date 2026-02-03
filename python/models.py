@@ -246,14 +246,14 @@ class ArtikelUpdate(SQLModel):
 
 # The base model, shared by all
 class RabattaktionBase(SQLModel):
-    aktionsname: str = Field(max_length=50)
-    rabatt_relativ: float | None = Field(sa_column=DECIMAL(precision=6, scale=5))
-    rabatt_absolut: float | None = Field(sa_column=DECIMAL(precision=13, scale=2))
+    aktionsname: str = Field(max_length=50, default=None)
+    rabatt_relativ: float | None = Field(sa_column=DECIMAL(precision=6, scale=5), default=None)
+    rabatt_absolut: float | None = Field(sa_column=DECIMAL(precision=13, scale=2), default=None)
     mengenrabatt_schwelle: int | None = Field(default=None) # sa_column_kwargs={"unsigned": True}
     mengenrabatt_anzahl_kostenlos: int | None = Field(default=None) # sa_column_kwargs={"unsigned": True}
-    mengenrabatt_relativ: float | None = Field(sa_column=DECIMAL(precision=6, scale=5))
+    mengenrabatt_relativ: float | None = Field(sa_column=DECIMAL(precision=6, scale=5), default=None)
     von: datetime = Field(nullable=False)
-    bis: datetime | None = Field(nullable=True)
+    bis: datetime | None = Field(nullable=True, default=None)
 
 
 # The table model
@@ -283,3 +283,18 @@ class RabattaktionPublic(RabattaktionBase):
 class RabattaktionCreate(RabattaktionBase):
     produktgruppen_id: int | None = None
     artikel_id: int | None = None
+
+
+# For updating
+class RabattaktionUpdate(SQLModel):
+    produktgruppen_id: int | None = None
+    artikel_id: int | None = None
+
+    aktionsname: str | None = None
+    rabatt_relativ: float | None = None
+    rabatt_absolut: float | None = None
+    mengenrabatt_schwelle: int | None = None
+    mengenrabatt_anzahl_kostenlos: int | None = None
+    mengenrabatt_relativ: float | None = None
+    von: datetime | None = None
+    bis: datetime | None = None
