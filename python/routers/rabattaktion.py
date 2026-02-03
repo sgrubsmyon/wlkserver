@@ -80,13 +80,14 @@ def delete_rabattaktion(rabattaktion_id: int, session: SessionDep):
     if rabattaktion.bis is not None and rabattaktion.bis <= datetime.now():
         raise HTTPException(status_code=400, detail="Rabattaktion already ended")
     # There are two cases: if rabattaktion has started (von in the past), we set bis to now to end the rabattaktion
-    # If rabattaktion has not started (von in the future), we just delete it
+    # If rabattaktion has not started (von in the future), we set bis to von (we have no SQL permissions to just delete it)
     if rabattaktion.von <= datetime.now():
         rabattaktion.bis = datetime.now()
         session.add(rabattaktion)
         session.commit()
         return {"message": "Rabattaktion's bis date set to now to end it"}
     else:
-        session.delete(rabattaktion)
+        rabattaktion.bis = rabattaktion.von
+        session.add(rabattaktion)
         session.commit()
-        return {"message": "Rabattaktion deleted"}
+        return {"message": "Rabattaktion's bis date set to von date to delete it"}
