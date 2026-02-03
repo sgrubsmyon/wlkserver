@@ -7,7 +7,7 @@ from sqlmodel import select
 
 # from ..dependencies import get_token_header
 
-from ..models import Artikel, ArtikelPublic, ArtikelCreate, ArtikelUpdate
+from ..models import Artikel, ArtikelPublic, ArtikelCreate, ArtikelUpdate, Lieferant, Produktgruppe
 from ..session import SessionDep
 
 
@@ -26,8 +26,8 @@ def read_artikel(
     barcode: str = "", artikel_nr: str = "", artikel_name: str = "",
     lieferant_id: int = 0,
     offset: int = 0, limit: Annotated[int, Query(le=100)] = 100
-    ) -> list[Artikel]:
-    selection = select(Artikel)
+    ) -> list[ArtikelPublic]:
+    selection = select(Artikel).join(Produktgruppe).join(Lieferant)
     if aktiv_only:
         selection = selection.where(Artikel.aktiv == True)
     if search_string:
@@ -55,14 +55,29 @@ def read_artikel(
     artikel = session.exec(
         selection.offset(offset).limit(limit)
             .order_by(Artikel.artikel_name, Artikel.lieferant_id)).all()
-    return artikel
+    
+    # Prepare the response
+    # (add data from the joined tables)
+    return_obj = []
+    for a in artikel:
+        obj = ArtikelPublic.model_validate(a, update={
+            "produktgruppen_name": a.produktgruppe.produktgruppen_name if a.produktgruppe else None,
+            "lieferant_name": a.lieferant.lieferant_name if a.lieferant else None
+        })
+        return_obj.append(obj)
+    
+    return return_obj
 
 
 @router.get("/{artikel_id}")
-def read_single_artikel(artikel_id: int, session: SessionDep) -> Artikel:
+def read_single_artikel(artikel_id: int, session: SessionDep) -> ArtikelPublic:
     artikel = session.get(Artikel, artikel_id)
     if not artikel:
         raise HTTPException(status_code=404, detail="Artikel not found")
+    artikel = ArtikelPublic.model_validate(artikel, update={
+            "produktgruppen_name": artikel.produktgruppe.produktgruppen_name if artikel.produktgruppe else None,
+            "lieferant_name": artikel.lieferant.lieferant_name if artikel.lieferant else None
+        })
     return artikel
 
 
