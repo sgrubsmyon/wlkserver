@@ -158,22 +158,22 @@ class ProduktgruppeUpdate(SQLModel):
 class ArtikelBase(SQLModel):
     artikel_nr: str = Field(max_length=30, nullable=False)
     artikel_name: str = Field(max_length=180, nullable=False)
-    kurzname: str | None = Field(max_length=50)
-    menge: float | None = Field(sa_column=DECIMAL(precision=8, scale=5))
-    einheit: str | None = Field(max_length=10)
-    barcode: str | None = Field(max_length=30)
-    herkunft: str | None = Field(max_length=100)
-    vpe: int | None # sa_column_kwargs={"unsigned": True}
+    kurzname: str | None = Field(max_length=50, default=None)
+    menge: float | None = Field(sa_column=DECIMAL(precision=8, scale=5), default=None)
+    einheit: str | None = Field(max_length=10, default=None)
+    barcode: str | None = Field(max_length=30, default=None)
+    herkunft: str | None = Field(max_length=100, default=None)
+    vpe: int | None = Field(default=None) # sa_column_kwargs={"unsigned": True}
     setgroesse: int = Field(nullable=False, default=1) # sa_column_kwargs={"unsigned": True}, 
-    vk_preis: float | None = Field(sa_column=DECIMAL(precision=13, scale=2))
-    empf_vk_preis: float | None = Field(sa_column=DECIMAL(precision=13, scale=2))
-    ek_rabatt: float | None = Field(sa_column=DECIMAL(precision=6, scale=5))
-    ek_preis: float | None = Field(sa_column=DECIMAL(precision=13, scale=2))
+    vk_preis: float | None = Field(sa_column=DECIMAL(precision=13, scale=2), default=None)
+    empf_vk_preis: float | None = Field(sa_column=DECIMAL(precision=13, scale=2), default=None)
+    ek_rabatt: float | None = Field(sa_column=DECIMAL(precision=6, scale=5), default=None)
+    ek_preis: float | None = Field(sa_column=DECIMAL(precision=13, scale=2), default=None)
     variabler_preis: bool = Field(nullable=False, default=False)
     sortiment: bool = Field(nullable=False, default=False)
     lieferbar: bool = Field(nullable=False, default=False)
     beliebtheit: int = Field(nullable=False, default=0)
-    bestand: int | None = Field() # sa_column_kwargs={"unsigned": True}
+    bestand: int | None = Field(default=None) # sa_column_kwargs={"unsigned": True}
 
 
 # The table model
