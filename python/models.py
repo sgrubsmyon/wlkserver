@@ -201,6 +201,8 @@ class ArtikelPublic(ArtikelBase):
     artikel_id: int
     produktgruppen_id: int
     lieferant_id: int
+    produktgruppen_name: str
+    lieferant_name: str
 
     von: datetime | None = Field()
     bis: datetime | None = Field()
