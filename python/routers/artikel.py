@@ -105,6 +105,10 @@ def create_artikel(artikel: ArtikelCreate, session: SessionDep):
     session.add(new_artikel)
     session.commit()
     session.refresh(new_artikel)
+    new_artikel = ArtikelPublic.model_validate(new_artikel, update={
+        "produktgruppen_name": new_artikel.produktgruppe.produktgruppen_name if new_artikel.produktgruppe else None,
+        "lieferant_name": new_artikel.lieferant.lieferant_name if new_artikel.lieferant else None
+    })
     return new_artikel
 
 
