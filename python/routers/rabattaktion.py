@@ -19,7 +19,7 @@ router = APIRouter(
 
 
 @router.get("/")
-def get_rabattaktionen(
+def read_rabattaktionen(
     session: SessionDep,
     since: str | None = None,
     until: str | None = None,
