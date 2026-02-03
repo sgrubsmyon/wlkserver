@@ -39,7 +39,7 @@ def get_rabattaktionen(
     # Execute the query with offset and limit
     rabattaktionen = session.exec(
         selection.offset(offset).limit(limit)
-            .order_by(Rabattaktion.von)).all()
+            .order_by(Rabattaktion.von, Rabattaktion.bis)).all()
     
     # Prepare the response
     # (add data from the joined tables)
@@ -64,6 +64,7 @@ def read_single_rabattaktion(rabattaktion_id: int, session: SessionDep) -> Rabat
         "artikel_name": rabattaktion.artikel.artikel_name if rabattaktion.artikel else None
     })
     return rabattaktion
+
 
 @router.post("/", response_model=RabattaktionPublic)
 def create_rabattaktion(rabattaktion: RabattaktionCreate, session: SessionDep):
