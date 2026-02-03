@@ -23,15 +23,18 @@ def get_rabattaktionen(
     session: SessionDep,
     since: str | None = None,
     until: str | None = None,
+    exclude_deleted: bool = True,
     offset: int = 0, limit: Annotated[int, Query(le=100)] = 100
     ) -> list[RabattaktionPublic]:
     selection = select(Rabattaktion).outerjoin(Artikel).outerjoin(Produktgruppe)
     
-    # Add a where clause if since or until is provided
+    # Add a where clause if parameters are provided
     if since:
         selection = selection.where(Rabattaktion.bis >= since)
     if until:
         selection = selection.where(Rabattaktion.von <= until)
+    if exclude_deleted:
+        selection = selection.where(Rabattaktion.bis > Rabattaktion.von)
     
     # Execute the query with offset and limit
     rabattaktionen = session.exec(
@@ -52,12 +55,15 @@ def get_rabattaktionen(
 
 
 @router.get("/{rabattaktion_id}")
-def read_single_rabattaktion(rabattaktion_id: int, session: SessionDep) -> Rabattaktion:
+def read_single_rabattaktion(rabattaktion_id: int, session: SessionDep) -> RabattaktionPublic:
     rabattaktion = session.get(Rabattaktion, rabattaktion_id)
     if not rabattaktion:
         raise HTTPException(status_code=404, detail="Rabattaktion not found")
-    return 
-
+    rabattaktion = RabattaktionPublic.model_validate(rabattaktion, update={
+        "produktgruppen_name": rabattaktion.produktgruppe.produktgruppen_name if rabattaktion.produktgruppe else None,
+        "artikel_name": rabattaktion.artikel.artikel_name if rabattaktion.artikel else None
+    })
+    return rabattaktion
 
 @router.post("/", response_model=RabattaktionPublic)
 def create_rabattaktion(rabattaktion: RabattaktionCreate, session: SessionDep):
