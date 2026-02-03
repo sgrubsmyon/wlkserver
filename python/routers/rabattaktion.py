@@ -69,6 +69,11 @@ def read_single_rabattaktion(rabattaktion_id: int, session: SessionDep) -> Rabat
 @router.post("/", response_model=RabattaktionPublic)
 def create_rabattaktion(rabattaktion: RabattaktionCreate, session: SessionDep):
     new_rabattaktion = Rabattaktion.model_validate(rabattaktion)
+    
+    # Add plausibility check
+    if new_rabattaktion.bis is not None and new_rabattaktion.bis <= new_rabattaktion.von:
+        raise HTTPException(status_code=400, detail="Invalid dates: 'bis' must be after 'von' or null")
+
     session.add(new_rabattaktion)
     session.commit()
     session.refresh(new_rabattaktion)
