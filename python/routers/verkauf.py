@@ -116,6 +116,7 @@ def create_verkauf(payload: dict, session: SessionDep):
             d_obj.position = (max((e.position or 0) for e in existing) + 1) if existing else 1
         session.add(d_obj)
 
+    # Add mwst if present
     for m in payload.get("verkauf_mwst", []) or []:
         m_obj = VerkaufMwst.model_validate(m)
         m_obj.rechnungs_nr = new_v.rechnungs_nr
