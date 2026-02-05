@@ -322,7 +322,11 @@ class Verkauf(VerkaufBase, table=True):
     storno_von: int | None = Field(default=None, foreign_key="verkauf.rechnungs_nr") # sa_column_kwargs={"unsigned": True},
 
     # relationships
-    stornierter_verkauf: "Verkauf" = Relationship(back_populates="verkauf") # , sa_relationship_kwargs={"remote_side": "verkauf.rechnungs_nr"}
+    # Self-referential relationships (original <-> storno)
+    stornierter_verkauf: "Verkauf" = Relationship(
+        back_populates="storno", sa_relationship_kwargs={"remote_side": "verkauf.rechnungs_nr"}
+    )
+    storno: list["Verkauf"] = Relationship(back_populates="stornierter_verkauf")
     verkauf_mwst: list["VerkaufMwst"] = Relationship(back_populates="verkauf")
     verkauf_details: list["VerkaufDetails"] = Relationship(back_populates="verkauf")
 
