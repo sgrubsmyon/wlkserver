@@ -298,3 +298,110 @@ class RabattaktionUpdate(SQLModel):
     mengenrabatt_relativ: float | None = None
     von: datetime | None = None
     bis: datetime | None = None
+
+
+######################
+# Verkauf models
+######################
+
+# The base model, shared by all
+class VerkaufBase(SQLModel):
+    verkaufsdatum: datetime = Field(nullable=False)
+    ec_zahlung: bool = Field(nullable=False, default=False)
+    kunde_gibt: float | None = Field(sa_column=DECIMAL(precision=13, scale=2), default=None)
+
+
+# The table model
+class Verkauf(VerkaufBase, table=True):
+    __tablename__ = 'verkauf'
+
+    # primary key
+    rechnungs_nr: int | None = Field(default=None, primary_key=True)
+
+    # foreign keys
+    storno_von: int | None = Field(default=None, foreign_key="verkauf.rechnungs_nr") # sa_column_kwargs={"unsigned": True},
+
+    # relationships
+    stornierter_verkauf: "Verkauf" = Relationship(back_populates="verkauf") # , sa_relationship_kwargs={"remote_side": "verkauf.rechnungs_nr"}
+
+
+# For reading
+class VerkaufPublic(VerkaufBase):
+    rechnungs_nr: int
+    storno_von: int | None
+
+
+# For creating
+class VerkaufCreate(VerkaufBase):
+    storno_von: int | None = None
+
+
+# The base model, shared by all
+class verkaufMwstBase(SQLModel):
+    mwst_netto: float = Field(sa_column=DECIMAL(precision=13, scale=2))
+    mwst_betrag: float = Field(sa_column=DECIMAL(precision=13, scale=2))
+
+# The table model
+class verkaufMwst(verkaufMwstBase, table=True):
+    __tablename__ = 'verkauf_mwst'
+
+    # primary key
+    rechnungs_nr: int = Field(nullable=False, primary_key=True, foreign_key="verkauf.rechnungs_nr")
+    mwst_satz: float = Field(nullable=False, primary_key=True) # sa_column=DECIMAL(precision=6, scale=5), 
+
+    # relationships
+    verkauf: "Verkauf" = Relationship(back_populates="verkauf_mwst")
+
+
+# For reading
+class verkaufMwstPublic(verkaufMwstBase):
+    rechnungs_nr: int
+    mwst_satz: float
+
+
+# For creating
+class verkaufMwstCreate(verkaufMwstBase):
+    rechnungs_nr: int
+    mwst_satz: float
+
+
+# The base model, shared by all
+class verkaufDetailsBase(SQLModel):
+    position: int | None = Field(default=None) # , sa_column_kwargs={"unsigned": True}
+    stueckzahl: int = Field(nullable=False, default=1) # sa_column_kwargs={"unsigned": True},
+    ges_preis: float = Field(sa_column=DECIMAL(precision=13, scale=2))
+    mwst_satz: float = Field(sa_column=DECIMAL(precision=6, scale=5))
+
+
+# The table model
+class verkaufDetails(verkaufDetailsBase, table=True):
+    __tablename__ = 'verkauf_details'
+
+    # primary key
+    vd_id: int | None = Field(default=None, primary_key=True)
+
+    # foreign keys
+    rechnungs_nr: int = Field(nullable=False, foreign_key="verkauf.rechnungs_nr") # sa_column_kwargs={"unsigned": True},
+    artikel_id: int | None = Field(default=None, foreign_key="artikel.artikel_id") # sa_column_kwargs={"unsigned": True},
+    rabatt_id: int | None = Field(default=None, foreign_key="rabattaktion.rabatt_id") # sa_column_kwargs={"unsigned": True},
+
+    # relationships
+    verkauf: "Verkauf" = Relationship(back_populates="verkauf_details")
+    artikel: "Artikel" = Relationship(back_populates="verkauf_details")
+
+
+# For reading
+class verkaufDetailsPublic(verkaufDetailsBase):
+    vd_id: int
+    rechnungs_nr: int
+    artikel_id: int | None
+    artikel_name: str | None = None
+    artikel_kurzname: str | None = None
+    artikel_vk_preis: float | None = None
+
+
+# For creating
+class verkaufDetailsCreate(verkaufDetailsBase):
+    rechnungs_nr: int
+    artikel_id: int | None = None
+    rabatt_id: int | None = None
