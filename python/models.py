@@ -323,6 +323,8 @@ class Verkauf(VerkaufBase, table=True):
 
     # relationships
     stornierter_verkauf: "Verkauf" = Relationship(back_populates="verkauf") # , sa_relationship_kwargs={"remote_side": "verkauf.rechnungs_nr"}
+    verkauf_mwst: list["VerkaufMwst"] = Relationship(back_populates="verkauf")
+    verkauf_details: list["VerkaufDetails"] = Relationship(back_populates="verkauf")
 
 
 # For reading
@@ -337,12 +339,12 @@ class VerkaufCreate(VerkaufBase):
 
 
 # The base model, shared by all
-class verkaufMwstBase(SQLModel):
+class VerkaufMwstBase(SQLModel):
     mwst_netto: float = Field(sa_column=DECIMAL(precision=13, scale=2))
     mwst_betrag: float = Field(sa_column=DECIMAL(precision=13, scale=2))
 
 # The table model
-class verkaufMwst(verkaufMwstBase, table=True):
+class VerkaufMwst(VerkaufMwstBase, table=True):
     __tablename__ = 'verkauf_mwst'
 
     # primary key
@@ -354,19 +356,19 @@ class verkaufMwst(verkaufMwstBase, table=True):
 
 
 # For reading
-class verkaufMwstPublic(verkaufMwstBase):
+class VerkaufMwstPublic(VerkaufMwstBase):
     rechnungs_nr: int
     mwst_satz: float
 
 
 # For creating
-class verkaufMwstCreate(verkaufMwstBase):
+class VerkaufMwstCreate(VerkaufMwstBase):
     rechnungs_nr: int
     mwst_satz: float
 
 
 # The base model, shared by all
-class verkaufDetailsBase(SQLModel):
+class VerkaufDetailsBase(SQLModel):
     position: int | None = Field(default=None) # , sa_column_kwargs={"unsigned": True}
     stueckzahl: int = Field(nullable=False, default=1) # sa_column_kwargs={"unsigned": True},
     ges_preis: float = Field(sa_column=DECIMAL(precision=13, scale=2))
@@ -374,7 +376,7 @@ class verkaufDetailsBase(SQLModel):
 
 
 # The table model
-class verkaufDetails(verkaufDetailsBase, table=True):
+class VerkaufDetails(VerkaufDetailsBase, table=True):
     __tablename__ = 'verkauf_details'
 
     # primary key
@@ -391,7 +393,7 @@ class verkaufDetails(verkaufDetailsBase, table=True):
 
 
 # For reading
-class verkaufDetailsPublic(verkaufDetailsBase):
+class VerkaufDetailsPublic(VerkaufDetailsBase):
     vd_id: int
     rechnungs_nr: int
     artikel_id: int | None
@@ -401,7 +403,7 @@ class verkaufDetailsPublic(verkaufDetailsBase):
 
 
 # For creating
-class verkaufDetailsCreate(verkaufDetailsBase):
+class VerkaufDetailsCreate(VerkaufDetailsBase):
     rechnungs_nr: int
     artikel_id: int | None = None
     rabatt_id: int | None = None
