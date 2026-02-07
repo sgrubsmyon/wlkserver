@@ -48,12 +48,13 @@ def read_verkaeufe(
         selection = selection.where(Verkauf.verkaufsdatum >= datetime.fromisoformat(since))
     if until:
         selection = selection.where(Verkauf.verkaufsdatum <= datetime.fromisoformat(until))
-    verkaufe = session.exec(
+    verkaeufe = session.exec(
         selection.offset(offset).limit(limit).order_by(Verkauf.verkaufsdatum)
     ).all()
+    # return verkaeufe
 
     results = []
-    for v in verkaufe:
+    for v in verkaeufe:
         v_obj = VerkaufPublic.model_validate(v).model_dump()
         if include_details:
             details = []

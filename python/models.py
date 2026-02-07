@@ -194,6 +194,7 @@ class Artikel(ArtikelBase, table=True):
     lieferant: "Lieferant" = Relationship(back_populates="artikel")
     pfand: Pfand = Relationship(back_populates="artikel")
     rabattaktion: list["Rabattaktion"] = Relationship(back_populates="artikel")
+    verkauf_details: list["VerkaufDetails"] = Relationship(back_populates="artikel")
 
 
 # For reading articles
@@ -268,6 +269,7 @@ class Rabattaktion(RabattaktionBase, table=True):
     # relationships
     produktgruppe: "Produktgruppe" = Relationship(back_populates="rabattaktion")
     artikel: "Artikel" = Relationship(back_populates="rabattaktion")
+    verkauf_details: list["VerkaufDetails"] = Relationship(back_populates="rabattaktion")
 
 
 # For reading
@@ -323,10 +325,10 @@ class Verkauf(VerkaufBase, table=True):
 
     # relationships
     # Self-referential relationships (original <-> storno)
-    stornierter_verkauf: "Verkauf" = Relationship(
-        back_populates="storno", sa_relationship_kwargs={"remote_side": "verkauf.rechnungs_nr"}
-    )
-    storno: list["Verkauf"] = Relationship(back_populates="stornierter_verkauf")
+    # stornierter_verkauf: "Verkauf" = Relationship(
+    #     back_populates="storno", sa_relationship_kwargs={"remote_side": "verkauf.rechnungs_nr"}
+    # )
+    # storno: list["Verkauf"] = Relationship(back_populates="stornierter_verkauf")
     verkauf_mwst: list["VerkaufMwst"] = Relationship(back_populates="verkauf")
     verkauf_details: list["VerkaufDetails"] = Relationship(back_populates="verkauf")
 
@@ -341,6 +343,7 @@ class VerkaufPublic(VerkaufBase):
 class VerkaufCreate(VerkaufBase):
     storno_von: int | None = None
 
+#########################
 
 # The base model, shared by all
 class VerkaufMwstBase(SQLModel):
@@ -370,6 +373,7 @@ class VerkaufMwstCreate(VerkaufMwstBase):
     rechnungs_nr: int
     mwst_satz: float
 
+#########################
 
 # The base model, shared by all
 class VerkaufDetailsBase(SQLModel):
@@ -394,6 +398,7 @@ class VerkaufDetails(VerkaufDetailsBase, table=True):
     # relationships
     verkauf: "Verkauf" = Relationship(back_populates="verkauf_details")
     artikel: "Artikel" = Relationship(back_populates="verkauf_details")
+    rabattaktion: "Rabattaktion" = Relationship(back_populates="verkauf_details")
 
 
 # For reading
@@ -401,9 +406,10 @@ class VerkaufDetailsPublic(VerkaufDetailsBase):
     vd_id: int
     rechnungs_nr: int
     artikel_id: int | None
+    rabatt_id: int | None
     artikel_name: str | None = None
     artikel_kurzname: str | None = None
-    artikel_vk_preis: float | None = None
+    aktionsname: str | None = None
 
 
 # For creating

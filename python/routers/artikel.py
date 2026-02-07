@@ -54,7 +54,8 @@ def read_artikel(
         selection = selection.where(Artikel.artikel_name.contains(artikel_name) | Artikel.kurzname.contains(artikel_name))
     artikel = session.exec(
         selection.offset(offset).limit(limit)
-            .order_by(Artikel.artikel_name, Artikel.lieferant_id)).all()
+            .order_by(Artikel.artikel_name, Artikel.lieferant_id)
+    ).all()
     
     # Prepare the response
     # (add data from the joined tables)
