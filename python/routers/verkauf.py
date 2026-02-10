@@ -59,7 +59,7 @@ def read_verkaeufe(
         if include_details:
             details = []
             for d in v.verkauf_details or []:
-                d_obj = VerkaufDetailsPublic.model_validate(d).model_dump(update={
+                d_obj = VerkaufDetailsPublic.model_validate(d, update={
                     "artikel_name": d.artikel.artikel_name if d.artikel else None,
                     "artikel_kurzname": d.artikel.kurzname if d.artikel else None,
                     "artikel_vk_preis": d.artikel.vk_preis if d.artikel else None,
