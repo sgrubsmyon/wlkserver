@@ -1,5 +1,6 @@
 from sqlmodel import Field, SQLModel, Relationship
 from sqlalchemy import DECIMAL, Column
+from sqlalchemy.orm import backref
 from datetime import datetime
 
 #######################
@@ -325,10 +326,20 @@ class Verkauf(VerkaufBase, table=True):
 
     # relationships
     # Self-referential relationships (original <-> storno)
-    # stornierter_verkauf: "Verkauf" = Relationship(
-    #     back_populates="storno", sa_relationship_kwargs={"remote_side": "verkauf.rechnungs_nr"}
+    # See https://github.com/fastapi/sqlmodel/issues/127 for backref usage and self-referential relationships in SQLModel
+    stornierter_verkauf: "Verkauf" = Relationship(
+        sa_relationship_kwargs=dict(
+            cascade="all",
+            backref=backref("storno", remote_side="Verkauf.rechnungs_nr")
+        )
+    )
+    # stornierender_verkauf: "Verkauf" = Relationship(
+    #     sa_relationship_kwargs=dict(
+    #         cascade="all",
+    #         backref=backref("verkauf", remote_side="Verkauf.rechnungs_nr")
+    #     )
     # )
-    # storno: list["Verkauf"] = Relationship(back_populates="stornierter_verkauf")
+
     verkauf_mwst: list["VerkaufMwst"] = Relationship(back_populates="verkauf")
     verkauf_details: list["VerkaufDetails"] = Relationship(back_populates="verkauf")
 
