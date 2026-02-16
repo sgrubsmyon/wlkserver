@@ -1,4 +1,5 @@
 from fastapi import FastAPI
+from fastapi.responses import FileResponse
 
 # from .dependencies import get_query_token, get_token_header
 # from .internal import admin
@@ -11,7 +12,11 @@ from .routers import (
 
 # app = FastAPI(dependencies=[Depends(get_query_token)])
 app = FastAPI()
+favicon_path = 'assets/favicon.gif'
 
+@app.get("/favicon.ico", include_in_schema=False)
+async def favicon():
+    return FileResponse(favicon_path)
 
 app.include_router(artikel.router)
 app.include_router(lieferant.router)
