@@ -42,6 +42,7 @@ def read_verkaeufe(
     include_mwst: bool = False,
     offset: int = 0,
     limit: Annotated[int, Query(le=100)] = 100,
+    desc: bool = False,
 ) -> List[dict]:
     selection = select(Verkauf)
     if since:
@@ -49,7 +50,7 @@ def read_verkaeufe(
     if until:
         selection = selection.where(Verkauf.verkaufsdatum <= datetime.fromisoformat(until))
     verkaeufe = session.exec(
-        selection.offset(offset).limit(limit).order_by(Verkauf.verkaufsdatum)
+        selection.offset(offset).limit(limit).order_by(Verkauf.verkaufsdatum.desc() if desc else Verkauf.verkaufsdatum)
     ).all()
     # return verkaeufe
 
