@@ -353,6 +353,7 @@ class VerkaufPublic(VerkaufBase):
 # For creating
 class VerkaufCreate(VerkaufBase):
     storno_von: int | None = None
+    verkauf_details: list["VerkaufDetailsCreate"] | None = None
 
 #########################
 
@@ -390,8 +391,6 @@ class VerkaufMwstCreate(VerkaufMwstBase):
 class VerkaufDetailsBase(SQLModel):
     position: int | None = Field(default=None) # , sa_column_kwargs={"unsigned": True}
     stueckzahl: int = Field(nullable=False, default=1) # sa_column_kwargs={"unsigned": True},
-    ges_preis: float = Field(sa_column=DECIMAL(precision=13, scale=2))
-    mwst_satz: float = Field(sa_column=DECIMAL(precision=6, scale=5))
 
 
 # The table model
@@ -401,6 +400,9 @@ class VerkaufDetails(VerkaufDetailsBase, table=True):
     # primary key
     vd_id: int | None = Field(default=None, primary_key=True)
 
+    ges_preis: float = Field(sa_column=DECIMAL(precision=13, scale=2))
+    mwst_satz: float = Field(sa_column=DECIMAL(precision=6, scale=5))
+    
     # foreign keys
     rechnungs_nr: int = Field(nullable=False, foreign_key="verkauf.rechnungs_nr") # sa_column_kwargs={"unsigned": True},
     artikel_id: int | None = Field(default=None, foreign_key="artikel.artikel_id") # sa_column_kwargs={"unsigned": True},
@@ -415,6 +417,8 @@ class VerkaufDetails(VerkaufDetailsBase, table=True):
 # For reading
 class VerkaufDetailsPublic(VerkaufDetailsBase):
     vd_id: int
+    ges_preis: float
+    mwst_satz: float
     rechnungs_nr: int
     artikel_id: int | None
     rabatt_id: int | None

@@ -5,6 +5,7 @@ from fastapi import APIRouter, HTTPException, Query
 from sqlmodel import select
 
 from ..models import (
+    Artikel,
     Verkauf,
     VerkaufPublic,
     VerkaufCreate,
@@ -98,30 +99,53 @@ def read_single_verkauf(
     return v_obj
 
 
-@router.post("/", response_model=dict)
-def create_verkauf(payload: dict, session: SessionDep):
-    base = VerkaufCreate.model_validate(payload)
-    new_v = Verkauf.model_validate(base)
+@router.post("/", response_model=VerkaufPublic)
+def create_verkauf(verkauf: VerkaufCreate, session: SessionDep):
+    # base = VerkaufCreate.model_validate(verkauf)
+    new_v = Verkauf.model_validate(verkauf)
     new_v.rechnungs_nr = None
     session.add(new_v)
     session.commit()
     session.refresh(new_v)
 
     # Add details if present
-    for d in payload.get("verkauf_details", []) or []:
+    # Within the loop over the details, also create the sums of mwst_netto and mwst_betrag per mwst_satz
+    mwst_summary = {} # for each mwst_satz, store the sum of mwst_netto and mwst_betrag
+    for d in verkauf.get("verkauf_details", []) or []:
         d_obj = VerkaufDetails.model_validate(d)
         d_obj.vd_id = None
         d_obj.rechnungs_nr = new_v.rechnungs_nr
+        # If position is not provided, set it to the next available position for this sale (max position + 1, or 1 if no details yet)
         if d_obj.position is None:
             q = select(VerkaufDetails).where(VerkaufDetails.rechnungs_nr == new_v.rechnungs_nr)
             existing = session.exec(q).all()
             d_obj.position = (max((e.position or 0) for e in existing) + 1) if existing else 1
+        # Find ges_preis and mwst_satz for the article of this detail, and add to mwst summary
+        if d_obj.artikel_id is not None:
+            artikel = session.get(Artikel, d_obj.artikel_id)
+            if artikel:
+                d_obj.mwst_satz = artikel.mwst_satz
+                d_obj.ges_preis = d_obj.stueckzahl * artikel.vk_preis
+        # If this detail is not an article, but a rabatt, we cannot determine mwst_satz and ges_preis from an article, so we require that these values are provided in the request (and validate them in the model)
+        # else:
+        #     if d_obj.mwst_satz is None or d_obj.ges_preis is None:
+        #         raise HTTPException(status_code=400, detail="For rabatt details, mwst_satz and ges_preis must be provided")
+        # Add to mwst summary
+        if d_obj.mwst_satz is not None and d_obj.ges_preis is not None:
+            if d_obj.mwst_satz not in mwst_summary:
+                mwst_summary[d_obj.mwst_satz] = {"mwst_netto": 0.0, "mwst_betrag": 0.0}
+            mwst_summary[d_obj.mwst_satz]["mwst_netto"] += d_obj.ges_preis / (1 + d_obj.mwst_satz)
+            mwst_summary[d_obj.mwst_satz]["mwst_betrag"] += mwst_summary[d_obj.mwst_satz]["mwst_netto"] * d_obj.mwst_satz
         session.add(d_obj)
 
-    # Add mwst if present
-    for m in payload.get("verkauf_mwst", []) or []:
-        m_obj = VerkaufMwst.model_validate(m)
-        m_obj.rechnungs_nr = new_v.rechnungs_nr
+    # Create VerkaufMwst objects from the summary
+    for mwst_satz, summary in mwst_summary.items():
+        m_obj = VerkaufMwst(
+            rechnungs_nr=new_v.rechnungs_nr,
+            mwst_satz=mwst_satz,
+            mwst_netto=summary["mwst_netto"],
+            mwst_betrag=summary["mwst_betrag"],
+        )
         session.add(m_obj)
 
     session.commit()
