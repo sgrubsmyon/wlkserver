@@ -205,6 +205,7 @@ class ArtikelPublic(ArtikelBase):
     lieferant_id: int
     produktgruppen_name: str
     lieferant_name: str
+    pfand_artikel_id: int | None
     pfand_wert: float | None
 
     von: datetime | None

@@ -24,7 +24,7 @@ def read_artikel(
     session: SessionDep, aktiv_only: bool = True,
     search_string: str = "",
     barcode: str = "", artikel_nr: str = "", artikel_name: str = "",
-    lieferant_id: int = 0,
+    lieferant_id: int = 0, produktgruppen_id: int = 0,
     offset: int = 0, limit: Annotated[int, Query(le=100)] = 100
     ) -> list[ArtikelPublic]:
     selection = select(Artikel).join(Produktgruppe).join(Lieferant)
@@ -50,6 +50,8 @@ def read_artikel(
         selection = selection.where(Artikel.artikel_nr.contains(artikel_nr))
     elif lieferant_id:
         selection = selection.where(Artikel.lieferant_id == lieferant_id)
+    elif produktgruppen_id:
+        selection = selection.where(Artikel.produktgruppen_id == produktgruppen_id)
     elif artikel_name:
         selection = selection.where(Artikel.artikel_name.contains(artikel_name) | Artikel.kurzname.contains(artikel_name))
     artikel = session.exec(
@@ -63,7 +65,11 @@ def read_artikel(
     for a in artikel:
         obj = ArtikelPublic.model_validate(a, update={
             "produktgruppen_name": a.produktgruppe.produktgruppen_name if a.produktgruppe else None,
-            "lieferant_name": a.lieferant.lieferant_name if a.lieferant else None
+            "lieferant_name": a.lieferant.lieferant_name if a.lieferant else None,
+            "pfand_artikel_id": a.produktgruppe.pfand.artikel_id if a.produktgruppe and a.produktgruppe.pfand else None,
+            "pfand_wert": a.produktgruppe.pfand.artikel.vk_preis \
+                if a.produktgruppe and a.produktgruppe.pfand and \
+                    a.produktgruppe.pfand.artikel else None
         })
         return_obj.append(obj)
     
@@ -78,6 +84,7 @@ def read_single_artikel(artikel_id: int, session: SessionDep) -> ArtikelPublic:
     artikel = ArtikelPublic.model_validate(artikel, update={
             "produktgruppen_name": artikel.produktgruppe.produktgruppen_name if artikel.produktgruppe else None,
             "lieferant_name": artikel.lieferant.lieferant_name if artikel.lieferant else None,
+            "pfand_artikel_id": artikel.produktgruppe.pfand.artikel_id if artikel.produktgruppe and artikel.produktgruppe.pfand else None,
             "pfand_wert": artikel.produktgruppe.pfand.artikel.vk_preis \
                 if artikel.produktgruppe and artikel.produktgruppe.pfand and \
                     artikel.produktgruppe.pfand.artikel else None
@@ -111,7 +118,11 @@ def create_artikel(artikel: ArtikelCreate, session: SessionDep):
     session.refresh(new_artikel)
     new_artikel = ArtikelPublic.model_validate(new_artikel, update={
         "produktgruppen_name": new_artikel.produktgruppe.produktgruppen_name if new_artikel.produktgruppe else None,
-        "lieferant_name": new_artikel.lieferant.lieferant_name if new_artikel.lieferant else None
+        "lieferant_name": new_artikel.lieferant.lieferant_name if new_artikel.lieferant else None,
+        "pfand_artikel_id": new_artikel.produktgruppe.pfand.artikel_id if new_artikel.produktgruppe and new_artikel.produktgruppe.pfand else None,
+        "pfand_wert": new_artikel.produktgruppe.pfand.artikel.vk_preis \
+            if new_artikel.produktgruppe and new_artikel.produktgruppe.pfand and \
+                new_artikel.produktgruppe.pfand.artikel else None
     })
     return new_artikel
 
@@ -172,7 +183,11 @@ def update_artikel(artikel_id: int, artikel: ArtikelUpdate, session: SessionDep)
         session.refresh(old_artikel)
         old_artikel = ArtikelPublic.model_validate(old_artikel, update={
             "produktgruppen_name": old_artikel.produktgruppe.produktgruppen_name if old_artikel.produktgruppe else None,
-            "lieferant_name": old_artikel.lieferant.lieferant_name if old_artikel.lieferant else None
+            "lieferant_name": old_artikel.lieferant.lieferant_name if old_artikel.lieferant else None,
+            "pfand_artikel_id": old_artikel.produktgruppe.pfand.artikel_id if old_artikel.produktgruppe and old_artikel.produktgruppe.pfand else None,
+            "pfand_wert": old_artikel.produktgruppe.pfand.artikel.vk_preis \
+                if old_artikel.produktgruppe and old_artikel.produktgruppe.pfand and \
+                    old_artikel.produktgruppe.pfand.artikel else None
         })
         return old_artikel
     
