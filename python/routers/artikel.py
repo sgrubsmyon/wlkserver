@@ -77,7 +77,10 @@ def read_single_artikel(artikel_id: int, session: SessionDep) -> ArtikelPublic:
         raise HTTPException(status_code=404, detail="Artikel not found")
     artikel = ArtikelPublic.model_validate(artikel, update={
             "produktgruppen_name": artikel.produktgruppe.produktgruppen_name if artikel.produktgruppe else None,
-            "lieferant_name": artikel.lieferant.lieferant_name if artikel.lieferant else None
+            "lieferant_name": artikel.lieferant.lieferant_name if artikel.lieferant else None,
+            "pfand_wert": artikel.produktgruppe.pfand.artikel.vk_preis \
+                if artikel.produktgruppe and artikel.produktgruppe.pfand and \
+                    artikel.produktgruppe.pfand.artikel else None
         })
     return artikel
 

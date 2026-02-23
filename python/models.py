@@ -84,7 +84,7 @@ class Pfand(SQLModel, table=True):
 class PfandPublic(SQLModel):
     pfand_id: int
     artikel_id: int
-    wert: float | None = None
+    wert: float | None
 
 
 #######################
@@ -205,10 +205,11 @@ class ArtikelPublic(ArtikelBase):
     lieferant_id: int
     produktgruppen_name: str
     lieferant_name: str
+    pfand_wert: float | None
 
-    von: datetime | None = Field()
-    bis: datetime | None = Field()
-    aktiv: bool = Field(nullable=False, default=True)
+    von: datetime | None
+    bis: datetime | None
+    aktiv: bool
 
 
 # For creating articles
@@ -382,7 +383,6 @@ class VerkaufMwstPublic(VerkaufMwstBase):
 
 # For creating
 class VerkaufMwstCreate(VerkaufMwstBase):
-    rechnungs_nr: int
     mwst_satz: float
 
 #########################
@@ -429,6 +429,5 @@ class VerkaufDetailsPublic(VerkaufDetailsBase):
 
 # For creating
 class VerkaufDetailsCreate(VerkaufDetailsBase):
-    rechnungs_nr: int
     artikel_id: int | None = None
     rabatt_id: int | None = None
