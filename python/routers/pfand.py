@@ -44,8 +44,9 @@ def read_pfands(
 
 
 @router.get("/{pfand_id}")
-def read_single_pfand(pfand_id: int, session: SessionDep) -> Pfand:
+def read_single_pfand(pfand_id: int, session: SessionDep) -> PfandPublic:
     pfand = session.get(Pfand, pfand_id)
     if not pfand:
         raise HTTPException(status_code=404, detail="Pfand not found")
+    pfand = PfandPublic.model_validate(pfand, update={"wert": pfand.artikel.vk_preis})
     return pfand
