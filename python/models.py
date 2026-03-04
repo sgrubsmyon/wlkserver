@@ -1,3 +1,5 @@
+from typing import Optional
+
 from sqlmodel import Field, SQLModel, Relationship
 from sqlalchemy import DECIMAL, Column
 from sqlalchemy.orm import backref
@@ -311,7 +313,6 @@ class RabattaktionUpdate(SQLModel):
 
 # The base model, shared by all
 class VerkaufBase(SQLModel):
-    verkaufsdatum: datetime = Field(nullable=False)
     ec_zahlung: bool = Field(nullable=False, default=False)
     kunde_gibt: float | None = Field(sa_column=DECIMAL(precision=13, scale=2), default=None)
 
@@ -319,6 +320,8 @@ class VerkaufBase(SQLModel):
 # The table model
 class Verkauf(VerkaufBase, table=True):
     __tablename__ = 'verkauf'
+
+    verkaufsdatum: datetime = Field(nullable=False)
 
     # primary key
     rechnungs_nr: int | None = Field(default=None, primary_key=True)
@@ -329,18 +332,13 @@ class Verkauf(VerkaufBase, table=True):
     # relationships
     # Self-referential relationships (original <-> storno)
     # See https://github.com/fastapi/sqlmodel/issues/127 for backref usage and self-referential relationships in SQLModel
-    stornierter_verkauf: "Verkauf" = Relationship(
+    stornierter_verkauf: Optional["Verkauf"] = Relationship(
+        back_populates="stornierender_verkauf",
         sa_relationship_kwargs=dict(
-            cascade="all",
-            backref=backref("storno", remote_side="Verkauf.rechnungs_nr")
+            remote_side="Verkauf.rechnungs_nr"
         )
     )
-    # stornierender_verkauf: "Verkauf" = Relationship(
-    #     sa_relationship_kwargs=dict(
-    #         cascade="all",
-    #         backref=backref("verkauf", remote_side="Verkauf.rechnungs_nr")
-    #     )
-    # )
+    stornierender_verkauf: Optional["Verkauf"] = Relationship(back_populates="stornierter_verkauf")
 
     verkauf_mwst: list["VerkaufMwst"] = Relationship(back_populates="verkauf")
     verkauf_details: list["VerkaufDetails"] = Relationship(back_populates="verkauf")
@@ -349,6 +347,7 @@ class Verkauf(VerkaufBase, table=True):
 # For reading
 class VerkaufPublic(VerkaufBase):
     rechnungs_nr: int
+    verkaufsdatum: datetime
     storno_von: int | None
 
 
