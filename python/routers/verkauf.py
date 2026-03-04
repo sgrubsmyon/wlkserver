@@ -39,6 +39,7 @@ def read_verkaeufe(
     session: SessionDep,
     since: Optional[str] = None,
     until: Optional[str] = None,
+    only_storno: bool = False,
     include_details: bool = False,
     include_mwst: bool = False,
     offset: int = 0,
@@ -50,6 +51,8 @@ def read_verkaeufe(
         selection = selection.where(Verkauf.verkaufsdatum >= datetime.fromisoformat(since))
     if until:
         selection = selection.where(Verkauf.verkaufsdatum <= datetime.fromisoformat(until))
+    if only_storno:
+        selection = selection.where(Verkauf.storno_von.is_not(None))
     verkaeufe = session.exec(
         selection.offset(offset).limit(limit).order_by(Verkauf.verkaufsdatum.desc() if desc else Verkauf.verkaufsdatum)
     ).all()
@@ -88,7 +91,7 @@ def read_single_verkauf(
     v_obj = VerkaufPublic.model_validate(v).model_dump()
     if include_details:
         v_obj["verkauf_details"] = [
-            VerkaufDetailsPublic.model_validate(d).model_dump(update={
+            VerkaufDetailsPublic.model_validate(d, update={
                 "artikel_name": d.artikel.artikel_name if d.artikel else None,
                 "artikel_kurzname": d.artikel.kurzname if d.artikel else None,
                 "artikel_vk_preis": d.artikel.vk_preis if d.artikel else None,
@@ -104,6 +107,7 @@ def create_verkauf(verkauf: VerkaufCreate, session: SessionDep):
     # base = VerkaufCreate.model_validate(verkauf)
     new_v = Verkauf.model_validate(verkauf)
     new_v.rechnungs_nr = None
+    new_v.verkaufsdatum = datetime.now()
     session.add(new_v)
     session.commit()
     session.refresh(new_v)
