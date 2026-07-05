@@ -403,15 +403,42 @@ This document outlines the comprehensive implementation plan to complete the Fas
 - Foreign key constraint validation
 - Add validation for all Decimal fields to prevent negative values where inappropriate
 
+### 7.4 Authentication and Authorization
+**Priority**: 🔴 HIGH - Essential for security
+
+**Rationale**: Some operations (like VAT rate and deposit item management) should be restricted to authorized administrators only.
+
+**Required Implementation:**
+- Add authentication middleware for FastAPI
+- Add authorization system with user roles (admin vs. regular user)
+- Protect sensitive endpoints (MwSt POST/PUT/PATCH/DELETE, Pfand POST/PUT/PATCH/DELETE)
+- Add user management endpoints for admin users
+- Implement JWT or session-based authentication
+
+**Files to create:**
+- `python/routers/auth.py` - Authentication endpoints (login, logout, token refresh)
+- `python/dependencies.py` - Dependency for authorization checks
+- `python/models.py` - Add User model if needed for authentication
+- `python/utils/auth.py` - Authentication utilities (password hashing, token generation)
+
+**Security considerations:**
+- Use secure password hashing (bcrypt or similar)
+- Implement proper token expiration
+- Add rate limiting for authentication endpoints
+- Use HTTPS in production
+
+**Java reference**: Check existing authentication in Java POS at `../git/src/org/weltladen_bonn/pos/DBConnection.java` (password dialog)
+
 ---
 
 ## Implementation Priority Matrix
 
 | Priority | Category | Items | Estimated Effort | Status |
 |----------|----------|-------|------------------|--------|
-| 🔴 HIGH | Core CRUD | Complete MwSt, Pfand CRUD; Add Verkauf update | 2-3 days | ⏳ TODO |
+| 🔴 HIGH | Core CRUD | Complete MwSt, Pfand CRUD with auth; Add Verkauf update | 2-3 days | ⏳ TODO |
 | 🔴 HIGH | Core Tables | Kassenstand, Gutschein, Anzahlung | 3-4 days | ⏳ TODO |
 | 🔴 HIGH | Validation | Comprehensive input validation | 1-2 days | ⏳ TODO |
+| 🔴 HIGH | Security | Authentication and authorization system | 2-3 days | ⏳ TODO |
 | 🟡 MEDIUM | Accounting | Abrechnung Tag/Monat/Jahr | 3-5 days | ⏳ TODO |
 | 🟡 MEDIUM | Business Logic | VAT calculation, sale creation | 2-3 days | ⏳ TODO |
 | 🟡 MEDIUM | TSE | TSE transaction support | 2-3 days | ⏳ TODO |
@@ -424,10 +451,14 @@ This document outlines the comprehensive implementation plan to complete the Fas
 
 ### Week 1: Foundation Completion
 1. **Complete existing CRUD** (Phase 1)
-   - Add missing operations for MwSt and Pfand
+   - Add admin-only operations for MwSt and Pfand with authorization
    - Add Verkauf update functionality
    - Add dedicated endpoints for related tables
 2. **Add core validation** across all existing endpoints
+3. **Implement authentication/authorization** (Phase 7.4)
+   - Add authentication middleware
+   - Add authorization system with user roles
+   - Protect sensitive endpoints
 
 ### Week 2: Core Business Tables
 1. **Kassenstand** - Cash register balance management
@@ -535,6 +566,7 @@ python/
 │   ├── pfand.py
 │   ├── rabattaktion.py
 │   ├── verkauf.py
+│   ├── auth.py                # NEW: Authentication endpoints
 │   ├── verkauf_mwst.py        # NEW: Dedicated endpoints
 │   ├── verkauf_details.py     # NEW: Dedicated endpoints
 │   ├── kassenstand.py         # NEW: Cash register
@@ -549,6 +581,7 @@ python/
 │   └── import_export.py        # NEW: Data import/export
 ├── utils/                     # Utility functions
 │   ├── __init__.py
+│   ├── auth.py               # NEW: Authentication utilities
 │   ├── csv_import.py          # CSV import utilities
 │   ├── csv_export.py          # CSV export utilities
 │   └── validation.py          # Input validation utilities

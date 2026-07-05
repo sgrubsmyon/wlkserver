@@ -47,19 +47,21 @@
 
 ### Phase 1: Missing CRUD for Existing Models
 
-[ ] **MwSt CRUD Completion** - `python/routers/mwst.py`
-- [ ] POST /mwst - Create new VAT rate with validation (mwst_satz between 0 and 1)
-- [ ] PUT/PATCH /mwst/{mwst_id} - Update VAT rate
-- [ ] DELETE /mwst/{mwst_id} - Delete VAT rate (with constraints check)
+[ ] **MwSt Admin-Only CRUD Completion** - `python/routers/mwst.py`
+- [ ] POST /mwst - Create new VAT rate with validation (mwst_satz between 0 and 1) - **ADMIN ONLY**
+- [ ] PUT/PATCH /mwst/{mwst_id} - Update VAT rate - **ADMIN ONLY**
+- [ ] DELETE /mwst/{mwst_id} - Delete VAT rate (with constraints check) - **ADMIN ONLY**
 - [ ] Add business validation: prevent deletion if used by produktgruppe
+- [ ] Add authentication/authorization dependency to protect admin endpoints
 - [ ] See reference: `../git/src/org/weltladen_bonn/pos/kasse/RechnungsGrundlage.java` lines 74-94 (retrieveVATs method)
 
-[ ] **Pfand CRUD Completion** - `python/routers/pfand.py`
-- [ ] POST /pfand - Create new deposit item with artikel_id validation
-- [ ] PUT/PATCH /pfand/{pfand_id} - Update deposit item
-- [ ] DELETE /pfand/{pfand_id} - Delete deposit item (with constraints check)
+[ ] **Pfand Admin-Only CRUD Completion** - `python/routers/pfand.py`
+- [ ] POST /pfand - Create new deposit item with artikel_id validation - **ADMIN ONLY**
+- [ ] PUT/PATCH /pfand/{pfand_id} - Update deposit item - **ADMIN ONLY**
+- [ ] DELETE /pfand/{pfand_id} - Delete deposit item (with constraints check) - **ADMIN ONLY**
 - [ ] Add business validation: ensure artikel_id references existing article
 - [ ] Add wert (value) calculation from article.vk_preis
+- [ ] Add authentication/authorization dependency to protect admin endpoints
 
 [ ] **Verkauf CRUD Completion** - `python/routers/verkauf.py`
 - [ ] PATCH /verkauf/{rechnungs_nr} - Update sale with restrictions
@@ -322,6 +324,19 @@
 - [ ] Add business rule validation (e.g., prevent future dates)
 - [ ] Add foreign key constraint validation
 - [ ] Add validation for all Decimal fields to prevent negative values where inappropriate
+
+[ ] **Authentication and Authorization System** - **🔴 HIGH PRIORITY**
+- [ ] Create `python/routers/auth.py` - Authentication endpoints (login, logout, token refresh)
+- [ ] Create `python/dependencies.py` - Authorization dependencies
+- [ ] Create `python/utils/auth.py` - Authentication utilities (password hashing, token generation)
+- [ ] Add User model to `python/models.py` for authentication
+- [ ] Implement JWT or session-based authentication
+- [ ] Add role-based authorization (admin vs. regular user)
+- [ ] Protect sensitive endpoints: MwSt POST/PUT/PATCH/DELETE, Pfand POST/PUT/PATCH/DELETE
+- [ ] Add secure password hashing (bcrypt or similar)
+- [ ] Implement proper token expiration
+- [ ] Add rate limiting for authentication endpoints
+- [ ] See reference: `../git/src/org/weltladen_bonn/pos/DBConnection.java` (password dialog)
 - [ ] Add custom validators for business-specific constraints
 
 ---
@@ -439,8 +454,9 @@
 
 ### Endpoints Status  
 - **Existing Routers**: 6 routers with partial CRUD
-- **Routers Needing Completion**: 2 routers (mwst, pfand) need full CRUD
-- **Routers to Create**: ~15 new routers for missing tables
+- **Routers Needing Completion**: 2 routers (mwst, pfand) need admin-only CRUD with authentication
+- **Routers to Create**: ~15 new routers for missing tables + 1 auth router
+- **Security**: Authentication and authorization system needed
 
 ### Business Logic Status
 - **Java POS Classes**: 107 Java files in `../git/src/org/weltladen_bonn/pos/`
@@ -456,14 +472,15 @@
 
 ## 🚀 Recommended Next Steps
 
-1. **Start with Phase 1** - Complete existing CRUD operations (2-3 days)
-2. **Proceed to Phase 2** - Add core business tables, starting with Kassenstand (3-4 days)
-3. **Continue with Phase 3** - Add accounting system (3-5 days)
-4. **Add supporting features** - Zaehlprotokoll, Bestellung, TSE (2-3 days)
-5. **Port business logic** - VAT calculator, sale workflow, storno logic (2-3 days)
-6. **Add utilities** - Import/export, validation, search (1-2 days)
-7. **Comprehensive testing** - Achieve 80%+ coverage (ongoing)
-8. **Documentation** - Complete all documentation (ongoing)
+1. **Start with Phase 1** - Complete existing CRUD operations for MwSt and Pfand with admin authorization (2-3 days)
+2. **Implement Authentication** - Add authentication and authorization system (2-3 days)
+3. **Proceed to Phase 2** - Add core business tables, starting with Kassenstand (3-4 days)
+4. **Continue with Phase 3** - Add accounting system (3-5 days)
+5. **Add supporting features** - Zaehlprotokoll, Bestellung, TSE (2-3 days)
+6. **Port business logic** - VAT calculator, sale workflow, storno logic (2-3 days)
+7. **Add utilities** - Import/export, validation, search (1-2 days)
+8. **Comprehensive testing** - Achieve 80%+ coverage (ongoing)
+9. **Documentation** - Complete all documentation (ongoing)
 
 ---
 
