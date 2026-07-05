@@ -6,15 +6,16 @@ from sqlmodel import select
 
 from ..models import (
     Artikel,
+    Rabattaktion,
     Verkauf,
     VerkaufPublic,
     VerkaufCreate,
     VerkaufMwst,
     VerkaufMwstPublic,
-    VerkaufMwstCreate,
+    # VerkaufMwstCreate,
     VerkaufDetails,
     VerkaufDetailsPublic,
-    VerkaufDetailsCreate,
+    # VerkaufDetailsCreate,
 )
 from ..session import SessionDep
 
@@ -23,15 +24,6 @@ router = APIRouter(
     tags=["verkauf"],
     responses={404: {"description": "Not found"}},
 )
-
-
-# class VerkaufPayload(BaseModel):
-#     verkaufsdatum: datetime
-#     ec_zahlung: bool = False
-#     kunde_gibt: Optional[float] = None
-#     storno_von: Optional[int] = None
-#     verkauf_details: Optional[List[VerkaufDetailsCreate]] = None
-#     verkauf_mwst: Optional[List[VerkaufMwstCreate]] = None
 
 
 @router.get("/")
@@ -119,21 +111,36 @@ def create_verkauf(verkauf: VerkaufCreate, session: SessionDep):
         d_obj = VerkaufDetails.model_validate(d)
         d_obj.vd_id = None
         d_obj.rechnungs_nr = new_v.rechnungs_nr
-        # If position is not provided, set it to the next available position for this sale (max position + 1, or 1 if no details yet)
-        if d_obj.position is None:
-            q = select(VerkaufDetails).where(VerkaufDetails.rechnungs_nr == new_v.rechnungs_nr)
-            existing = session.exec(q).all()
-            d_obj.position = (max((e.position or 0) for e in existing) + 1) if existing else 1
+        
+        # # If position is not provided, set it to the next available position for this sale (max position + 1, or 1 if no details yet)
+        # No: A position of None (or NULL in SQL) has a meaning (it means that the table acts as a modifier to the last table row with a position not NULL, which is used for rabatt rows that refer to the previous article row), so we should not auto-assign a position if it is None
+        # if d_obj.position is None:
+        #     q = select(VerkaufDetails).where(VerkaufDetails.rechnungs_nr == new_v.rechnungs_nr)
+        #     existing = session.exec(q).all()
+        #     d_obj.position = (max((e.position or 0) for e in existing) + 1) if existing else 1
+        
         # Find ges_preis and mwst_satz for the article of this detail, and add to mwst summary
         if d_obj.artikel_id is not None:
             artikel = session.get(Artikel, d_obj.artikel_id)
-            if artikel:
+            if artikel and artikel.mwst_satz is not None:
                 d_obj.mwst_satz = artikel.mwst_satz
+            if artikel and not artikel.variabler_preis and artikel.vk_preis is not None:
                 d_obj.ges_preis = d_obj.stueckzahl * artikel.vk_preis
+        elif d_obj.rabatt_id is not None:
+            rabattaktion = session.get(Rabattaktion, d_obj.rabatt_id)
+            # TODO Continue here
+            # if d_obj.mwst_satz is None or d_obj.ges_preis is None:
+            #     raise HTTPException(status_code=400, detail="For rabatt details, mwst_satz and ges_preis must be provided")
         # If this detail is not an article, but a rabatt, we cannot determine mwst_satz and ges_preis from an article, so we require that these values are provided in the request (and validate them in the model)
+        # If this detail is an article with variable price, we also require that ges_preis is provided in the request
+        # If this detail is an article and has no mwst_satz (e.g. in case of discount/Rabatt), we also require that mwst_satz is provided in the request
         # else:
         #     if d_obj.mwst_satz is None or d_obj.ges_preis is None:
         #         raise HTTPException(status_code=400, detail="For rabatt details, mwst_satz and ges_preis must be provided")
+
+        # TODO Add transaction to the Gutschein table if article_id is 6 (Gutschein) or 7 (Gutscheineinlösung)
+        # TODO IDs 6 and 7 need to be defined somehwere centrally, e.g. as constants in the Artikel model, and not hardcoded here
+
         # Add to mwst summary
         if d_obj.mwst_satz is not None and d_obj.ges_preis is not None:
             if d_obj.mwst_satz not in mwst_summary:
