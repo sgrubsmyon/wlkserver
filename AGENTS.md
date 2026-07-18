@@ -17,7 +17,7 @@ The shop's POS system is written in Java and can be found in `../git/src/org/wel
   3. **Missing structure:** There is no separation of concern at all in the Java POS code. Java classes responsible for UI views also contain backend code reading or writing to the database.
   4. **Lack of possibility for automation:** Because the business logic is tied to the Java Swing UI classes, transactions to the DB can only be done via opening the app and using mouse and keyboard to fill out forms in the app. It is not possible to trigger DB transactions from a script and automate DB edits, e.g. for automated read-ins of product price lists and automatic updates of the prices in the DB.
 
-However, since all the app data is stored in a MySQL database, it is possible to interact with MySQL directly. However, instead of using the MySQL API, it would be more secure and more convenient to create a new API for interacting with the DB that already contains all the business logic. This API could solve all the problems at once.
+However, since all the app data is stored in a MySQL/MariaDB database, it is possible to interact with MySQL/MariaDB directly. But instead of using the MySQL API, it would be more secure and more convenient to create a new API for interacting with the DB that already contains all the business logic. This API could solve all the problems at once.
 
 ## What we want to build
 
@@ -27,7 +27,7 @@ The plan is the following:
   2. When the backend API is finished, we create a *client* application that uses the API to interact with the DB. There shall be separation of concern as much as possible: All business logic shall go into the server backend (as much as possible) and the client application shall only contain the GUI to interact with the server. We use SvelteKit for the frontend client, if possible with the option to also use SvelteNative for mobile apps.
   3. The API can also be used by a script, e.g. in Python, that executes tasks automatically (e.g. running regularly as a cron job). FOr example, a script could regularly download product lists from supplier websites and feed in new products or update prices automatically in the POS DB.
 
-The database structure can be found in the SQL files in ../git/mysql/.
+The database structure can be found in the SQL files in `../git/mysql/`.
 
 ## What was done already
 
@@ -43,4 +43,4 @@ I want us to embark on this journey with a fun and positive mindset. We do this 
 
 You are an experienced Python backend developer (proficient in FastAPI) and TypeScript frontend developer (focused on using SvelteKit).
 
-Please try to follow coding styles already used in the codebase.
+Please try to follow coding styles already used in the codebase, unless they are clearly antipatterns or lead to security or performance problems.
