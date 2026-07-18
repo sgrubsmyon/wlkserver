@@ -55,14 +55,28 @@ This document outlines the comprehensive implementation plan to complete the Fas
 **Current**: Create, Read, Storno in `python/routers/verkauf.py`  
 **Target**: Full CRUD with update restrictions
 
+>>> NO! We don't want updates to entries in the verkauf table to ever happen!
+>>> This is important to ensure bookkeeping integrity of the data.
+>>> Create, read and delete (Storno) endpoints are enough. Updates happen via
+>>> Storno, then creating a new version. The business logic is complete with
+>>> this CRD pattern (or actually CRU since Storno updates the table) and we
+>>> do not want full CRUD here because it makes no sense.
+
 **Files to modify:**
 - `python/routers/verkauf.py` - Add PATCH endpoint
 - Add validation: prevent updates to completed/storniert sales
 - Add business logic for sale modification constraints
 
 ### 1.4 Dedicated Endpoints for Related Tables
-**Current**: Handled within main entity endpoints  
+**Current**: Handled within main entity endpoints
 **Target**: Separate endpoints for better API design
+
+>>> NO! It makes no sense to have separate CRUD operations for these related tables.
+>>> We do not ever want to create or delete entries in `verkauf_mwst` or `verkauf_details`
+>>> without also making an entry in `verkauf`. So modifying `verkauf_mwst` and `verkauf_details`
+>>> shall happen only through modifying `verkauf`, which is why the API changes these tables
+>>> only as "side-effects" of the `python/routers/verkauf.py` endpoints. Better to keep
+>>> things as-is.
 
 **Files to create:**
 - `python/routers/verkauf_mwst.py` - CRUD for sale VAT entries
