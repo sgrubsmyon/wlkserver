@@ -4,6 +4,8 @@
 
 This document outlines the comprehensive implementation plan to complete the FastAPI backend for the Weltladenkasse POS system. The goal is to port all business logic from the existing Java Swing POS application (`../git/src/org/weltladen_bonn/pos/`) to the new Python FastAPI backend.
 
+**Design principle**: The API must respect bookkeeping integrity and the SQL grants in `../git/mysql/grants.sql`. Where the SQL user (`mitarbeiter`) has no UPDATE or DELETE grant on a table, the API does not expose update or delete endpoints for it. Corrections are done by adding new entries (e.g. Storno), not by modifying existing ones.
+
 ## Current Status Summary
 
 ### ✅ Already Implemented
@@ -13,7 +15,7 @@ This document outlines the comprehensive implementation plan to complete the Fas
 - **API Structure**: Clean FastAPI structure with proper routing
 
 ### 🎯 What Needs to be Done
-- Complete missing CRUD operations for existing models
+- Complete missing endpoints for existing models (CR, CRU or CRD per table, see Phases 1-4)
 - Add missing database table models and endpoints
 - Port business logic from Java POS classes
 - Add validation, security, and error handling
@@ -51,36 +53,16 @@ This document outlines the comprehensive implementation plan to complete the Fas
 
 **Java reference**: Deposit logic in various files in `../git/src/org/weltladen_bonn/pos/`
 
-### 1.3 Verkauf (Sale) - Add Update Functionality
+### 1.3 Verkauf (Sale) - No Update Functionality (By Design)
 **Current**: Create, Read, Storno in `python/routers/verkauf.py`  
-**Target**: Full CRUD with update restrictions
+**Target**: Keep as-is. **No update endpoint for the `verkauf` table will ever be added.**
 
->>> NO! We don't want updates to entries in the verkauf table to ever happen!
->>> This is important to ensure bookkeeping integrity of the data.
->>> Create, read and delete (Storno) endpoints are enough. Updates happen via
->>> Storno, then creating a new version. The business logic is complete with
->>> this CRD pattern (or actually CRU since Storno updates the table) and we
->>> do not want full CRUD here because it makes no sense.
+**Rationale**: Bookkeeping integrity requires that entries in the `verkauf` table are immutable once created. Corrections are made by performing a Storno (reversing entry via `POST /verkauf/{rechnungs_nr}/storno`, which creates a new sale referencing the original via `storno_von`) and, if needed, by creating a new corrected sale afterwards. This CR + Storno pattern is complete; a full CRUD would make no sense here and would endanger the consistency of the books.
 
-**Files to modify:**
-- `python/routers/verkauf.py` - Add PATCH endpoint
-- Add validation: prevent updates to completed/storniert sales
-- Add business logic for sale modification constraints
+**Files to modify:** None. (The Storno logic itself is enhanced in Phase 6.3 without changing the endpoint surface.)
 
-### 1.4 Dedicated Endpoints for Related Tables
-**Current**: Handled within main entity endpoints
-**Target**: Separate endpoints for better API design
-
->>> NO! It makes no sense to have separate CRUD operations for these related tables.
->>> We do not ever want to create or delete entries in `verkauf_mwst` or `verkauf_details`
->>> without also making an entry in `verkauf`. So modifying `verkauf_mwst` and `verkauf_details`
->>> shall happen only through modifying `verkauf`, which is why the API changes these tables
->>> only as "side-effects" of the `python/routers/verkauf.py` endpoints. Better to keep
->>> things as-is.
-
-**Files to create:**
-- `python/routers/verkauf_mwst.py` - CRUD for sale VAT entries
-- `python/routers/verkauf_details.py` - CRUD for sale details
+### 1.4 Related Tables: No Dedicated Endpoints
+**Decision**: There will be **no separate endpoints** for `verkauf_mwst` and `verkauf_details`. Entries in these tables must always exist together with an entry in `verkauf`, so they are modified exclusively as "side-effects" of the `python/routers/verkauf.py` endpoints (sale creation, storno). No changes needed - keep things as they are.
 
 ---
 
@@ -100,12 +82,10 @@ This document outlines the comprehensive implementation plan to complete the Fas
 - rechnungs_nr (FK to verkauf, nullable)
 - kommentar (VARCHAR(70))
 
-**Required endpoints:**
+**Required endpoints (CR only - no update, no delete; the SQL user has only INSERT grant on `kassenstand`):**
 - GET /kassenstand - List cash register balances with filtering, we need a filter "rechnungen=true|false" that shows rechnungen (default false, rechnungen not shown, which means there is a "WHERE manuell = TRUE" filter on the query)
 - GET /kassenstand/{id} - Get single entry
 - POST /kassenstand - Create new cash register entry
-- PATCH /kassenstand/{id} - Update entry (with restrictions)
->>> No, we do not want to update the entries in the Kassenstand table, actually the SQL user does not even have UPDATE grant, only INSERT
 - GET /kassenstand/aktuell - Get current cash register balance
 
 **Business logic from Java:**
@@ -117,8 +97,7 @@ This document outlines the comprehensive implementation plan to complete the Fas
 
 **Files to create:**
 - `python/models.py` - Add Kassenstand models
-- `python/routers/kassenstand.py` - All CRUD endpoints       
->>> No, only CR, no U and no D
+- `python/routers/kassenstand.py` - Create + Read endpoints (CR, no U and no D)
 - `tests/test_kassenstand.py` - Tests for kassenstand functionality
 
 ### 2.2 Gutschein (Voucher/Gift Certificate)
@@ -134,11 +113,11 @@ This document outlines the comprehensive implementation plan to complete the Fas
 - einloesung_in_vd_id (FK to verkauf_details, nullable)
 - restbetrag (DECIMAL(13,2), not null)
 
-**Required endpoints:**
+**Required endpoints (CR only - no update, no delete; the SQL user has only INSERT grant on `gutschein`):**
 - GET /gutschein - List vouchers with filtering
 - GET /gutschein/{id} - Get single voucher
 - POST /gutschein - Create new voucher
-- POST /gutschein/{id}/einloesen - Redeem voucher (link to sale detail)
+- POST /gutschein/{id}/einloesen - Redeem voucher (link to sale detail; technically an INSERT in SQL, not a delete)
 - GET /gutschein/ausstehend - List outstanding vouchers
 - GET /gutschein/eingeloest - List redeemed vouchers
 
@@ -149,8 +128,7 @@ This document outlines the comprehensive implementation plan to complete the Fas
 
 **Files to create:**
 - `python/models.py` - Add Gutschein models
-- `python/routers/gutschein.py` - All CRUD endpoints + redemption logic
->>> Also here: No, no CRUD, only CR, no update, no delete (if you will, you can see voucher redemption (Gutschein einlösen) as delete operation, but it is an INSERT in SQL)
+- `python/routers/gutschein.py` - Create + Read endpoints + redemption logic (no update, no delete)
 
 ### 2.3 Anzahlung (Deposit/Installment Payment)
 **Priority**: 🟡 MEDIUM - Important for installment sales
@@ -171,11 +149,11 @@ This document outlines the comprehensive implementation plan to complete the Fas
 - vd_id (FK to verkauf_details, not null)
 - ges_preis (DECIMAL(13,2), not null)
 
-**Required endpoints:**
+**Required endpoints (CR only - no update, no delete; the SQL user has only INSERT grants on `anzahlung*`):**
 - GET /anzahlung - List installments
 - GET /anzahlung/{id} - Get single installment
 - POST /anzahlung - Create new installment
-- POST /anzahlung/{id}/aufloesen - Resolve installment
+- POST /anzahlung/{id}/aufloesen - Resolve installment (technically an INSERT in SQL, not a delete)
 - GET /anzahlung/offen - List open installments
 - GET /anzahlung/aufgeloest - List resolved installments
 
@@ -186,8 +164,7 @@ This document outlines the comprehensive implementation plan to complete the Fas
 
 **Files to create:**
 - `python/models.py` - Add Anzahlung and AnzahlungDetails models
-- `python/routers/anzahlung.py` - All CRUD endpoints + resolution logic
->>> No, no CRUD, only CR, no update or delete (if you will, you can consider AnzahlungAuflösung as a delete operation, but technically, it's an insert in SQL)
+- `python/routers/anzahlung.py` - Create + Read endpoints + resolution logic (no update, no delete)
 
 ---
 
@@ -201,24 +178,21 @@ This document outlines the comprehensive implementation plan to complete the Fas
 - `abrechnung_tag_mwst` (lines 194-201 in `../git/mysql/generateDB.sql`)
 - `abrechnung_tag_tse` (lines 202-214 in `../git/mysql/generateDB.sql`)
 
-**Required endpoints:**
+**Required endpoints (CR only - no update, no delete; the SQL user has only INSERT grants on `abrechnung_tag*`):**
 - GET /abrechnung/tag - List daily settlements
 - GET /abrechnung/tag/{id} - Get single daily settlement
-- POST /abrechnung/tag - Create daily settlement
+- POST /abrechnung/tag - Create daily settlement. This single endpoint performs the complete Tagesabschluss (aggregating the day's sales, VAT aggregation, updating kassenstand, running the automatic incremental TSE export, linking counting protocols) - there is no separate "finalize" step.
 - GET /abrechnung/tag/offen - Check for incomplete daily settlements
-- POST /abrechnung/tag/{id}/abschliessen - Finalize daily settlement
->>> I don't understand `POST /abrechnung/tag/{id}/abschliessen`, `POST /abrechnung/tag` is
->>> already doing the Tagesabschluss
 
 **Business logic from Java:**
-- `../git/src/org/weltladen_bonn/pos/kasse/AbrechnungenTag.java` - Daily settlement logic
+- `../git/src/org/weltladen_bonn/pos/kasse/AbrechnungenTag.java` - Daily settlement logic (incl. `exportTSELog()` for the automatic TSE export)
 - `../git/src/org/weltladen_bonn/pos/kasse/Abrechnungen.java` - Base settlement functionality
 - VAT aggregation and reporting
-- TSE integration
+- TSE integration (see Phase 5.1: the Tagesabschluss triggers a partial TSE export by signature counter, with fallback by TX number)
 
 **Files to create:**
 - `python/models.py` - Add AbrechnungTag, AbrechnungTagMwst, AbrechnungTagTse models
-- `python/routers/abrechnung_tag.py` - All CRUD endpoints
+- `python/routers/abrechnung_tag.py` - Create + Read endpoints
 
 ### 3.2 Abrechnung Monat (Monthly Settlement)
 **Priority**: 🟡 MEDIUM - For monthly accounting
@@ -227,29 +201,21 @@ This document outlines the comprehensive implementation plan to complete the Fas
 - `abrechnung_monat` (lines 242-250 in `../git/mysql/generateDB.sql`)
 - `abrechnung_monat_mwst` (lines 251-258 in `../git/mysql/generateDB.sql`)
 
-**Required endpoints:**
+**Required endpoints (at most CRD - no updates, since the SQL user has no UPDATE grant; see note on the DELETE grant below):**
 - GET /abrechnung/monat - List monthly settlements
 - GET /abrechnung/monat/{id} - Get single monthly settlement
-- POST /abrechnung/monat - Create monthly settlement (from daily settlements) 
->>> Perhaps this API endpoint is not even needed. So far, in the Java POS,
->>> AbrechnungMonat is not created from user initiative, but automatically
->>> (when user opens POS software, it checks whether new months have started/passed
->>> that do not yet have a monthly settlement and if so, they are created automatically,
->>> so user does not need to interact with this. But of course, the API itself does not
->>> do things on its own. It just reacts to requests, so maybe this endpoint is still
->>> needed and needs to be activated from an external process, e.g. a cron job on the
->>> server that opens this API endpoint. Or any time the POS GUI is opened, it checks
->>> in the background if a new AbrechnungMonat must be done (like in the old Java POS).
->>> Maybe an extra API endpoint `GET /abrechnung/monat/offen - Check for incomplete monthly settlements`
->>> would be good that returns the months that have already passed, but do not yet have a
->>> AbrechnungMonat.
+- POST /abrechnung/monat - Create monthly settlement (from daily settlements). If a settlement for the month already exists, it is deleted first and recreated (mirrors the Java behavior, see note below).
+- GET /abrechnung/monat/offen - Check for incomplete monthly settlements: returns the months that have already passed but do not yet have an AbrechnungMonat
+
+**Note - not user-initiated**: In the Java POS, AbrechnungMonat is not created from user initiative but automatically: when the user opens the POS software, it checks whether new months have started/passed that do not yet have a monthly settlement and creates them automatically. The API itself does not act on its own, so this endpoint is meant to be called by:
+- a cron job on the server, or
+- the POS GUI in the background at startup (like the old Java POS), which can use `GET /abrechnung/monat/offen` to determine whether anything is due.
+
+**Note - DELETE grant**: The SQL user has DELETE grant on `kasse.abrechnung_monat` (and `abrechnung_monat_mwst`). Checked in the Java code: `AbrechnungenTag.deleteAbrechnungIfNeedBe()` (lines 1004-1006, 1322 in `AbrechnungenTag.java`) deletes an existing monthly/yearly settlement for a period before recreating it (i.e. redoing a settlement, e.g. after a correction). This is why the DELETE grant exists. The API therefore only needs DELETE as an internal step of re-running `POST /abrechnung/monat` (delete existing + recreate, in one transaction), not as a standalone endpoint.
 
 **Files to create:**
 - `python/models.py` - Add AbrechnungMonat, AbrechnungMonatMwst models
-- `python/routers/abrechnung_monat.py` - All CRUD endpoints
->>> In `../git/mysql/grants.sql`, I see that the SQL user has DELETE grant on
->>> `kasse.abrechnung_monat`. I don't remember why that is needed, so it should be checked.
->>> Anyway, updates to the SQL table are not allowed, so it should be at most CRD, not full CRUD.
+- `python/routers/abrechnung_monat.py` - Create + Read endpoints (+ internal delete-and-recreate)
 
 ### 3.3 Abrechnung Jahr (Yearly Settlement)
 **Priority**: 🟡 LOW - For yearly accounting
@@ -258,22 +224,19 @@ This document outlines the comprehensive implementation plan to complete the Fas
 - `abrechnung_jahr` (lines 269-277 in `../git/mysql/generateDB.sql`)
 - `abrechnung_jahr_mwst` (lines 278-285 in `../git/mysql/generateDB.sql`)
 
-**Required endpoints:**
+**Required endpoints (at most CRD - no updates, since the SQL user has no UPDATE grant; see note on the DELETE grant below):**
 - GET /abrechnung/jahr - List yearly settlements
 - GET /abrechnung/jahr/{id} - Get single yearly settlement
-- POST /abrechnung/jahr - Create yearly settlement (from monthly settlements)
->>> Like for the monthly settlement, perhaps not needed if server creates settlement
->>> automatically when new year begins (or maybe it is needed so that a cron job can use it
->>> or the POS GUI can run it automatically in the background.)
->>> API endpoint `GET /abrechnung/jahr/offen` returning the past years not having AbrechnungJahr
->>> would be good as well.
+- POST /abrechnung/jahr - Create yearly settlement (from monthly settlements). If a settlement for the year already exists, it is deleted first and recreated (mirrors the Java behavior).
+- GET /abrechnung/jahr/offen - Check for incomplete yearly settlements: returns the past years that do not yet have an AbrechnungJahr
+
+**Note - not user-initiated**: Like the monthly settlement, this is not created from user initiative in the Java POS; it happens automatically. The endpoint is meant to be called by a cron job or by the POS GUI in the background at startup (which can use `GET /abrechnung/jahr/offen` to determine whether anything is due).
+
+**Note - DELETE grant**: Same as for the monthly settlement: the SQL user has DELETE grant on `kasse.abrechnung_jahr` (and `abrechnung_jahr_mwst`), used by `AbrechnungenTag.deleteAbrechnungIfNeedBe()` to delete an existing yearly settlement before recreating it. DELETE is only needed as an internal step of re-running `POST /abrechnung/jahr`, not as a standalone endpoint.
 
 **Files to create:**
 - `python/models.py` - Add AbrechnungJahr, AbrechnungJahrMwst models
-- `python/routers/abrechnung_jahr.py` - All CRUD endpoints
->>> In `../git/mysql/grants.sql`, I see that the SQL user has DELETE grant on
->>> `kasse.abrechnung_jahr`. I don't remember why that is needed, so it should be checked.
->>> Anyway, updates to the SQL table are not allowed, so it should be at most CRD, not full CRUD.
+- `python/routers/abrechnung_jahr.py` - Create + Read endpoints (+ internal delete-and-recreate)
 
 ---
 
@@ -286,12 +249,11 @@ This document outlines the comprehensive implementation plan to complete the Fas
 - `zaehlprotokoll` (lines 215-223 in `../git/mysql/generateDB.sql`)
 - `zaehlprotokoll_details` (lines 224-231 in `../git/mysql/generateDB.sql`)
 
-**Required endpoints:**
+**Required endpoints (CRU - no delete, since the SQL user has no DELETE grant):**
 - GET /zaehlprotokoll - List counting protocols
 - GET /zaehlprotokoll/{id} - Get single protocol
 - POST /zaehlprotokoll - Create new counting protocol
->>> Here, a `PATCH /zaehlprotokoll/{id} - Update an existing counting protocol` is required
->>> because SQL user has UPDATE grant.
+- PATCH /zaehlprotokoll/{id} - Update an existing counting protocol (the SQL user has UPDATE grant)
 - GET /zaehlprotokoll/abrechnung/{abrechnung_tag_id} - Get protocols for settlement
 
 **Business logic from Java:**
@@ -299,8 +261,7 @@ This document outlines the comprehensive implementation plan to complete the Fas
 
 **Files to create:**
 - `python/models.py` - Add Zaehlprotokoll, ZaehlprotokollDetails models
-- `python/routers/zaehlprotokoll.py` - All CRUD endpoints
->>> No, there is no DELETE grant, but CRU it would be
+- `python/routers/zaehlprotokoll.py` - Create, Read, Update endpoints (CRU, no D)
 
 ### 4.2 Bestellung (Order/Purchase Order)
 **Priority**: 🟢 LOW - For supplier ordering
@@ -309,16 +270,12 @@ This document outlines the comprehensive implementation plan to complete the Fas
 - `bestellung` (lines 287-294 in `../git/mysql/generateDB.sql`)
 - `bestellung_details` (lines 295-304 in `../git/mysql/generateDB.sql`)
 
-**Required endpoints:**
+**Required endpoints (full CRUD - the SQL user has INSERT, UPDATE, DELETE grants on `bestellung*`):**
 - GET /bestellung - List orders
-- GET /bestellung/{bestell_nr}/{typ} - Get single order
->>> I believe it should be only `GET /bestellung/{bestell_nr}`. There cannot be multiple
->>> orders with different `{typ}` under the same bestell_nr.
+- GET /bestellung/{bestell_nr} - Get single order (`bestell_nr` is unique; there cannot be multiple orders with different `typ` under the same bestell_nr, so no `typ` in the endpoint path)
 - POST /bestellung - Create new order
-- PATCH /bestellung/{bestell_nr}/{typ} - Update order
->>> Also here: only `/bestellung/{bestell_nr}` without `{typ}` in the endpoint
-- DELETE /bestellung/{bestell_nr}/{typ} - Delete order
->>> Also here: only `/bestellung/{bestell_nr}` without `{typ}` in the endpoint
+- PATCH /bestellung/{bestell_nr} - Update order
+- DELETE /bestellung/{bestell_nr} - Delete order
 
 **Business logic from Java:**
 - `../git/src/org/weltladen_bonn/pos/besteller/Bestellen.java` - Order creation
@@ -327,7 +284,7 @@ This document outlines the comprehensive implementation plan to complete the Fas
 
 **Files to create:**
 - `python/models.py` - Add Bestellung, BestellungDetails models
-- `python/routers/bestellung.py` - All CRUD endpoints
+- `python/routers/bestellung.py` - CRUD endpoints
 
 ---
 
@@ -336,7 +293,7 @@ This document outlines the comprehensive implementation plan to complete the Fas
 ### 5.1 TSE Transaction Support
 **Priority**: 🔴 HIGH - Legal requirement for German cash registers
 
-**Database table**: `tse_transaction` (lines 306-321 in `../git/mysql/generateDB.sql`)
+**Database table**: `tse_transaction` (lines 306-321 in `../git/mysql/generateDB.sql`) - local log of TSE operations (transaction number, signature counter, signature in base64, process data)
 
 **Required endpoints:**
 - GET /tse/transaction - List TSE transactions
@@ -344,25 +301,28 @@ This document outlines the comprehensive implementation plan to complete the Fas
 - POST /tse/transaction - Create TSE-signed transaction
 - GET /tse/status - Get TSE status
 - POST /tse/init - Initialize TSE
->>> I believe a `POST /tse/export` endpoint may be required, please check.
->>> Probably with sub-endpoints `POST /tse/export/full` for a full export,
->>> `POST /tse/export/partial` for a partial export and
->>> `POST /tse/export/delete` for an export with deleting data afterwards.
->>> See `../git/src/org/weltladen_bonn/pos/kasse/WeltladenTSE.java`: methods
->>> `exportTransactionData()`, `exportFullTransactionData()`,
->>> `exportPartialTransactionDataByTXNumber()`,
->>> `exportPartialTransactionDataByDate()`, and
->>> `exportPartialTransactionDataBySigCounter()`. See also the usage of the
->>> methods in `AbrechnungenTag.java` and `TSEStatus.java`.
+- POST /tse/export/full - Full export of all TSE transaction data (mirrors `exportFullTransactionData()` in Java)
+- POST /tse/export/partial - Partial export, with a request body selecting the criterion:
+  - by TX number range (mirrors `exportPartialTransactionDataByTXNumber(filename, startTXNumber, endTXNumber, maxRecords)`)
+  - by date range (mirrors `exportPartialTransactionDataByDate(filename, startDate, endDate, maxRecords)`)
+  - by signature counter (mirrors `exportPartialTransactionDataBySigCounter(filename, lastExcludedSignatureCounter, maxRecords)`)
+- POST /tse/export/delete - Partial export (up to a given signature counter) followed by deletion of the stored TSE data up to the highest exported signature counter (mirrors the "TSE-Log exportieren und löschen" flow in `TSEStatus.java`, which calls `deletePartialTransactionDataBySigCounter()`)
+
+The export endpoints return the generated `.tar` file as a file download (in Java the file is written to a local export directory, e.g. `tse_export_<date>_Sig_from_X_to_Y.tar`).
+
+**Automatic export during daily settlement**: The Tagesabschluss (Phase 3.1) automatically performs an incremental partial TSE export by signature counter (since the previous settlement), with a fallback by TX number - see `AbrechnungenTag.exportTSELog()` (lines 1097-1145 in `AbrechnungenTag.java`). This integration must be part of the `POST /abrechnung/tag` process.
 
 **Business logic from Java:**
-- `../git/src/org/weltladen_bonn/pos/kasse/WeltladenTSE.java` - Complete TSE integration
+- `../git/src/org/weltladen_bonn/pos/kasse/WeltladenTSE.java` - Complete TSE integration (incl. all export/delete methods)
+- `../git/src/org/weltladen_bonn/pos/kasse/TSEStatus.java` - Manual export dialogs ("TSE-Log exportieren", "TSE-Log exportieren und löschen")
 - `../git/src/org/weltladen_bonn/pos/kasse/TSEInitDialog.java` - TSE initialization
 - `../git/src/org/weltladen_bonn/pos/kasse/TSETarFile.java` - TSE file handling
 
+**Open question to check**: The Java export methods talk to the TSE hardware via the Java TSE library. The API needs a Python TSE library (or equivalent mechanism) that can perform the same operations (export, delete stored data). Availability of such a library for the TSE in use must be verified.
+
 **Files to create:**
 - `python/models.py` - Add TSETransaction model
-- `python/routers/tse.py` - TSE transaction endpoints
+- `python/routers/tse.py` - TSE transaction + export endpoints
 
 ---
 
@@ -416,15 +376,13 @@ This document outlines the comprehensive implementation plan to complete the Fas
 **Target**: Business logic for cash register operations
 
 **Key functionality:**
-- Cash drawer management
->>> What is meant here? There exists no automatic cash drawer that is opened
->>> via POS software, so nothing is needed.
 - Payment processing (cash, EC card)
-- Change calculation (see line 44 in `Kasse.java`: `private final BigDecimal ecSchwelle = new BigDecimal("10.00");`)
->>> What is meant here? `ecSchwelle` is not part of `Kasse.java`
+- EC payment threshold check (`Kassieren.java` line 44: `private final BigDecimal ecSchwelle = new BigDecimal("10.00");` - warning that the total is below 10.00 when paying by EC card, see `Kassieren.java` line 2512)
 - End-of-day procedures
 - Integration with kassenstand
 - Training mode support
+
+(No cash drawer management: there is no automatic cash drawer opened via the POS software.)
 
 ---
 
@@ -471,39 +429,61 @@ This document outlines the comprehensive implementation plan to complete the Fas
 ### 7.4 Authentication and Authorization
 **Priority**: 🔴 HIGH - Essential for security
 
-**Rationale**: Some operations (like VAT rate and deposit item management) should be restricted to authorized administrators only.
+**Current state:**
+- Authentication is very basic and done entirely with MySQL users: there are only two - `kassenadmin` (full privileges) and `mitarbeiter` (restricted privileges, see `../git/mysql/grants.sql`).
+- The Java POS asks for the DB password (`../git/src/org/weltladen_bonn/pos/DBConnection.java`, password dialog).
+- There are no per-user accounts, no record of who logged in when, and no way to look up which transaction was done by which person.
+
+**Target: proper user account management**
+- **Per-user accounts**: Every user has their own account and password. This requires a new `user` table (does not exist in the current schema): `user_id`, `username` (unique), `password_hash` (bcrypt), `role` (`admin` or `mitarbeiter`), `active`.
+- **Roles**: admin vs. regular user (mitarbeiter). Sensitive operations (MwSt/Pfand CRUD, user management) are admin-only.
+- **Login auditing**: A new `anmeldung` table (`user_id` FK, `login_time`, `logout_time`) registers who logged in when, so logins can be looked up later.
+- **Transaction attribution**: Add a nullable `user_id` FK column to the transaction tables (`verkauf`, and as appropriate `kassenstand`, `anzahlung`, `gutschein`, `zaehlprotokoll`, `abrechnung_tag`, `bestellung`, `tse_transaction` - exact list to be decided) so it can later be looked up which transaction was done by which user. Existing rows stay NULL (they cannot be attributed retroactively). This requires a one-time `ALTER TABLE` migration (SQL script in `../git/mysql/`).
+- **Session management**: The login endpoint issues a JWT/session token carrying the user's identity and role; proper token expiration; logout records the logout time.
+- **MySQL side**: The API process connects with the service account(s) (e.g. `kassenadmin`); per-user authorization is enforced at the API level, not by switching MySQL users.
 
 **Required Implementation:**
-- Add authentication middleware for FastAPI
+- Add authentication middleware/dependencies for FastAPI
 - Add authorization system with user roles (admin vs. regular user)
-- Protect sensitive endpoints (MwSt POST/PUT/PATCH/DELETE, Pfand POST/PUT/PATCH/DELETE)
-- Add user management endpoints for admin users
+- Protect sensitive endpoints (MwSt POST/PUT/PATCH/DELETE, Pfand POST/PUT/PATCH/DELETE, user management)
+- Add admin-only user management endpoints (create, update, deactivate users, reset passwords)
 - Implement JWT or session-based authentication
 
 **Files to create:**
 - `python/routers/auth.py` - Authentication endpoints (login, logout, token refresh)
+- `python/routers/users.py` - Admin-only user management endpoints
 - `python/dependencies.py` - Dependency for authorization checks
-- `python/models.py` - Add User model if needed for authentication
+- `python/models.py` - Add User and Anmeldung models (new tables) + `user_id` columns on transaction tables
 - `python/utils/auth.py` - Authentication utilities (password hashing, token generation)
+- SQL migration script (new `user`/`anmeldung` tables + `user_id` columns) in `../git/mysql/`
 
 **Security considerations:**
 - Use secure password hashing (bcrypt or similar)
 - Implement proper token expiration
 - Add rate limiting for authentication endpoints
-- Use HTTPS in production
->>> The API and Web App (GUI) will only be accessible on the local network,
->>> so it must be checked if usage of HTTPS within the LAN is possible. Please
->>> suggest viable solutions. Otherwise, perhaps it is OK so use unencrypted
->>> HTTP for the purely local communication. What are the security pitfalls
->>> using HTTP within local network?
+- Transport security on the LAN: see below
 
-**Java reference**: Check existing authentication in Java POS at `../git/src/org/weltladen_bonn/pos/DBConnection.java` (password dialog)
+**Transport security: HTTPS on the local network**
 
->>> Current auth is very basic. It is done entirely with MySQL users and there
->>> are only two: admin and regular user. I would prefer to have a proper
->>> user account management with every user having their own password.
->>> Then, one can also register who logged in when and can later look up
->>> which transaction was done by which user.
+The API and Web App (GUI) will only be accessible on the local network. Two viable options:
+
+*Option 1 (recommended): HTTPS with an internal (self-signed) certificate*
+- Generate a small internal CA plus a server certificate for the server's LAN hostname. Easiest with `mkcert` (creates a local CA, signs the certificate, and provides the CA cert for client trust), or manually with `openssl`.
+- Terminate TLS in a small reverse proxy (Caddy or nginx) in front of the FastAPI app, or configure uvicorn directly with the certificate.
+- Install the internal CA certificate on the client devices (POS PCs, possibly mobile devices), which then trust the server.
+- Note: public CAs (Let's Encrypt) do not work on a private LAN because the domain cannot be publicly verified - but a self-signed internal CA works perfectly fine within the LAN.
+
+*Option 2: plain HTTP on a trusted, isolated LAN*
+
+Security pitfalls of using unencrypted HTTP within a local network:
+- All traffic is in clear text: any device that can sniff the network segment (any device on the same flat network, ARP spoofing / man-in-the-middle, switch port mirroring) can read passwords, session tokens and all sales data.
+- An active attacker on the LAN can forge or tamper with API requests (no integrity protection of the channel).
+- The risk is significantly higher if customer/guest WiFi shares the network segment with the POS, if the POS runs over WiFi (wireless eavesdropping reaches beyond the shop), or if an infected/compromised device is connected to the network.
+- If staying on plain HTTP, mitigations: dedicated VLAN/segment for the POS devices (no access from guest/customer networks), wired POS connections, firewall rules restricting API access to the POS devices, and still keep strong application-level authentication with auditing.
+
+**Recommendation**: Use HTTPS with an internal CA certificate (Option 1) - the setup cost is small (one-time) and it removes the clear-text pitfalls entirely. Plain HTTP (Option 2) is only acceptable if the LAN is a managed, isolated segment without guest access.
+
+**Java reference**: The existing (basic) authentication in the Java POS is in `../git/src/org/weltladen_bonn/pos/DBConnection.java` (password dialog) - to be replaced by the API-level user accounts described above.
 
 ---
 
@@ -511,14 +491,14 @@ This document outlines the comprehensive implementation plan to complete the Fas
 
 | Priority | Category | Items | Estimated Effort | Status |
 |----------|----------|-------|------------------|--------|
-| 🔴 HIGH | Core CRUD | Complete MwSt, Pfand CRUD with auth; Add Verkauf update | 2-3 days | ⏳ TODO |
-| 🔴 HIGH | Core Tables | Kassenstand, Gutschein, Anzahlung | 3-4 days | ⏳ TODO |
+| 🔴 HIGH | Core CRUD | MwSt, Pfand admin CRUD with auth (Verkauf stays update-free by design) | 2-3 days | ⏳ TODO |
+| 🔴 HIGH | Core Tables | Kassenstand (CR), Gutschein (CR), Anzahlung (CR) | 3-4 days | ⏳ TODO |
 | 🔴 HIGH | Validation | Comprehensive input validation | 1-2 days | ⏳ TODO |
-| 🔴 HIGH | Security | Authentication and authorization system | 2-3 days | ⏳ TODO |
-| 🟡 MEDIUM | Accounting | Abrechnung Tag/Monat/Jahr | 3-5 days | ⏳ TODO |
+| 🔴 HIGH | Security | User accounts, authentication and authorization | 2-3 days | ⏳ TODO |
+| 🟡 MEDIUM | Accounting | Abrechnung Tag (CR), Monat (CRD), Jahr (CRD) | 3-5 days | ⏳ TODO |
 | 🟡 MEDIUM | Business Logic | VAT calculation, sale creation | 2-3 days | ⏳ TODO |
-| 🟡 MEDIUM | TSE | TSE transaction support | 2-3 days | ⏳ TODO |
-| 🟡 MEDIUM | Supporting | Zaehlprotokoll, Bestellung | 2-3 days | ⏳ TODO |
+| 🟡 MEDIUM | TSE | TSE transaction support + export endpoints | 2-3 days | ⏳ TODO |
+| 🟡 MEDIUM | Supporting | Zaehlprotokoll (CRU), Bestellung (CRUD) | 2-3 days | ⏳ TODO |
 | 🟢 LOW | Utilities | Import/Export, Search | 1-2 days | ⏳ TODO |
 
 ---
@@ -526,30 +506,31 @@ This document outlines the comprehensive implementation plan to complete the Fas
 ## Recommended Implementation Order
 
 ### Week 1: Foundation Completion
-1. **Complete existing CRUD** (Phase 1)
+1. **Complete existing endpoints** (Phase 1)
    - Add admin-only operations for MwSt and Pfand with authorization
-   - Add Verkauf update functionality
-   - Add dedicated endpoints for related tables
+   - (Verkauf: no update functionality - keep Create/Read/Storno as-is)
 2. **Add core validation** across all existing endpoints
 3. **Implement authentication/authorization** (Phase 7.4)
+   - Add user accounts (new `user` table) with per-user passwords
+   - Add login auditing and transaction attribution
    - Add authentication middleware
    - Add authorization system with user roles
    - Protect sensitive endpoints
 
 ### Week 2: Core Business Tables
-1. **Kassenstand** - Cash register balance management
-2. **Gutschein** - Voucher management
-3. **Anzahlung** - Installment payment management
+1. **Kassenstand** - Cash register balance management (CR)
+2. **Gutschein** - Voucher management (CR)
+3. **Anzahlung** - Installment payment management (CR)
 
 ### Week 3: Accounting System
-1. **Abrechnung Tag** - Daily settlement
-2. **Abrechnung Monat** - Monthly settlement
-3. **Abrechnung Jahr** - Yearly settlement
+1. **Abrechnung Tag** - Daily settlement (CR, incl. automatic TSE export)
+2. **Abrechnung Monat** - Monthly settlement (CRD, + `/offen` endpoint)
+3. **Abrechnung Jahr** - Yearly settlement (CRD, + `/offen` endpoint)
 
 ### Week 4: Supporting Features
-1. **Zaehlprotokoll** - Counting protocols
-2. **Bestellung** - Order management
-3. **TSE Integration** - Technical Security Equipment
+1. **Zaehlprotokoll** - Counting protocols (CRU)
+2. **Bestellung** - Order management (CRUD)
+3. **TSE Integration** - Technical Security Equipment (incl. export endpoints)
 
 ### Week 5: Business Logic Porting
 1. **VAT Calculator** - Core financial calculations
@@ -589,8 +570,10 @@ This document outlines the comprehensive implementation plan to complete the Fas
 - `tests/test_gutschein.py` - Voucher management tests
 - `tests/test_anzahlung.py` - Installment payment tests
 - `tests/test_abrechnung*.py` - Accounting tests
+- `tests/test_zaehlprotokoll.py` - Counting protocol tests
 - `tests/test_bestellung.py` - Order management tests
 - `tests/test_tse.py` - TSE integration tests
+- `tests/test_auth.py` - Authentication/authorization tests
 - `tests/test_vat_calculator.py` - Business logic tests
 
 ---
@@ -601,7 +584,7 @@ This document outlines the comprehensive implementation plan to complete the Fas
 2. **Code Documentation**: Docstrings for all functions and classes
 3. **Business Logic Documentation**: Explain complex calculations and workflows
 4. **Migration Guide**: For transitioning from Java POS to new API
-5. **Setup Instructions**: Clear instructions for deployment and configuration
+5. **Setup Instructions**: Clear instructions for deployment and configuration (incl. TLS setup on the LAN)
 6. **Database Schema Documentation**: Complete schema reference
 
 ---
@@ -609,7 +592,9 @@ This document outlines the comprehensive implementation plan to complete the Fas
 ## Success Criteria
 
 - [ ] All database tables have corresponding models and endpoints
+- [ ] Bookkeeping integrity: no update/delete endpoints for immutable tables (verkauf, kassenstand, gutschein, anzahlung, abrechnung_tag)
 - [ ] All business logic from Java POS is ported to API
+- [ ] Per-user accounts with login auditing and transaction attribution
 - [ ] Comprehensive validation and error handling
 - [ ] 80%+ test coverage
 - [ ] Complete API documentation
@@ -626,7 +611,7 @@ python/
 ├── __init__.py
 ├── main.py                    # FastAPI app setup
 ├── session.py                 # Database session management
-├── models.py                  # All SQLModel definitions
+├── models.py                  # All SQLModel definitions (incl. new User, Anmeldung models)
 ├── business/                  # Business logic modules
 │   ├── __init__.py
 │   ├── vat_calculator.py      # VAT calculation logic
@@ -643,21 +628,20 @@ python/
 │   ├── rabattaktion.py
 │   ├── verkauf.py
 │   ├── auth.py                # NEW: Authentication endpoints
-│   ├── verkauf_mwst.py        # NEW: Dedicated endpoints
-│   ├── verkauf_details.py     # NEW: Dedicated endpoints
-│   ├── kassenstand.py         # NEW: Cash register
-│   ├── gutschein.py           # NEW: Vouchers
-│   ├── anzahlung.py           # NEW: Installments
-│   ├── abrechnung_tag.py      # NEW: Daily settlements
-│   ├── abrechnung_monat.py    # NEW: Monthly settlements
-│   ├── abrechnung_jahr.py     # NEW: Yearly settlements
-│   ├── zaehlprotokoll.py      # NEW: Counting protocols
-│   ├── bestellung.py          # NEW: Orders
-│   ├── tse.py                  # NEW: TSE integration
-│   └── import_export.py        # NEW: Data import/export
+│   ├── users.py               # NEW: Admin user management endpoints
+│   ├── kassenstand.py         # NEW: Cash register (CR)
+│   ├── gutschein.py           # NEW: Vouchers (CR)
+│   ├── anzahlung.py           # NEW: Installments (CR)
+│   ├── abrechnung_tag.py      # NEW: Daily settlements (CR)
+│   ├── abrechnung_monat.py    # NEW: Monthly settlements (CRD)
+│   ├── abrechnung_jahr.py     # NEW: Yearly settlements (CRD)
+│   ├── zaehlprotokoll.py      # NEW: Counting protocols (CRU)
+│   ├── bestellung.py          # NEW: Orders (CRUD)
+│   ├── tse.py                 # NEW: TSE integration (incl. export)
+│   └── import_export.py       # NEW: Data import/export
 ├── utils/                     # Utility functions
 │   ├── __init__.py
-│   ├── auth.py               # NEW: Authentication utilities
+│   ├── auth.py                # NEW: Authentication utilities
 │   ├── csv_import.py          # CSV import utilities
 │   ├── csv_export.py          # CSV export utilities
 │   └── validation.py          # Input validation utilities
@@ -667,6 +651,8 @@ python/
     └── test_*.py              # NEW: Tests for all new functionality
 ```
 
+Note: There are deliberately **no** `routers/verkauf_mwst.py` and `routers/verkauf_details.py` - these tables are only modified as side-effects of the `verkauf.py` endpoints.
+
 ---
 
 ## Dependencies and Prerequisites
@@ -675,14 +661,17 @@ python/
 - `fastapi` - Web framework
 - `sqlmodel` - SQLAlchemy + Pydantic models
 - `pymysql` or `mariadb` - MySQL/MariaDB connector
-- `python-decimal` - Enhanced decimal support (if needed)
+- `bcrypt` - Password hashing
+- `python-jose` or `pyjwt` - JWT tokens (or session-based alternative)
 - `pytest` - Testing framework
 - `httpx` - Async HTTP client for testing
+- Python TSE library (to be determined - the Java POS uses the Java TSE API for export/delete operations; a Python equivalent must be verified)
 
 ### Database Requirements
 - MySQL 5.7+ or MariaDB 10.2+
 - Database schema from `../git/mysql/generateDB.sql`
-- Appropriate user permissions
+- Appropriate user permissions (see `../git/mysql/grants.sql`)
+- One-time migration: new `user`/`anmeldung` tables + `user_id` columns on transaction tables
 
 ---
 
@@ -697,7 +686,7 @@ python/
 ### Backward Compatibility
 - Maintain compatibility with existing database
 - Ensure all existing data relationships are preserved
-- Add migration scripts if schema changes are needed
+- Add migration scripts if schema changes are needed (new user tables and `user_id` columns are the planned schema changes)
 
 ---
 
@@ -705,7 +694,7 @@ python/
 
 1. **Review this plan** and provide feedback
 2. **Prioritize implementation** based on business needs
-3. **Start with Phase 1** - Complete existing CRUD operations
+3. **Start with Phase 1** - Complete existing endpoints
 4. **Proceed to Phase 2** - Add core business tables (Kassenstand first)
 5. **Continue through phases** in recommended order
 6. **Test thoroughly** at each phase
