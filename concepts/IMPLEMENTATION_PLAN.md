@@ -101,20 +101,24 @@ This document outlines the comprehensive implementation plan to complete the Fas
 - kommentar (VARCHAR(70))
 
 **Required endpoints:**
-- GET /kassenstand - List cash register balances with filtering
+- GET /kassenstand - List cash register balances with filtering, we need a filter "rechnungen=true|false" that shows rechnungen (default false, rechnungen not shown, which means there is a "WHERE manuell = TRUE" filter on the query)
 - GET /kassenstand/{id} - Get single entry
 - POST /kassenstand - Create new cash register entry
 - PATCH /kassenstand/{id} - Update entry (with restrictions)
+>>> No, we do not want to update the entries in the Kassenstand table, actually the SQL user does not even have UPDATE grant, only INSERT
 - GET /kassenstand/aktuell - Get current cash register balance
 
 **Business logic from Java:**
 - Cash register balance tracking in `../git/src/org/weltladen_bonn/pos/kasse/Kasse.java`
 - Balance validation and change calculation in `../git/src/org/weltladen_bonn/pos/kasse/Kassieren.java`
 - Integration with sales and storno operations
+- Kassenstand setting and view in `../git/src/org/weltladen_bonn/pos/kasse/Kassenstand.java`
+- Kassenstand table must be updated as part of the AbrechnungTag process (see below)
 
 **Files to create:**
 - `python/models.py` - Add Kassenstand models
-- `python/routers/kassenstand.py` - All CRUD endpoints
+- `python/routers/kassenstand.py` - All CRUD endpoints       
+>>> No, only CR, no U and no D
 - `tests/test_kassenstand.py` - Tests for kassenstand functionality
 
 ### 2.2 Gutschein (Voucher/Gift Certificate)
@@ -146,6 +150,7 @@ This document outlines the comprehensive implementation plan to complete the Fas
 **Files to create:**
 - `python/models.py` - Add Gutschein models
 - `python/routers/gutschein.py` - All CRUD endpoints + redemption logic
+>>> Also here: No, no CRUD, only CR, no update, no delete (if you will, you can see voucher redemption (Gutschein einlösen) as delete operation, but it is an INSERT in SQL)
 
 ### 2.3 Anzahlung (Deposit/Installment Payment)
 **Priority**: 🟡 MEDIUM - Important for installment sales
@@ -182,13 +187,14 @@ This document outlines the comprehensive implementation plan to complete the Fas
 **Files to create:**
 - `python/models.py` - Add Anzahlung and AnzahlungDetails models
 - `python/routers/anzahlung.py` - All CRUD endpoints + resolution logic
+>>> No, no CRUD, only CR, no update or delete (if you will, you can consider AnzahlungAuflösung as a delete operation, but technically, it's an insert in SQL)
 
 ---
 
 ## Phase 3: Add Accounting/Settlement Tables (Medium Priority)
 
 ### 3.1 Abrechnung Tag (Daily Settlement)
-**Priority**: 🟡 MEDIUM - Essential for accounting
+**Priority**: 🔴 HIGH - Essential for accounting
 
 **Database tables**:
 - `abrechnung_tag` (lines 180-193 in `../git/mysql/generateDB.sql`)
@@ -201,6 +207,8 @@ This document outlines the comprehensive implementation plan to complete the Fas
 - POST /abrechnung/tag - Create daily settlement
 - GET /abrechnung/tag/offen - Check for incomplete daily settlements
 - POST /abrechnung/tag/{id}/abschliessen - Finalize daily settlement
+>>> I don't understand `POST /abrechnung/tag/{id}/abschliessen`, `POST /abrechnung/tag` is
+>>> already doing the Tagesabschluss
 
 **Business logic from Java:**
 - `../git/src/org/weltladen_bonn/pos/kasse/AbrechnungenTag.java` - Daily settlement logic
@@ -222,11 +230,26 @@ This document outlines the comprehensive implementation plan to complete the Fas
 **Required endpoints:**
 - GET /abrechnung/monat - List monthly settlements
 - GET /abrechnung/monat/{id} - Get single monthly settlement
-- POST /abrechnung/monat - Create monthly settlement (from daily settlements)
+- POST /abrechnung/monat - Create monthly settlement (from daily settlements) 
+>>> Perhaps this API endpoint is not even needed. So far, in the Java POS,
+>>> AbrechnungMonat is not created from user initiative, but automatically
+>>> (when user opens POS software, it checks whether new months have started/passed
+>>> that do not yet have a monthly settlement and if so, they are created automatically,
+>>> so user does not need to interact with this. But of course, the API itself does not
+>>> do things on its own. It just reacts to requests, so maybe this endpoint is still
+>>> needed and needs to be activated from an external process, e.g. a cron job on the
+>>> server that opens this API endpoint. Or any time the POS GUI is opened, it checks
+>>> in the background if a new AbrechnungMonat must be done (like in the old Java POS).
+>>> Maybe an extra API endpoint `GET /abrechnung/monat/offen - Check for incomplete monthly settlements`
+>>> would be good that returns the months that have already passed, but do not yet have a
+>>> AbrechnungMonat.
 
 **Files to create:**
 - `python/models.py` - Add AbrechnungMonat, AbrechnungMonatMwst models
 - `python/routers/abrechnung_monat.py` - All CRUD endpoints
+>>> In `../git/mysql/grants.sql`, I see that the SQL user has DELETE grant on
+>>> `kasse.abrechnung_monat`. I don't remember why that is needed, so it should be checked.
+>>> Anyway, updates to the SQL table are not allowed, so it should be at most CRD, not full CRUD.
 
 ### 3.3 Abrechnung Jahr (Yearly Settlement)
 **Priority**: 🟡 LOW - For yearly accounting
@@ -239,10 +262,18 @@ This document outlines the comprehensive implementation plan to complete the Fas
 - GET /abrechnung/jahr - List yearly settlements
 - GET /abrechnung/jahr/{id} - Get single yearly settlement
 - POST /abrechnung/jahr - Create yearly settlement (from monthly settlements)
+>>> Like for the monthly settlement, perhaps not needed if server creates settlement
+>>> automatically when new year begins (or maybe it is needed so that a cron job can use it
+>>> or the POS GUI can run it automatically in the background.)
+>>> API endpoint `GET /abrechnung/jahr/offen` returning the past years not having AbrechnungJahr
+>>> would be good as well.
 
 **Files to create:**
 - `python/models.py` - Add AbrechnungJahr, AbrechnungJahrMwst models
 - `python/routers/abrechnung_jahr.py` - All CRUD endpoints
+>>> In `../git/mysql/grants.sql`, I see that the SQL user has DELETE grant on
+>>> `kasse.abrechnung_jahr`. I don't remember why that is needed, so it should be checked.
+>>> Anyway, updates to the SQL table are not allowed, so it should be at most CRD, not full CRUD.
 
 ---
 
@@ -259,6 +290,8 @@ This document outlines the comprehensive implementation plan to complete the Fas
 - GET /zaehlprotokoll - List counting protocols
 - GET /zaehlprotokoll/{id} - Get single protocol
 - POST /zaehlprotokoll - Create new counting protocol
+>>> Here, a `PATCH /zaehlprotokoll/{id} - Update an existing counting protocol` is required
+>>> because SQL user has UPDATE grant.
 - GET /zaehlprotokoll/abrechnung/{abrechnung_tag_id} - Get protocols for settlement
 
 **Business logic from Java:**
@@ -267,6 +300,7 @@ This document outlines the comprehensive implementation plan to complete the Fas
 **Files to create:**
 - `python/models.py` - Add Zaehlprotokoll, ZaehlprotokollDetails models
 - `python/routers/zaehlprotokoll.py` - All CRUD endpoints
+>>> No, there is no DELETE grant, but CRU it would be
 
 ### 4.2 Bestellung (Order/Purchase Order)
 **Priority**: 🟢 LOW - For supplier ordering
@@ -278,9 +312,13 @@ This document outlines the comprehensive implementation plan to complete the Fas
 **Required endpoints:**
 - GET /bestellung - List orders
 - GET /bestellung/{bestell_nr}/{typ} - Get single order
+>>> I believe it should be only `GET /bestellung/{bestell_nr}`. There cannot be multiple
+>>> orders with different `{typ}` under the same bestell_nr.
 - POST /bestellung - Create new order
 - PATCH /bestellung/{bestell_nr}/{typ} - Update order
-- DELETE /bestellung/{bestell_nr}/{typ} - Cancel order
+>>> Also here: only `/bestellung/{bestell_nr}` without `{typ}` in the endpoint
+- DELETE /bestellung/{bestell_nr}/{typ} - Delete order
+>>> Also here: only `/bestellung/{bestell_nr}` without `{typ}` in the endpoint
 
 **Business logic from Java:**
 - `../git/src/org/weltladen_bonn/pos/besteller/Bestellen.java` - Order creation
@@ -296,7 +334,7 @@ This document outlines the comprehensive implementation plan to complete the Fas
 ## Phase 5: Add TSE Integration (Medium Priority for German Compliance)
 
 ### 5.1 TSE Transaction Support
-**Priority**: 🟡 MEDIUM - Legal requirement for German cash registers
+**Priority**: 🔴 HIGH - Legal requirement for German cash registers
 
 **Database table**: `tse_transaction` (lines 306-321 in `../git/mysql/generateDB.sql`)
 
@@ -306,6 +344,16 @@ This document outlines the comprehensive implementation plan to complete the Fas
 - POST /tse/transaction - Create TSE-signed transaction
 - GET /tse/status - Get TSE status
 - POST /tse/init - Initialize TSE
+>>> I believe a `POST /tse/export` endpoint may be required, please check.
+>>> Probably with sub-endpoints `POST /tse/export/full` for a full export,
+>>> `POST /tse/export/partial` for a partial export and
+>>> `POST /tse/export/delete` for an export with deleting data afterwards.
+>>> See `../git/src/org/weltladen_bonn/pos/kasse/WeltladenTSE.java`: methods
+>>> `exportTransactionData()`, `exportFullTransactionData()`,
+>>> `exportPartialTransactionDataByTXNumber()`,
+>>> `exportPartialTransactionDataByDate()`, and
+>>> `exportPartialTransactionDataBySigCounter()`. See also the usage of the
+>>> methods in `AbrechnungenTag.java` and `TSEStatus.java`.
 
 **Business logic from Java:**
 - `../git/src/org/weltladen_bonn/pos/kasse/WeltladenTSE.java` - Complete TSE integration
@@ -369,8 +417,11 @@ This document outlines the comprehensive implementation plan to complete the Fas
 
 **Key functionality:**
 - Cash drawer management
+>>> What is meant here? There exists no automatic cash drawer that is opened
+>>> via POS software, so nothing is needed.
 - Payment processing (cash, EC card)
 - Change calculation (see line 44 in `Kasse.java`: `private final BigDecimal ecSchwelle = new BigDecimal("10.00");`)
+>>> What is meant here? `ecSchwelle` is not part of `Kasse.java`
 - End-of-day procedures
 - Integration with kassenstand
 - Training mode support
@@ -440,8 +491,19 @@ This document outlines the comprehensive implementation plan to complete the Fas
 - Implement proper token expiration
 - Add rate limiting for authentication endpoints
 - Use HTTPS in production
+>>> The API and Web App (GUI) will only be accessible on the local network,
+>>> so it must be checked if usage of HTTPS within the LAN is possible. Please
+>>> suggest viable solutions. Otherwise, perhaps it is OK so use unencrypted
+>>> HTTP for the purely local communication. What are the security pitfalls
+>>> using HTTP within local network?
 
 **Java reference**: Check existing authentication in Java POS at `../git/src/org/weltladen_bonn/pos/DBConnection.java` (password dialog)
+
+>>> Current auth is very basic. It is done entirely with MySQL users and there
+>>> are only two: admin and regular user. I would prefer to have a proper
+>>> user account management with every user having their own password.
+>>> Then, one can also register who logged in when and can later look up
+>>> which transaction was done by which user.
 
 ---
 
