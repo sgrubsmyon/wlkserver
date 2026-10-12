@@ -318,11 +318,16 @@ The export endpoints return the generated `.tar` file as a file download (in Jav
 - `../git/src/org/weltladen_bonn/pos/kasse/TSEInitDialog.java` - TSE initialization
 - `../git/src/org/weltladen_bonn/pos/kasse/TSETarFile.java` - TSE file handling
 
-**Open question to check**: The Java export methods talk to the TSE hardware via the Java TSE library. The API needs a Python TSE library (or equivalent mechanism) that can perform the same operations (export, delete stored data). Availability of such a library for the TSE in use must be verified.
+**TSE library for Python (open question resolved)**: There is **no Python TSE library** for the TSE in use - it is a cryptovision/D-Trust SEAPI TSE (the Java POS uses `com.cryptovision.SEAPI.TSE`), and the vendor only provides Java and C APIs. The easiest way to use it from the Python API is to wrap the **C library via CPython**, isolated in a single adapter module (e.g. `python/utils/tse_client.py`) so the rest of the code only sees a clean Python interface:
+- **`ctypes`** (standard library, no build step) as first choice - sufficient if the C API is a flat set of functions with simple parameters and status-code returns, which is typical for this kind of API.
+- **`cffi`** if cleaner header/struct handling is wanted (ABI mode works without a C compiler, API mode needs one).
+- **Cython** only if the C API is more complex (callbacks, complex structs) or typed bindings are desired - at the cost of a build step.
+- Fallback if wrapping the C API proves impractical: run the existing Java SEAPI in a small Java helper (CLI or thin HTTP service) - works, but requires running a JVM on the server.
 
 **Files to create:**
 - `python/models.py` - Add TSETransaction model
 - `python/routers/tse.py` - TSE transaction + export endpoints
+- `python/utils/tse_client.py` - Adapter module wrapping the TSE C API (ctypes/cffi)
 
 ---
 
@@ -644,6 +649,7 @@ python/
 │   ├── auth.py                # NEW: Authentication utilities
 │   ├── csv_import.py          # CSV import utilities
 │   ├── csv_export.py          # CSV export utilities
+│   ├── tse_client.py          # NEW: TSE C API adapter (ctypes/cffi)
 │   └── validation.py          # Input validation utilities
 └── tests/                     # Test files
     ├── conftest.py
@@ -665,7 +671,7 @@ Note: There are deliberately **no** `routers/verkauf_mwst.py` and `routers/verka
 - `python-jose` or `pyjwt` - JWT tokens (or session-based alternative)
 - `pytest` - Testing framework
 - `httpx` - Async HTTP client for testing
-- Python TSE library (to be determined - the Java POS uses the Java TSE API for export/delete operations; a Python equivalent must be verified)
+- TSE C API (cryptovision/D-Trust SEAPI) wrapped via `ctypes` (or `cffi`/Cython) - there is no Python TSE library, only Java and C APIs
 
 ### Database Requirements
 - MySQL 5.7+ or MariaDB 10.2+
