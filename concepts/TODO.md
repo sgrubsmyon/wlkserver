@@ -1,7 +1,7 @@
 # Weltladenkasse API - Detailed TODO List
 
-> **Last Updated**: 2026-10-12  
-> **Status**: Synced with reworked IMPLEMENTATION_PLAN.md (CR/CRU/CRD patterns per SQL grants, no Verkauf updates, per-user accounts)
+> **Last Updated**: 2026-10-14  
+> **Status**: Phase 1 (MwSt + Pfand admin CRUD with admin-token auth stopgap) implemented and tested
 
 ---
 
@@ -47,21 +47,23 @@
 
 ### Phase 1: Missing CRUD for Existing Models
 
-[ ] **MwSt Admin-Only CRUD Completion** - `python/routers/mwst.py`
-- [ ] POST /mwst - Create new VAT rate with validation (mwst_satz between 0 and 1) - **ADMIN ONLY**
-- [ ] PUT/PATCH /mwst/{mwst_id} - Update VAT rate - **ADMIN ONLY**
-- [ ] DELETE /mwst/{mwst_id} - Delete VAT rate (with constraints check) - **ADMIN ONLY**
-- [ ] Add business validation: prevent deletion if used by produktgruppe
-- [ ] Add authentication/authorization dependency to protect admin endpoints
-- [ ] See reference: `../git/src/org/weltladen_bonn/pos/kasse/RechnungsGrundlage.java` lines 74-94 (retrieveVATs method)
+[x] **MwSt Admin-Only CRUD Completion** - `python/routers/mwst.py`
+- [x] POST /mwst - Create new VAT rate with validation (mwst_satz between 0 and 1, no duplicate rates) - **ADMIN ONLY**
+- [x] PATCH /mwst/{mwst_id} - Update VAT rate - **ADMIN ONLY**
+- [x] DELETE /mwst/{mwst_id} - Delete VAT rate (with constraints check) - **ADMIN ONLY**
+- [x] Add business validation: prevent deletion (409) if used by produktgruppe
+- [x] Add authentication/authorization dependency to protect admin endpoints (stopgap: shared `ADMIN_TOKEN` from env via `python/dependencies.py::require_admin`; to be replaced by per-user accounts in Phase 7.4)
+- [x] See reference: `../git/src/org/weltladen_bonn/pos/kasse/RechnungsGrundlage.java` lines 74-94 (retrieveVATs method)
 
-[ ] **Pfand Admin-Only CRUD Completion** - `python/routers/pfand.py`
-- [ ] POST /pfand - Create new deposit item with artikel_id validation - **ADMIN ONLY**
-- [ ] PUT/PATCH /pfand/{pfand_id} - Update deposit item - **ADMIN ONLY**
-- [ ] DELETE /pfand/{pfand_id} - Delete deposit item (with constraints check) - **ADMIN ONLY**
-- [ ] Add business validation: ensure artikel_id references existing article
-- [ ] Add wert (value) calculation from article.vk_preis
-- [ ] Add authentication/authorization dependency to protect admin endpoints
+[x] **Pfand Admin-Only CRUD Completion** - `python/routers/pfand.py`
+- [x] POST /pfand - Create new deposit item with artikel_id validation - **ADMIN ONLY**
+- [x] PATCH /pfand/{pfand_id} - Update deposit item - **ADMIN ONLY**
+- [x] DELETE /pfand/{pfand_id} - Delete deposit item (with constraints check) - **ADMIN ONLY**
+- [x] Add business validation: ensure artikel_id references existing article, no duplicate pfand per article
+- [x] Add wert (value) calculation from article.vk_preis
+- [x] Add authentication/authorization dependency to protect admin endpoints (stopgap: shared `ADMIN_TOKEN`, see above)
+
+Note (Phase 1): the API currently connects to the DB as `mitarbeiter`, which has no DELETE grant on `mwst`/`pfand`. Per Phase 7.4, the API process should connect as the `kassenadmin` service account (set `DBUSER`/`DBPASS` in `python/.env`); admin endpoints then work fully, and API-level roles restrict access. Until then, DELETE returns 503 with a clear message.
 
 **Verkauf: No Update Functionality (Decision: By Design)** - `python/routers/verkauf.py`
 - [x] No update endpoint for the `verkauf` table will ever be added (bookkeeping integrity)
@@ -374,72 +376,78 @@
 ## 🧪 Testing Tasks
 
 ### Unit Tests
-[ ] Create `tests/test_mwst.py` - MwSt CRUD and validation tests
-[ ] Create `tests/test_pfand.py` - Pfand CRUD and validation tests
-[ ] Create `tests/test_kassenstand.py` - Cash register balance tests
-[ ] Create `tests/test_gutschein.py` - Voucher management tests
-[ ] Create `tests/test_anzahlung.py` - Installment payment tests
-[ ] Create `tests/test_abrechnung_tag.py` - Daily settlement tests
-[ ] Create `tests/test_abrechnung_monat.py` - Monthly settlement tests
-[ ] Create `tests/test_abrechnung_jahr.py` - Yearly settlement tests
-[ ] Create `tests/test_zaehlprotokoll.py` - Counting protocol tests
-[ ] Create `tests/test_bestellung.py` - Order management tests
-[ ] Create `tests/test_tse.py` - TSE integration tests
-[ ] Create `tests/test_auth.py` - Authentication/authorization tests
-[ ] Create `tests/test_vat_calculator.py` - Business logic tests
-[ ] Create `tests/test_sale_workflow.py` - Sale workflow tests
-[ ] Create `tests/test_storno_logic.py` - Storno logic tests
-[ ] Create `tests/test_import_export.py` - Import/export functionality tests
+
+- [x] Create `tests/test_mwst.py` - MwSt CRUD and validation tests
+- [x] Create `tests/test_pfand.py` - Pfand CRUD and validation tests
+- [ ] Create `tests/test_kassenstand.py` - Cash register balance tests
+- [ ] Create `tests/test_gutschein.py` - Voucher management tests
+- [ ] Create `tests/test_anzahlung.py` - Installment payment tests
+- [ ] Create `tests/test_abrechnung_tag.py` - Daily settlement tests
+- [ ] Create `tests/test_abrechnung_monat.py` - Monthly settlement tests
+- [ ] Create `tests/test_abrechnung_jahr.py` - Yearly settlement tests
+- [ ] Create `tests/test_zaehlprotokoll.py` - Counting protocol tests
+- [ ] Create `tests/test_bestellung.py` - Order management tests
+- [ ] Create `tests/test_tse.py` - TSE integration tests
+- [ ] Create `tests/test_auth.py` - Authentication/authorization tests
+- [ ] Create `tests/test_vat_calculator.py` - Business logic tests
+- [ ] Create `tests/test_sale_workflow.py` - Sale workflow tests
+- [ ] Create `tests/test_storno_logic.py` - Storno logic tests
+- [ ] Create `tests/test_import_export.py` - Import/export functionality tests
 
 ### Integration Tests
-[ ] Test complete workflow: Article creation → Sale creation → Storno
-[ ] Test complete workflow: Cash register balance → Sale → Settlement
-[ ] Test complete workflow: Voucher creation → Sale with voucher → Voucher redemption
-[ ] Test complete workflow: Installment creation → Sale → Installment resolution
-[ ] Test cross-entity relationships and constraints
-[ ] Test database constraint violations
-[ ] Test concurrent operations and race conditions
+
+- [ ] Test complete workflow: Article creation → Sale creation → Storno
+- [ ] Test complete workflow: Cash register balance → Sale → Settlement
+- [ ] Test complete workflow: Voucher creation → Sale with voucher → Voucher redemption
+- [ ] Test complete workflow: Installment creation → Sale → Installment resolution
+- [ ] Test cross-entity relationships and constraints
+- [ ] Test database constraint violations
+- [ ] Test concurrent operations and race conditions
 
 ### Test Coverage Target
-[ ] Achieve minimum 80% code coverage
-[ ] All critical paths tested
-[ ] All business logic validated
-[ ] All edge cases covered
-[ ] All error conditions tested
+
+- [ ] Achieve minimum 80% code coverage
+- [ ] All critical paths tested
+- [ ] All business logic validated
+- [ ] All edge cases covered
+- [ ] All error conditions tested
 
 ---
 
 ## 🎯 Final Success Criteria Checklist
 
 ### Core Functionality
-[ ] All database tables have corresponding models and endpoints
-[ ] Bookkeeping integrity: no update/delete endpoints for immutable tables (verkauf, kassenstand, gutschein, anzahlung, abrechnung_tag)
-[ ] All business logic from Java POS is ported to API
-[ ] Comprehensive validation and error handling implemented
-[ ] Per-user accounts with login auditing and transaction attribution
-[ ] All existing Java POS functionality available through API
-[ ] Proper separation of concerns (business logic vs. API routes)
+
+- [ ] All database tables have corresponding models and endpoints
+- [ ] Bookkeeping integrity: no update/delete endpoints for immutable tables (verkauf, kassenstand, gutschein, anzahlung, abrechnung_tag)
+- [ ] All business logic from Java POS is ported to API
+- [ ] Comprehensive validation and error handling implemented
+- [ ] Per-user accounts with login auditing and transaction attribution
+- [ ] All existing Java POS functionality available through API
+- [ ] Proper separation of concerns (business logic vs. API routes)
 
 ### Quality Assurance
-[ ] 80%+ test coverage achieved
-[ ] All endpoints properly documented
-[ ] All code properly documented with docstrings
-[ ] All error conditions handled gracefully
-[ ] Performance optimized for production use
+
+- [ ] 80%+ test coverage achieved
+- [ ] All endpoints properly documented
+- [ ] All code properly documented with docstrings
+- [ ] All error conditions handled gracefully
+- [ ] Performance optimized for production use
 
 ### Documentation
-[ ] Complete API documentation available via /docs and /redoc
-[ ] Migration guide created
-[ ] Setup instructions created
-[ ] Database schema documented
-[ ] Architecture documented
+
+- [ ] Complete API documentation available via /docs and /redoc
+- [ ] Migration guide created
+- [ ] Setup instructions created
+- [ ] Database schema documented
+- [ ] Architecture documented
 
 ### Production Readiness
-[ ] Working integration with existing database
-[ ] Ready for frontend client development
-[ ] Ready for production deployment
-[ ] All existing functionality preserved and enhanced
-[ ] All security considerations addressed
+- [ ] Working integration with existing database
+- [ ] Ready for frontend client development
+- [ ] Ready for production deployment
+- [ ] All existing functionality preserved and enhanced
+- [ ] All security considerations addressed
 
 ---
 

@@ -4,8 +4,8 @@ from fastapi import HTTPException
 
 from sqlmodel import select
 
-from routers.verkauf import storno_verkauf, read_single_verkauf
-from models import Verkauf, VerkaufDetails, VerkaufMwst
+from python.routers.verkauf import storno_verkauf, read_single_verkauf
+from python.models import Verkauf, VerkaufDetails, VerkaufMwst
 
 
 def test_storno_creates_inverted_entries(session):
@@ -42,8 +42,8 @@ def test_storno_creates_inverted_entries(session):
     # Details should be inverted
     details = storno["verkauf_details"]
     assert len(details) == 1
-    assert details[0]["stueckzahl"] == -2
-    assert details[0]["ges_preis"] == -10.0
+    assert details[0].stueckzahl == -2
+    assert details[0].ges_preis == -10.0
 
     # MwSt should be inverted
     mwsts = storno["verkauf_mwst"]

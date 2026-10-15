@@ -1,5 +1,5 @@
 fastapi[standard]
-sqlmodel
+sqlmodel==0.0.26 # newer versions reject naive datetimes, but the DB schema uses naive DATETIME
 mariadb # the Python MariaDB Connector
 python-dotenv # for storing DB credentials
 pytest

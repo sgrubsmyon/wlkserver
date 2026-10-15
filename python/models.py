@@ -68,6 +68,20 @@ class MwstPublic(MwstBase):
     mwst_id: int
 
 
+# For creating
+class MwstCreate(SQLModel):
+    mwst_satz: float = Field(ge=0, le=1)
+    dsfinvk_ust_schluessel: int = Field(ge=0)
+    dsfinvk_ust_beschr: str | None = Field(max_length=55, default=None)
+
+
+# For updating
+class MwstUpdate(SQLModel):
+    mwst_satz: float | None = Field(ge=0, le=1, default=None)
+    dsfinvk_ust_schluessel: int | None = Field(ge=0, default=None)
+    dsfinvk_ust_beschr: str | None = Field(max_length=55, default=None)
+
+
 #######################
 # Pfand models
 #######################
@@ -89,6 +103,16 @@ class PfandPublic(SQLModel):
     wert: float | None
 
 
+# For creating
+class PfandCreate(SQLModel):
+    artikel_id: int
+
+
+# For updating
+class PfandUpdate(SQLModel):
+    artikel_id: int | None = None
+
+
 #######################
 # Produktgruppe models
 #######################
@@ -107,7 +131,7 @@ class Produktgruppe(ProduktgruppeBase, table=True):
     __tablename__ = 'produktgruppe'
 
     produktgruppen_id: int | None = Field(default=None, primary_key=True)
-    mwst_id: int = Field(default=None, foreign_key="mwst.mwst_id") # sa_column_kwargs={"unsigned": True}, 
+    mwst_id: int | None = Field(default=None, foreign_key="mwst.mwst_id") # sa_column_kwargs={"unsigned": True}, 
     pfand_id: int | None = Field(default=None, foreign_key="pfand.pfand_id") # sa_column_kwargs={"unsigned": True}, 
 
     aktiv: bool = Field(nullable=False, default=True)
@@ -124,7 +148,7 @@ class Produktgruppe(ProduktgruppeBase, table=True):
 # For reading product groups
 class ProduktgruppePublic(ProduktgruppeBase):
     produktgruppen_id: int
-    mwst_id: int
+    mwst_id: int | None
     # OMG, this took me like a week to find out:
     # to avoid validation errors, we need to also allow nullable fields
     # in the response model to be None
