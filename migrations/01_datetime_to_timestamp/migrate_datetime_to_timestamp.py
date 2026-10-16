@@ -1,12 +1,35 @@
 #!/usr/bin/env python3
 """
-Correctly migrate all DATETIME columns to TIMESTAMP with UTC storage.
-Handles historical DST transitions using zoneinfo (Europe/Berlin).
+=====================================================================
+Migration: DATETIME → TIMESTAMP with UTC storage
+=====================================================================
+
+WHY THIS MIGRATION
+  sqlmodel 0.0.27+ enforces timezone-aware datetimes. The Python
+  application uses datetime.now(timezone.utc) (aware UTC). MariaDB's
+  TIMESTAMP type stores values in UTC and converts them on read/write
+  using the session timezone.
+
+DST PROBLEM (IMPORTANT)
+  Historical data was stored in local time: CET (+01:00) in winter,
+  CEST (+02:00) in summer. MariaDB's ALTER TABLE MODIFY converts
+  using the CURRENT session timezone only. A single SET time_zone
+  will misinterpret ~50% of historical rows by 1 hour.
+  Example: "2024-01-15 14:30:00" (CET) should become "2024-01-15
+  13:30:00" UTC. But if you SET time_zone = '+02:00' (CEST),
+  MariaDB would store it as "2024-01-15 12:30:00" UTC — 1 hour off.
+
+THERE IS NO PURELY SQL-ONLY SOLUTION that handles historical DST
+transitions correctly. You MUST use this Python migration script.
+
+This script correctly migrates all DATETIME columns to TIMESTAMP
+with UTC storage. Handles historical DST transitions using zoneinfo
+(Europe/Berlin).
 
 Usage:
     python3 migrate_datetime_to_timestamp.py
 
-The script reads DB credentials from python/.env (DBHOST, DBNAME, DBPASS).
+The script reads DB credentials from python/.env (DBHOST, DBNAME).
 Requires: python3 + mariadb connector (mariadb package).
 
 Steps performed:
@@ -15,11 +38,21 @@ Steps performed:
     3. Convert to UTC
     4. Store the UTC value
 
-No row is changed until the migration script is run — no data loss risk.
+MIGRATION PROCEDURE
+  1. BACKUP the database first:
+       mysqldump -u kassenadmin -p kasse > backup_before_timestamp.sql
+  2. Run the Python migration script (handles DST correctly):
+       cd /home/mvoge/Documents/Markus/i/code/Weltladenkasse/wlkserver
+       python3 migrations/01_datetime_to_timestamp/migrate_datetime_to_timestamp.py
+  3. Verify the results:
+       SELECT verkaufsdatum FROM verkauf ORDER BY verkaufsdatum LIMIT 5;
+       -- Values should now be in UTC (roughly 1-2 hours earlier than
+       -- the original local times)
 """
 
 import os
 import sys
+from getpass import getpass
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -36,7 +69,7 @@ except ImportError:
 
 # Locate python/.env relative to this script's location
 script_dir = os.path.dirname(os.path.abspath(__file__))
-env_file = os.path.join(script_dir, "..", "python", ".env")
+env_file = os.path.join(script_dir, "..", "..", "python", ".env")
 
 if os.path.exists(env_file):
     with open(env_file) as f:
@@ -50,7 +83,7 @@ if os.path.exists(env_file):
 db_host = os.environ.get("DBHOST", "127.0.0.1")
 db_name = os.environ.get("DBNAME", "kasse")
 db_user = "kassenadmin"
-db_pass = os.environ.get("DBPASS", "")
+db_pass = getpass(f"Enter the MySQL password for user '{db_user}': ")
 
 # Timezone constants
 TZ_BERLIN = ZoneInfo("Europe/Berlin")
@@ -59,16 +92,24 @@ TZ_UTC = ZoneInfo("UTC")
 # Tables with (table_name, primary_key_column, datetime_column)
 # Add or remove entries as new tables/columns are created.
 TABLES_COLUMNS = [
-    ("verkauf",        "rechnungs_nr",   "verkaufdatum"),
+    ("artikel",        "artikel_id",     "von"),
+    ("artikel",        "artikel_id",     "bis"),
+    ("rabattaktion",   "rabatt_id",      "von"),
+    ("rabattaktion",   "rabatt_id",      "bis"),
+    ("verkauf",        "rechnungs_nr",   "verkaufsdatum"),
     ("kassenstand",    "kassenstand_id", "buchungsdatum"),
     ("anzahlung",      "anzahlung_id",   "datum"),
     ("gutschein",      "gutschein_id",   "datum"),
-    ("zaehlprotokoll", "id",             "datum"),
-    ("abrechnung_tag", "id",             "datum"),
-    ("abrechnung_monat", "id",           "datum"),
-    ("abrechnung_jahr",  "id",           "datum"),
-    ("bestellung",     "bestell_nr",     "bestelldatum"),
-    ("tse_transaction", "transaction_id", "transaction_timestamp"),
+    ("zaehlprotokoll", "id",             "zeitpunkt"),
+    ("abrechnung_tag", "id",             "zeitpunkt"),
+    ("abrechnung_tag", "id",             "zeitpunkt_real"),
+    ("bestellung",     "bestell_nr",     "bestell_datum"),
+    # TRAINING MODE:
+    ("training_verkauf",        "rechnungs_nr",   "verkaufsdatum"),
+    ("training_kassenstand",    "kassenstand_id", "buchungsdatum"),
+    ("training_anzahlung",      "anzahlung_id",   "datum"),
+    ("training_gutschein",      "gutschein_id",   "datum"),
+    ("training_zaehlprotokoll", "id",             "zeitpunkt")
 ]
 
 
