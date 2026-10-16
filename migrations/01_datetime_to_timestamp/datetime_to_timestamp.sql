@@ -62,16 +62,18 @@
 -- current session timezone, causing 1-hour errors for ~50% of rows.
 -- =====================================================================
 
+ALTER TABLE artikel MODIFY von TIMESTAMP DEFAULT NULL;
+ALTER TABLE artikel MODIFY bis TIMESTAMP DEFAULT NULL;
+ALTER TABLE rabattaktion MODIFY von TIMESTAMP NOT NULL;
+ALTER TABLE rabattaktion MODIFY bis TIMESTAMP;
 ALTER TABLE verkauf MODIFY verkaufsdatum TIMESTAMP NOT NULL;
 ALTER TABLE kassenstand MODIFY buchungsdatum TIMESTAMP NOT NULL;
 ALTER TABLE anzahlung MODIFY datum TIMESTAMP NOT NULL;
 ALTER TABLE gutschein MODIFY datum TIMESTAMP NOT NULL;
-ALTER TABLE zaehlprotokoll MODIFY datum TIMESTAMP NOT NULL;
-ALTER TABLE abrechnung_tag MODIFY datum TIMESTAMP NOT NULL;
-ALTER TABLE abrechnung_monat MODIFY datum TIMESTAMP NOT NULL;
-ALTER TABLE abrechnung_jahr MODIFY datum TIMESTAMP NOT NULL;
-ALTER TABLE bestellung MODIFY bestelldatum TIMESTAMP NOT NULL;
-ALTER TABLE tse_transaction MODIFY transaction_timestamp TIMESTAMP NOT NULL;
+ALTER TABLE zaehlprotokoll MODIFY zeitpunkt TIMESTAMP NOT NULL;
+ALTER TABLE abrechnung_tag MODIFY zeitpunkt TIMESTAMP NOT NULL;
+ALTER TABLE abrechnung_tag MODIFY zeitpunkt_real TIMESTAMP NOT NULL;
+ALTER TABLE bestellung MODIFY bestell_datum TIMESTAMP NOT NULL;
 
 -- =====================================================================
 -- TRAINING MODE TABLES (if training mode is used)
@@ -81,7 +83,6 @@ ALTER TABLE training_verkauf MODIFY verkaufsdatum TIMESTAMP NOT NULL;
 ALTER TABLE training_kassenstand MODIFY buchungsdatum TIMESTAMP NOT NULL;
 ALTER TABLE training_anzahlung MODIFY datum TIMESTAMP NOT NULL;
 ALTER TABLE training_gutschein MODIFY datum TIMESTAMP NOT NULL;
-ALTER TABLE training_zaehlprotokoll MODIFY datum TIMESTAMP NOT NULL;
-ALTER TABLE training_abrechnung_tag MODIFY datum TIMESTAMP NOT NULL;
-ALTER TABLE training_abrechnung_monat MODIFY datum TIMESTAMP NOT NULL;
-ALTER TABLE training_abrechnung_jahr MODIFY datum TIMESTAMP NOT NULL;
+ALTER TABLE training_zaehlprotokoll MODIFY zeitpunkt TIMESTAMP NOT NULL;
+ALTER TABLE training_abrechnung_tag MODIFY zeitpunkt TIMESTAMP NOT NULL;
+ALTER TABLE training_abrechnung_tag MODIFY zeitpunkt_real TIMESTAMP NOT NULL;
