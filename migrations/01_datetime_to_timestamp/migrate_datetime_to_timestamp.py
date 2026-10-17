@@ -166,6 +166,17 @@ def migrate():
         rows = cursor.fetchall()
         print(f"  Found {len(rows)} rows.")
 
+        cursor.execute(
+            f"SELECT `{dt_col}` FROM `{table}` WHERE `{dt_col}` >= '2026-03-28' AND `{dt_col}` <= '2026-03-31'"
+        )
+        # Print the output from the SELECT command
+        result = cursor.fetchall()
+        if result:
+            print(f"Table '{table}', column '{dt_col}':")
+            print(f"  Before the conversion to UTC: Found rows in the DST transition period (2026-03-28 to 2026-03-31):")
+            for r in result:
+                print(f"    {r[0]}")
+
         # Process and update
         for pk, dt_val in rows:
             if dt_val is None:
@@ -173,11 +184,14 @@ def migrate():
 
             dt_utc = to_utc(dt_val)
 
-            # Only update if the value actually changed (avoids unnecessary writes)
-            if isinstance(dt_val, str):
-                current_as_utc = to_utc(dt_val)
-            else:
-                current_as_utc = to_utc(str(dt_val).replace(" ", "T"))
+            # # Only update if the value actually changed (avoids unnecessary writes)
+            # if isinstance(dt_val, str):
+            #     current_as_utc = to_utc(dt_val)
+            # else:
+            #     current_as_utc = to_utc(str(dt_val).replace(" ", "T"))
+
+            # if current_as_utc == dt_utc:
+            #     continue
 
             # Update the row with the correct UTC value
             cursor.execute(
@@ -186,9 +200,16 @@ def migrate():
             )
             changed_count += 1
 
-        # Now change the column type to TIMESTAMP
-        print(f"  Changing column type to TIMESTAMP NOT NULL...")
-        cursor.execute(f"ALTER TABLE `{table}` MODIFY `{dt_col}` TIMESTAMP NOT NULL")
+        cursor.execute(
+            f"SELECT `{dt_col}` FROM `{table}` WHERE `{dt_col}` >= '2026-03-28' AND `{dt_col}` <= '2026-03-31'"
+        )
+        # Print the output from the SELECT command
+        result = cursor.fetchall()
+        print(f"Table '{table}', column '{dt_col}':")
+        if result:
+            print(f"  After the conversion to UTC: Found rows in the DST transition period (2026-03-28 to 2026-03-31):")
+            for r in result:
+                print(f"    {r[0]}")
 
     conn.commit()
 
