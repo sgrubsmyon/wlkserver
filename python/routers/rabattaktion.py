@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Query
@@ -89,12 +89,12 @@ def delete_rabattaktion(rabattaktion_id: int, session: SessionDep):
     rabattaktion = session.get(Rabattaktion, rabattaktion_id)
     if not rabattaktion:
         raise HTTPException(status_code=404, detail="Rabattaktion not found")
-    if rabattaktion.bis is not None and rabattaktion.bis <= datetime.now():
+    if rabattaktion.bis is not None and rabattaktion.bis <= datetime.now(timezone.utc):
         raise HTTPException(status_code=400, detail="Rabattaktion already ended")
     # There are two cases: if rabattaktion has started (von in the past), we set bis to now to end the rabattaktion
     # If rabattaktion has not started (von in the future), we set bis to von (we have no SQL permissions to just delete it)
-    if rabattaktion.von <= datetime.now():
-        rabattaktion.bis = datetime.now()
+    if rabattaktion.von <= datetime.now(timezone.utc):
+        rabattaktion.bis = datetime.now(timezone.utc)
         session.add(rabattaktion)
         session.commit()
         return {"message": "Rabattaktion's bis date set to now to end it"}
@@ -111,7 +111,7 @@ def update_rabattaktion(rabattaktion_id: int, rabattaktion: RabattaktionUpdate, 
     
     if not old_rabattaktion:
         raise HTTPException(status_code=404, detail="Rabattaktion not found")
-    if old_rabattaktion.bis is not None and old_rabattaktion.bis <= datetime.now():
+    if old_rabattaktion.bis is not None and old_rabattaktion.bis <= datetime.now(timezone.utc):
         raise HTTPException(status_code=400, detail="Rabattaktion already ended, cannot update ended Rabattaktion")
 
     # There are two cases:
@@ -119,7 +119,7 @@ def update_rabattaktion(rabattaktion_id: int, rabattaktion: RabattaktionUpdate, 
     # 2. If rabattaktion has not started yet (von in the future), we allow changing all fields
 
     rabattaktion_data = rabattaktion.model_dump(exclude_unset=True)
-    if (old_rabattaktion.von <= datetime.now()):
+    if (old_rabattaktion.von <= datetime.now(timezone.utc)):
         # Case 1: Rabattaktion hase already started, only allow changing name and bis date
         allowed_fields = {"aktionsname", "bis"}
         for key in list(rabattaktion_data.keys()):

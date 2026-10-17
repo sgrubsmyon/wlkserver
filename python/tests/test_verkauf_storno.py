@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 import pytest
 from fastapi import HTTPException
 
@@ -10,7 +10,7 @@ from python.models import Verkauf, VerkaufDetails, VerkaufMwst
 
 def test_storno_creates_inverted_entries(session):
     # Create original sale
-    original = Verkauf(verkaufsdatum=datetime.now(), ec_zahlung=False, kunde_gibt=20.0)
+    original = Verkauf(verkaufsdatum=datetime.now(timezone.utc), ec_zahlung=False, kunde_gibt=20.0)
     session.add(original)
     session.commit()
     session.refresh(original)
@@ -53,7 +53,7 @@ def test_storno_creates_inverted_entries(session):
 
 
 def test_duplicate_storno_is_prevented(session):
-    original = Verkauf(verkaufsdatum=datetime.now(), ec_zahlung=False)
+    original = Verkauf(verkaufsdatum=datetime.now(timezone.utc), ec_zahlung=False)
     session.add(original)
     session.commit()
     session.refresh(original)

@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 
 from typing import Annotated
 
@@ -109,7 +109,7 @@ def create_artikel(artikel: ArtikelCreate, session: SessionDep):
         raise HTTPException(status_code=400, detail="Artikel already exists")
 
     new_artikel.artikel_id = None # whatever has been set here, unset it so that the ID will be set by the DB
-    new_artikel.von = datetime.now()
+    new_artikel.von = datetime.now(timezone.utc)
     new_artikel.bis = None
     new_artikel.aktiv = True
 
@@ -134,7 +134,7 @@ def delete_artikel_intern(artikel_id: int, session: SessionDep):
     if artikel.aktiv == False:
         raise HTTPException(status_code=400, detail="Artikel already deactivated")
     artikel.aktiv = False
-    artikel.bis = datetime.now()
+    artikel.bis = datetime.now(timezone.utc)
     session.add(artikel)
     session.commit()
     session.refresh(artikel) # needed, or returned article will be empty

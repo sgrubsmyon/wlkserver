@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Annotated, List, Optional
 
 from fastapi import APIRouter, HTTPException, Query
@@ -99,7 +99,7 @@ def create_verkauf(verkauf: VerkaufCreate, session: SessionDep):
     # base = VerkaufCreate.model_validate(verkauf)
     new_v = Verkauf.model_validate(verkauf)
     new_v.rechnungs_nr = None
-    new_v.verkaufsdatum = datetime.now()
+    new_v.verkaufsdatum = datetime.now(timezone.utc)
     session.add(new_v)
     session.commit()
     session.refresh(new_v)
@@ -182,7 +182,7 @@ def storno_verkauf(rechnungs_nr: int, session: SessionDep):
 
     # Create storno sale
     storno_sale = Verkauf(
-        verkaufsdatum=datetime.now(),
+        verkaufsdatum=datetime.now(timezone.utc),
         ec_zahlung=False,
         kunde_gibt=None,
         storno_von=rechnungs_nr,
