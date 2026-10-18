@@ -9,6 +9,7 @@ from .routers import (
   verkauf,
   kassenstand, gutschein, anzahlung,
   abrechnung_tag, abrechnung_monat, abrechnung_jahr,
+  zaehlprotokoll, bestellung,
 )
 
 
@@ -33,6 +34,8 @@ app.include_router(anzahlung.router)
 app.include_router(abrechnung_tag.router)
 app.include_router(abrechnung_monat.router)
 app.include_router(abrechnung_jahr.router)
+app.include_router(zaehlprotokoll.router)
+app.include_router(bestellung.router)
 # app.include_router(
 #     admin.router,
 #     prefix="/admin",

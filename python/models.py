@@ -744,6 +744,125 @@ class AbrechnungJahrMwstPublic(SQLModel):
     bar_brutto: float
 
 
+#######################
+# Zaehlprotokoll models
+#######################
+
+class Zaehlprotokoll(SQLModel, table=True):
+    __tablename__ = "zaehlprotokoll"
+
+    id: int | None = Field(default=None, primary_key=True)
+    abrechnung_tag_id: int = Field(foreign_key="abrechnung_tag.id", nullable=False)
+    zeitpunkt: datetime = Field(sa_column=Column(TIMESTAMP, nullable=False))
+    kommentar: str = Field(nullable=False)
+    aktiv: bool = Field(nullable=False, default=True)
+
+
+class ZaehlprotokollPublic(SQLModel):
+    id: int
+    abrechnung_tag_id: int
+    zeitpunkt: datetime
+    kommentar: str
+    aktiv: bool
+
+
+class ZaehlprotokollCreate(SQLModel):
+    abrechnung_tag_id: int
+    zeitpunkt: datetime | None = None
+    kommentar: str
+    aktiv: bool = True
+    details: list["ZaehlprotokollDetailsCreate"] | None = None
+
+
+class ZaehlprotokollUpdate(SQLModel):
+    zeitpunkt: datetime | None = None
+    kommentar: str | None = None
+    aktiv: bool | None = None
+
+
+class ZaehlprotokollDetails(SQLModel, table=True):
+    __tablename__ = "zaehlprotokoll_details"
+
+    id: int | None = Field(default=None, primary_key=True)
+    zaehlprotokoll_id: int = Field(foreign_key="zaehlprotokoll.id", nullable=False)
+    anzahl: int = Field(nullable=False)
+    einheit: float = Field(sa_column=DECIMAL(precision=13, scale=2))
+
+
+class ZaehlprotokollDetailsPublic(SQLModel):
+    id: int
+    zaehlprotokoll_id: int
+    anzahl: int
+    einheit: float
+
+
+class ZaehlprotokollDetailsCreate(SQLModel):
+    anzahl: int
+    einheit: float
+
+
+#######################
+# Bestellung models
+#######################
+
+class Bestellung(SQLModel, table=True):
+    __tablename__ = "bestellung"
+
+    bestell_nr: int | None = Field(default=None, primary_key=True)
+    typ: str = Field(max_length=12, nullable=False, default="")
+    bestell_datum: datetime = Field(sa_column=Column(TIMESTAMP, nullable=False))
+    jahr: int = Field(nullable=False, default=2000)
+    kw: int = Field(nullable=False, default=1)
+
+
+class BestellungPublic(SQLModel):
+    bestell_nr: int
+    typ: str
+    bestell_datum: datetime
+    jahr: int
+    kw: int
+
+
+class BestellungCreate(SQLModel):
+    typ: str | None = None
+    bestell_datum: datetime | None = None
+    jahr: int | None = None
+    kw: int | None = None
+
+
+class BestellungUpdate(SQLModel):
+    typ: str | None = None
+    bestell_datum: datetime | None = None
+    jahr: int | None = None
+    kw: int | None = None
+
+
+class BestellungDetails(SQLModel, table=True):
+    __tablename__ = "bestellung_details"
+
+    bestell_nr: int = Field(foreign_key="bestellung.bestell_nr", primary_key=True)
+    typ: str = Field(max_length=12, nullable=False, default="", primary_key=True)
+    position: int = Field(primary_key=True)
+    artikel_id: int = Field(foreign_key="artikel.artikel_id", nullable=False)
+    stueckzahl: int = Field(nullable=False, default=1)
+
+
+class BestellungDetailsPublic(SQLModel):
+    bestell_nr: int
+    typ: str
+    position: int
+    artikel_id: int
+    stueckzahl: int
+
+
+class BestellungDetailsCreate(SQLModel):
+    bestell_nr: int | None = None
+    typ: str | None = None
+    position: int
+    artikel_id: int
+    stueckzahl: int = 1
+
+
 # Ensure datetime values read from the database are always UTC-aware.
 # MariaDB's Python connector (and SQLite) return naive datetimes even for
 # TIMESTAMP columns, so we attach UTC tzinfo on load/refresh.
