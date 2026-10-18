@@ -1,9 +1,9 @@
 from typing import Optional
 
 from sqlmodel import Field, SQLModel, Relationship
-from sqlalchemy import DECIMAL, Column, TIMESTAMP, event
+from sqlalchemy import DECIMAL, Column, TIMESTAMP, event, DATE
 from sqlalchemy.orm import backref
-from datetime import datetime, timezone
+from datetime import datetime, timezone, date
 
 #######################
 # Lieferant models
@@ -584,6 +584,164 @@ class AnzahlungDetailsCreate(SQLModel):
 class AnzahlungAufloesen(SQLModel):
     datum: datetime | None = None
     aufloesung_in_rech_nr: int
+
+
+#######################
+# Abrechnung Tag models
+#######################
+
+class AbrechnungTag(SQLModel, table=True):
+    __tablename__ = "abrechnung_tag"
+
+    id: int | None = Field(default=None, primary_key=True)
+    z_kasse_id: str = Field(max_length=30, nullable=False, default="1")
+    zeitpunkt: datetime = Field(sa_column=Column(TIMESTAMP, nullable=False))
+    zeitpunkt_real: datetime = Field(sa_column=Column(TIMESTAMP, nullable=False))
+    kassenstand_id: int | None = Field(default=None, foreign_key="kassenstand.kassenstand_id")
+    rechnungs_nr_von: int = Field(foreign_key="verkauf.rechnungs_nr", nullable=False)
+    rechnungs_nr_bis: int = Field(foreign_key="verkauf.rechnungs_nr", nullable=False)
+    last_tse_sig_counter: int | None = Field(default=None)
+
+
+class AbrechnungTagPublic(SQLModel):
+    id: int
+    z_kasse_id: str
+    zeitpunkt: datetime
+    zeitpunkt_real: datetime
+    kassenstand_id: int | None
+    rechnungs_nr_von: int
+    rechnungs_nr_bis: int
+    last_tse_sig_counter: int | None
+
+
+class AbrechnungTagCreate(SQLModel):
+    z_kasse_id: str | None = None
+    zeitpunkt: datetime | None = None
+    zeitpunkt_real: datetime | None = None
+    kassenstand_id: int | None = None
+    rechnungs_nr_von: int | None = None
+    rechnungs_nr_bis: int | None = None
+    last_tse_sig_counter: int | None = None
+
+
+class AbrechnungTagMwst(SQLModel, table=True):
+    __tablename__ = "abrechnung_tag_mwst"
+
+    id: int = Field(primary_key=True, foreign_key="abrechnung_tag.id")
+    mwst_satz: float = Field(sa_column=Column(DECIMAL(precision=6, scale=5), primary_key=True, nullable=False))
+    mwst_netto: float = Field(sa_column=DECIMAL(precision=13, scale=2))
+    mwst_betrag: float = Field(sa_column=DECIMAL(precision=13, scale=2))
+    bar_brutto: float = Field(sa_column=DECIMAL(precision=13, scale=2))
+
+
+class AbrechnungTagMwstPublic(SQLModel):
+    id: int
+    mwst_satz: float
+    mwst_netto: float
+    mwst_betrag: float
+    bar_brutto: float
+
+
+class AbrechnungTagTse(SQLModel, table=True):
+    __tablename__ = "abrechnung_tag_tse"
+
+    id: int = Field(primary_key=True, foreign_key="abrechnung_tag.id")
+    tse_id: int | None = None
+    tse_serial: str | None = Field(max_length=68, default=None)
+    tse_sig_algo: str | None = Field(max_length=21, default=None)
+    tse_time_format: str | None = Field(max_length=31, default=None)
+    tse_pd_encoding: str | None = Field(max_length=5, default=None)
+    tse_public_key: str | None = Field(max_length=512, default=None)
+    tse_cert_i: str | None = Field(max_length=1000, default=None)
+    tse_cert_ii: str | None = Field(max_length=1000, default=None)
+
+
+#######################
+# Abrechnung Monat models
+#######################
+
+class AbrechnungMonat(SQLModel, table=True):
+    __tablename__ = "abrechnung_monat"
+
+    id: int | None = Field(default=None, primary_key=True)
+    monat: date = Field(sa_column=Column(DATE, nullable=False))
+    abrechnung_tag_id_von: int = Field(foreign_key="abrechnung_tag.id", nullable=False)
+    abrechnung_tag_id_bis: int = Field(foreign_key="abrechnung_tag.id", nullable=False)
+
+
+class AbrechnungMonatPublic(SQLModel):
+    id: int
+    monat: date
+    abrechnung_tag_id_von: int
+    abrechnung_tag_id_bis: int
+
+
+class AbrechnungMonatCreate(SQLModel):
+    monat: str | None = None
+    abrechnung_tag_id_von: int | None = None
+    abrechnung_tag_id_bis: int | None = None
+
+
+class AbrechnungMonatMwst(SQLModel, table=True):
+    __tablename__ = "abrechnung_monat_mwst"
+
+    id: int = Field(primary_key=True, foreign_key="abrechnung_monat.id")
+    mwst_satz: float = Field(sa_column=Column(DECIMAL(precision=6, scale=5), primary_key=True, nullable=False))
+    mwst_netto: float = Field(sa_column=DECIMAL(precision=13, scale=2))
+    mwst_betrag: float = Field(sa_column=DECIMAL(precision=13, scale=2))
+    bar_brutto: float = Field(sa_column=DECIMAL(precision=13, scale=2))
+
+
+class AbrechnungMonatMwstPublic(SQLModel):
+    id: int
+    mwst_satz: float
+    mwst_netto: float
+    mwst_betrag: float
+    bar_brutto: float
+
+
+#######################
+# Abrechnung Jahr models
+#######################
+
+class AbrechnungJahr(SQLModel, table=True):
+    __tablename__ = "abrechnung_jahr"
+
+    id: int | None = Field(default=None, primary_key=True)
+    jahr: int = Field(nullable=False)
+    abrechnung_tag_id_von: int = Field(foreign_key="abrechnung_tag.id", nullable=False)
+    abrechnung_tag_id_bis: int = Field(foreign_key="abrechnung_tag.id", nullable=False)
+
+
+class AbrechnungJahrPublic(SQLModel):
+    id: int
+    jahr: int
+    abrechnung_tag_id_von: int
+    abrechnung_tag_id_bis: int
+
+
+class AbrechnungJahrCreate(SQLModel):
+    jahr: int | None = None
+    abrechnung_tag_id_von: int | None = None
+    abrechnung_tag_id_bis: int | None = None
+
+
+class AbrechnungJahrMwst(SQLModel, table=True):
+    __tablename__ = "abrechnung_jahr_mwst"
+
+    id: int = Field(primary_key=True, foreign_key="abrechnung_jahr.id")
+    mwst_satz: float = Field(sa_column=Column(DECIMAL(precision=6, scale=5), primary_key=True, nullable=False))
+    mwst_netto: float = Field(sa_column=DECIMAL(precision=13, scale=2))
+    mwst_betrag: float = Field(sa_column=DECIMAL(precision=13, scale=2))
+    bar_brutto: float = Field(sa_column=DECIMAL(precision=13, scale=2))
+
+
+class AbrechnungJahrMwstPublic(SQLModel):
+    id: int
+    mwst_satz: float
+    mwst_netto: float
+    mwst_betrag: float
+    bar_brutto: float
 
 
 # Ensure datetime values read from the database are always UTC-aware.
