@@ -202,10 +202,10 @@
 
 ### Phase 6: Core Business Logic from Java
 
-[ ] VAT Calculation Module (python/business/vat_calculator.py)
-[ ] Sale Workflow Enhancements (python/business/sale_workflow.py)
-[ ] Storno Logic Enhancements (python/business/storno_logic.py)
-[ ] Cash Register Operations (python/business/cash_register.py)
+[✅] VAT Calculation Module (python/business/vat_calculator.py)
+[✅] Sale Workflow Enhancements (python/business/sale_workflow.py)
+[✅] Storno Logic Enhancements (python/business/storno_logic.py)
+[✅] Cash Register Operations (python/business/cash_register.py)
 
 ---
 

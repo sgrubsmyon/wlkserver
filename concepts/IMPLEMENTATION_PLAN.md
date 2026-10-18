@@ -15,6 +15,7 @@ This document outlines the comprehensive implementation plan to complete the Fas
 - **CRUD Operations**: Most major entities have basic CRUD functionality
 - **Business Logic**: Some core logic like article versioning and storno operations
 - **API Structure**: Clean FastAPI structure with proper routing
+- **Phase 6 Business Logic**: `python/business/{vat_calculator,sale_workflow,storno_logic,cash_register}.py` added; VAT aggregation in sale creation switched to Decimal-safe calculation
 
 ### 🎯 What Needs to be Done
 - Complete missing endpoints for existing models (CR, CRU or CRD per table, see Phases 1-4)

@@ -18,6 +18,8 @@ from ..models import (
     # VerkaufDetailsCreate,
 )
 from ..session import SessionDep
+from ..business.vat_calculator import calculate_vat
+from ..business.sale_workflow import prepare_detail, calculate_mwst_summary
 
 router = APIRouter(
     prefix="/verkauf",
@@ -115,57 +117,26 @@ def create_verkauf(verkauf: VerkaufCreate, session: SessionDep):
     session.refresh(new_v)
 
     # Add details if present
-    # Within the loop over the details, also create the sums of mwst_netto and mwst_betrag per mwst_satz
-    mwst_summary = {} # for each mwst_satz, store the sum of mwst_netto and mwst_betrag
+    prepared = []
     for d in (verkauf.verkauf_details or []):
-        d_obj = VerkaufDetails.model_validate(d)
+        d_obj = prepare_detail(session, d)
         d_obj.vd_id = None
         d_obj.rechnungs_nr = new_v.rechnungs_nr
-        
-        # # If position is not provided, set it to the next available position for this sale (max position + 1, or 1 if no details yet)
-        # No: A position of None (or NULL in SQL) has a meaning (it means that the table acts as a modifier to the last table row with a position not NULL, which is used for rabatt rows that refer to the previous article row), so we should not auto-assign a position if it is None
-        # if d_obj.position is None:
-        #     q = select(VerkaufDetails).where(VerkaufDetails.rechnungs_nr == new_v.rechnungs_nr)
-        #     existing = session.exec(q).all()
-        #     d_obj.position = (max((e.position or 0) for e in existing) + 1) if existing else 1
-        
-        # Find ges_preis and mwst_satz for the article of this detail, and add to mwst summary
-        if d_obj.artikel_id is not None:
-            artikel = session.get(Artikel, d_obj.artikel_id)
-            if artikel and artikel.mwst_satz is not None:
-                d_obj.mwst_satz = artikel.mwst_satz
-            if artikel and not artikel.variabler_preis and artikel.vk_preis is not None:
-                d_obj.ges_preis = d_obj.stueckzahl * artikel.vk_preis
-        elif d_obj.rabatt_id is not None:
-            rabattaktion = session.get(Rabattaktion, d_obj.rabatt_id)
-            # TODO Continue here
-            # if d_obj.mwst_satz is None or d_obj.ges_preis is None:
-            #     raise HTTPException(status_code=400, detail="For rabatt details, mwst_satz and ges_preis must be provided")
-        # If this detail is not an article, but a rabatt, we cannot determine mwst_satz and ges_preis from an article, so we require that these values are provided in the request (and validate them in the model)
-        # If this detail is an article with variable price, we also require that ges_preis is provided in the request
-        # If this detail is an article and has no mwst_satz (e.g. in case of discount/Rabatt), we also require that mwst_satz is provided in the request
-        # else:
-        #     if d_obj.mwst_satz is None or d_obj.ges_preis is None:
-        #         raise HTTPException(status_code=400, detail="For rabatt details, mwst_satz and ges_preis must be provided")
-
-        # TODO Add transaction to the Gutschein table if article_id is 6 (Gutschein) or 7 (Gutscheineinlösung)
-        # TODO IDs 6 and 7 need to be defined somehwere centrally, e.g. as constants in the Artikel model, and not hardcoded here
-
-        # Add to mwst summary
-        if d_obj.mwst_satz is not None and d_obj.ges_preis is not None:
-            if d_obj.mwst_satz not in mwst_summary:
-                mwst_summary[d_obj.mwst_satz] = {"mwst_netto": 0.0, "mwst_betrag": 0.0}
-            mwst_summary[d_obj.mwst_satz]["mwst_netto"] += d_obj.ges_preis / (1 + d_obj.mwst_satz)
-            mwst_summary[d_obj.mwst_satz]["mwst_betrag"] += mwst_summary[d_obj.mwst_satz]["mwst_netto"] * d_obj.mwst_satz
         session.add(d_obj)
+        prepared.append(d_obj)
+    session.commit()
+    for d_obj in prepared:
+        session.refresh(d_obj)
 
-    # Create VerkaufMwst objects from the summary
+    # Aggregate VAT per tax rate using Decimal-safe calculation
+    mwst_summary = calculate_mwst_summary(prepared)
+
     for mwst_satz, summary in mwst_summary.items():
         m_obj = VerkaufMwst(
             rechnungs_nr=new_v.rechnungs_nr,
-            mwst_satz=mwst_satz,
-            mwst_netto=summary["mwst_netto"],
-            mwst_betrag=summary["mwst_betrag"],
+            mwst_satz=float(mwst_satz),
+            mwst_netto=float(summary["mwst_netto"]),
+            mwst_betrag=float(summary["mwst_betrag"]),
         )
         session.add(m_obj)
 
@@ -179,54 +150,13 @@ def create_verkauf(verkauf: VerkaufCreate, session: SessionDep):
 
 @router.post("/{rechnungs_nr}/storno", response_model=dict)
 def storno_verkauf(rechnungs_nr: int, session: SessionDep):
+    from ..business.storno_logic import create_storno
+    storno_sale = create_storno(session, rechnungs_nr)
+    # voucher/installment handling hooks
+    from ..business.storno_logic import handle_storno_voucher, handle_storno_installment
     original = session.get(Verkauf, rechnungs_nr)
-    if not original:
-        raise HTTPException(status_code=404, detail="Original Verkauf not found")
-    # Prevent storno of a storno
-    if original.storno_von is not None:
-        raise HTTPException(status_code=400, detail="Cannot storno a storno")
-    # Prevent duplicate storno (if any sale already references this as storno_von)
-    existing_storno = session.exec(select(Verkauf).where(Verkauf.storno_von == rechnungs_nr)).first()
-    if existing_storno:
-        raise HTTPException(status_code=400, detail="This Verkauf already has a storno")
-
-    # Create storno sale
-    storno_sale = Verkauf(
-        verkaufsdatum=datetime.now(timezone.utc),
-        ec_zahlung=False,
-        kunde_gibt=None,
-        storno_von=rechnungs_nr,
-    )
-    storno_sale.rechnungs_nr = None
-    session.add(storno_sale)
-    session.commit()
-    session.refresh(storno_sale)
-
-    # Create inverted details
-    for d in original.verkauf_details or []:
-        inv = VerkaufDetails(
-            position=d.position,
-            stueckzahl=-d.stueckzahl,
-            ges_preis=-d.ges_preis,
-            mwst_satz=d.mwst_satz,
-            rechnungs_nr=storno_sale.rechnungs_nr,
-            artikel_id=d.artikel_id,
-            rabatt_id=d.rabatt_id,
-        )
-        session.add(inv)
-
-    # Create inverted mwst entries
-    for m in original.verkauf_mwst or []:
-        inv_m = VerkaufMwst(
-            rechnungs_nr=storno_sale.rechnungs_nr,
-            mwst_satz=m.mwst_satz,
-            mwst_netto=-m.mwst_netto,
-            mwst_betrag=-m.mwst_betrag,
-        )
-        session.add(inv_m)
-
-    session.commit()
-    session.refresh(storno_sale)
+    handle_storno_voucher(session, original)
+    handle_storno_installment(session, original)
     return read_single_verkauf(storno_sale.rechnungs_nr, session)
 
 
