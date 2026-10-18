@@ -1,5 +1,7 @@
 # Weltladenkasse API - Implementation Plan
 
+> **Sync note**: This document and `concepts/TODO.md` must be kept in sync. When implementation progress changes, update both files so new sessions without prior memory see a consistent status.
+
 ## Overview
 
 This document outlines the comprehensive implementation plan to complete the FastAPI backend for the Weltladenkasse POS system. The goal is to port all business logic from the existing Java Swing POS application (`../git/src/org/weltladen_bonn/pos/`) to the new Python FastAPI backend.

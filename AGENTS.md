@@ -1,5 +1,9 @@
 # `wlkserver` repository
 
+## Documentation sync
+
+`concepts/IMPLEMENTATION_PLAN.md` and `concepts/TODO.md` must be kept in sync. When implementation progress changes, update both files so new sessions without prior memory see a consistent status.
+
 ## What is this?
 
 The code in the repo is the attempt to create an API to a MySQL database that is already in prodcution use as data backend of a shop cashier POS system.

@@ -66,6 +66,11 @@ def create_mwst(mwst: MwstCreate, session: SessionDep):
     return new_mwst
 
 
+@router.put("/{mwst_id}", response_model=MwstPublic, dependencies=[Depends(require_admin)])
+def replace_mwst(mwst_id: int, mwst: MwstUpdate, session: SessionDep):
+    return update_mwst(mwst_id, mwst, session)
+
+
 @router.patch("/{mwst_id}", response_model=MwstPublic, dependencies=[Depends(require_admin)])
 def update_mwst(mwst_id: int, mwst: MwstUpdate, session: SessionDep):
     old_mwst = session.get(Mwst, mwst_id)

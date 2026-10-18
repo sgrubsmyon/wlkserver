@@ -72,6 +72,11 @@ def create_pfand(pfand: PfandCreate, session: SessionDep):
     return PfandPublic.model_validate(new_pfand, update={"wert": new_pfand.artikel.vk_preis})
 
 
+@router.put("/{pfand_id}", response_model=PfandPublic, dependencies=[Depends(require_admin)])
+def replace_pfand(pfand_id: int, pfand: PfandUpdate, session: SessionDep):
+    return update_pfand(pfand_id, pfand, session)
+
+
 @router.patch("/{pfand_id}", response_model=PfandPublic, dependencies=[Depends(require_admin)])
 def update_pfand(pfand_id: int, pfand: PfandUpdate, session: SessionDep):
     old_pfand = session.get(Pfand, pfand_id)
