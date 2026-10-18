@@ -11,6 +11,7 @@ from .routers import (
   abrechnung_tag, abrechnung_monat, abrechnung_jahr,
   zaehlprotokoll, bestellung,
   tse,
+  auth, users, import_export,
 )
 
 
@@ -38,6 +39,9 @@ app.include_router(abrechnung_jahr.router)
 app.include_router(zaehlprotokoll.router)
 app.include_router(bestellung.router)
 app.include_router(tse.router)
+app.include_router(auth.router)
+app.include_router(users.router)
+app.include_router(import_export.router)
 # app.include_router(
 #     admin.router,
 #     prefix="/admin",

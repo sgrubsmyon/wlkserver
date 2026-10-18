@@ -339,6 +339,7 @@ class RabattaktionUpdate(SQLModel):
 class VerkaufBase(SQLModel):
     ec_zahlung: bool = Field(nullable=False, default=False)
     kunde_gibt: float | None = Field(sa_column=DECIMAL(precision=13, scale=2), default=None)
+    user_id: int | None = Field(default=None, foreign_key="user.user_id")
 
 
 # The table model
@@ -471,6 +472,7 @@ class Kassenstand(SQLModel, table=True):
     entnahme: bool = Field(nullable=False, default=False)
     rechnungs_nr: int | None = Field(default=None, foreign_key="verkauf.rechnungs_nr")
     kommentar: str | None = Field(max_length=70, default=None)
+    user_id: int | None = Field(default=None, foreign_key="user.user_id")
 
 
 class KassenstandPublic(SQLModel):
@@ -543,6 +545,7 @@ class Anzahlung(SQLModel, table=True):
     datum: datetime = Field(sa_column=Column(TIMESTAMP, nullable=False))
     anzahlung_in_rech_nr: int = Field(foreign_key="verkauf.rechnungs_nr", nullable=False)
     aufloesung_in_rech_nr: int | None = Field(default=None, foreign_key="verkauf.rechnungs_nr")
+    user_id: int | None = Field(default=None, foreign_key="user.user_id")
 
 
 class AnzahlungPublic(SQLModel):
@@ -598,6 +601,7 @@ class AbrechnungTag(SQLModel, table=True):
     zeitpunkt: datetime = Field(sa_column=Column(TIMESTAMP, nullable=False))
     zeitpunkt_real: datetime = Field(sa_column=Column(TIMESTAMP, nullable=False))
     kassenstand_id: int | None = Field(default=None, foreign_key="kassenstand.kassenstand_id")
+    user_id: int | None = Field(default=None, foreign_key="user.user_id")
     rechnungs_nr_von: int = Field(foreign_key="verkauf.rechnungs_nr", nullable=False)
     rechnungs_nr_bis: int = Field(foreign_key="verkauf.rechnungs_nr", nullable=False)
     last_tse_sig_counter: int | None = Field(default=None)
@@ -927,3 +931,51 @@ def _on_load(target, context):
 @event.listens_for(SQLModel, "refresh", propagate=True)
 def _on_refresh(target, context, attrs):
     _make_datetimes_aware(target)
+
+
+#######################
+# User / Auth models (Phase 7.4)
+#######################
+
+class User(SQLModel, table=True):
+    __tablename__ = "user"
+
+    user_id: int | None = Field(default=None, primary_key=True)
+    username: str = Field(max_length=50, nullable=False, unique=True)
+    password_hash: str = Field(max_length=255, nullable=False)
+    role: str = Field(max_length=20, nullable=False, default="mitarbeiter")  # admin | mitarbeiter
+    active: bool = Field(nullable=False, default=True)
+
+    anmeldungen: list["Anmeldung"] = Relationship(back_populates="user")
+
+
+class UserPublic(SQLModel):
+    user_id: int
+    username: str
+    role: str
+    active: bool
+
+
+class UserCreate(SQLModel):
+    username: str = Field(max_length=50)
+    password: str
+    role: str = Field(default="mitarbeiter")
+    active: bool = Field(default=True)
+
+
+class UserUpdate(SQLModel):
+    username: str | None = None
+    role: str | None = None
+    active: bool | None = None
+    password: str | None = None
+
+
+class Anmeldung(SQLModel, table=True):
+    __tablename__ = "anmeldung"
+
+    anmeldung_id: int | None = Field(default=None, primary_key=True)
+    user_id: int = Field(foreign_key="user.user_id", nullable=False)
+    login_time: datetime = Field(sa_column=Column(TIMESTAMP, nullable=False))
+    logout_time: datetime | None = Field(default=None, sa_column=Column(TIMESTAMP, nullable=True))
+
+    user: "User" = Relationship(back_populates="anmeldungen")

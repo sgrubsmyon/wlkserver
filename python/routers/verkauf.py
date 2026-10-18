@@ -110,6 +110,7 @@ def create_verkauf(verkauf: VerkaufCreate, session: SessionDep):
         ec_zahlung=verkauf.ec_zahlung,
         kunde_gibt=verkauf.kunde_gibt,
         storno_von=verkauf.storno_von,
+        user_id=getattr(verkauf, "user_id", None),
     )
     new_v.rechnungs_nr = None
     session.add(new_v)
