@@ -863,6 +863,53 @@ class BestellungDetailsCreate(SQLModel):
     stueckzahl: int = 1
 
 
+#######################
+# TSE transaction models
+#######################
+
+class TSETransaction(SQLModel, table=True):
+    __tablename__ = "tse_transaction"
+
+    transaction_id: int | None = Field(default=None, primary_key=True)
+    transaction_number: int | None = Field(default=None)
+    rechnungs_nr: int | None = Field(default=None, foreign_key="verkauf.rechnungs_nr")
+    training: bool = Field(nullable=False, default=False)
+    transaction_start: str | None = Field(max_length=29, default=None)
+    transaction_end: str | None = Field(max_length=29, default=None)
+    process_type: str | None = Field(max_length=30, default=None)
+    signature_counter: int | None = Field(default=None)
+    signature_base64: str | None = Field(max_length=512, default=None)
+    tse_error: str | None = Field(default=None)
+    process_data: str | None = Field(max_length=65, default=None)
+
+
+class TSETransactionPublic(SQLModel):
+    transaction_id: int
+    transaction_number: int | None
+    rechnungs_nr: int | None
+    training: bool
+    transaction_start: str | None
+    transaction_end: str | None
+    process_type: str | None
+    signature_counter: int | None
+    signature_base64: str | None
+    tse_error: str | None
+    process_data: str | None
+
+
+class TSETransactionCreate(SQLModel):
+    transaction_number: int | None = None
+    rechnungs_nr: int | None = None
+    training: bool = False
+    transaction_start: str | None = None
+    transaction_end: str | None = None
+    process_type: str | None = None
+    signature_counter: int | None = None
+    signature_base64: str | None = None
+    tse_error: str | None = None
+    process_data: str | None = None
+
+
 # Ensure datetime values read from the database are always UTC-aware.
 # MariaDB's Python connector (and SQLite) return naive datetimes even for
 # TIMESTAMP columns, so we attach UTC tzinfo on load/refresh.
