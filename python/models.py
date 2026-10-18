@@ -457,6 +457,135 @@ class VerkaufDetailsCreate(VerkaufDetailsBase):
     rabatt_id: int | None = None
 
 
+#######################
+# Kassenstand models
+#######################
+
+class Kassenstand(SQLModel, table=True):
+    __tablename__ = "kassenstand"
+
+    kassenstand_id: int | None = Field(default=None, primary_key=True)
+    buchungsdatum: datetime = Field(sa_column=Column(TIMESTAMP, nullable=False))
+    neuer_kassenstand: float = Field(sa_column=DECIMAL(precision=13, scale=2))
+    manuell: bool = Field(nullable=False, default=False)
+    entnahme: bool = Field(nullable=False, default=False)
+    rechnungs_nr: int | None = Field(default=None, foreign_key="verkauf.rechnungs_nr")
+    kommentar: str | None = Field(max_length=70, default=None)
+
+
+class KassenstandPublic(SQLModel):
+    kassenstand_id: int
+    buchungsdatum: datetime
+    neuer_kassenstand: float
+    manuell: bool
+    entnahme: bool
+    rechnungs_nr: int | None
+    kommentar: str | None
+
+
+class KassenstandCreate(SQLModel):
+    buchungsdatum: datetime | None = None
+    neuer_kassenstand: float
+    manuell: bool = False
+    entnahme: bool = False
+    rechnungs_nr: int | None = None
+    kommentar: str | None = Field(max_length=70, default=None)
+
+
+#######################
+# Gutschein models
+#######################
+
+class Gutschein(SQLModel, table=True):
+    __tablename__ = "gutschein"
+
+    gutschein_id: int | None = Field(default=None, primary_key=True)
+    gutschein_nr: int = Field(nullable=False)
+    datum: datetime = Field(sa_column=Column(TIMESTAMP, nullable=False))
+    gutschein_in_vd_id: int | None = Field(default=None, foreign_key="verkauf_details.vd_id")
+    einloesung_in_vd_id: int | None = Field(default=None, foreign_key="verkauf_details.vd_id")
+    restbetrag: float = Field(sa_column=DECIMAL(precision=13, scale=2))
+
+
+class GutscheinPublic(SQLModel):
+    gutschein_id: int
+    gutschein_nr: int
+    datum: datetime
+    gutschein_in_vd_id: int | None
+    einloesung_in_vd_id: int | None
+    restbetrag: float
+
+
+class GutscheinCreate(SQLModel):
+    gutschein_nr: int
+    datum: datetime | None = None
+    gutschein_in_vd_id: int | None = None
+    einloesung_in_vd_id: int | None = None
+    restbetrag: float
+
+
+class GutscheinEinloesen(SQLModel):
+    datum: datetime | None = None
+    gutschein_in_vd_id: int | None = None
+    einloesung_in_vd_id: int | None = None
+    restbetrag: float | None = None
+    betrag: float | None = None
+
+
+#######################
+# Anzahlung models
+#######################
+
+class Anzahlung(SQLModel, table=True):
+    __tablename__ = "anzahlung"
+
+    anzahlung_id: int | None = Field(default=None, primary_key=True)
+    datum: datetime = Field(sa_column=Column(TIMESTAMP, nullable=False))
+    anzahlung_in_rech_nr: int = Field(foreign_key="verkauf.rechnungs_nr", nullable=False)
+    aufloesung_in_rech_nr: int | None = Field(default=None, foreign_key="verkauf.rechnungs_nr")
+
+
+class AnzahlungPublic(SQLModel):
+    anzahlung_id: int
+    datum: datetime
+    anzahlung_in_rech_nr: int
+    aufloesung_in_rech_nr: int | None
+
+
+class AnzahlungCreate(SQLModel):
+    datum: datetime | None = None
+    anzahlung_in_rech_nr: int
+    aufloesung_in_rech_nr: int | None = None
+    details: list["AnzahlungDetailsCreate"] | None = None
+
+
+class AnzahlungDetails(SQLModel, table=True):
+    __tablename__ = "anzahlung_details"
+
+    ad_id: int | None = Field(default=None, primary_key=True)
+    rechnungs_nr: int = Field(foreign_key="verkauf.rechnungs_nr", nullable=False)
+    vd_id: int = Field(foreign_key="verkauf_details.vd_id", nullable=False)
+    ges_preis: float = Field(sa_column=DECIMAL(precision=13, scale=2))
+
+
+class AnzahlungDetailsPublic(SQLModel):
+    ad_id: int
+    rechnungs_nr: int
+    vd_id: int
+    ges_preis: float
+
+
+class AnzahlungDetailsCreate(SQLModel):
+    rechnungs_nr: int
+    vd_id: int
+    ges_preis: float
+
+
+class AnzahlungAufloesen(SQLModel):
+    datum: datetime | None = None
+    aufloesung_in_rech_nr: int
+
+
 # Ensure datetime values read from the database are always UTC-aware.
 # MariaDB's Python connector (and SQLite) return naive datetimes even for
 # TIMESTAMP columns, so we attach UTC tzinfo on load/refresh.

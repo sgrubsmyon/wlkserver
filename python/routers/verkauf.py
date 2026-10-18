@@ -103,9 +103,13 @@ def read_single_verkauf(
 @router.post("/", response_model=VerkaufPublic)
 def create_verkauf(verkauf: VerkaufCreate, session: SessionDep):
     # base = VerkaufCreate.model_validate(verkauf)
-    new_v = Verkauf.model_validate(verkauf)
+    new_v = Verkauf(
+        verkaufsdatum=datetime.now(timezone.utc),
+        ec_zahlung=verkauf.ec_zahlung,
+        kunde_gibt=verkauf.kunde_gibt,
+        storno_von=verkauf.storno_von,
+    )
     new_v.rechnungs_nr = None
-    new_v.verkaufsdatum = datetime.now(timezone.utc)
     session.add(new_v)
     session.commit()
     session.refresh(new_v)
@@ -113,7 +117,7 @@ def create_verkauf(verkauf: VerkaufCreate, session: SessionDep):
     # Add details if present
     # Within the loop over the details, also create the sums of mwst_netto and mwst_betrag per mwst_satz
     mwst_summary = {} # for each mwst_satz, store the sum of mwst_netto and mwst_betrag
-    for d in verkauf.get("verkauf_details", []) or []:
+    for d in (verkauf.verkauf_details or []):
         d_obj = VerkaufDetails.model_validate(d)
         d_obj.vd_id = None
         d_obj.rechnungs_nr = new_v.rechnungs_nr

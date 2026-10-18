@@ -7,6 +7,7 @@ from .routers import (
   artikel, lieferant, produktgruppe,
   mwst, pfand, rabattaktion,
   verkauf,
+  kassenstand, gutschein, anzahlung,
 )
 
 
@@ -25,6 +26,9 @@ app.include_router(mwst.router)
 app.include_router(pfand.router)
 app.include_router(rabattaktion.router)
 app.include_router(verkauf.router)
+app.include_router(kassenstand.router)
+app.include_router(gutschein.router)
+app.include_router(anzahlung.router)
 # app.include_router(
 #     admin.router,
 #     prefix="/admin",
