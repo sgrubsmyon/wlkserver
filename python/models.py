@@ -1,9 +1,9 @@
 from typing import Optional
 
 from sqlmodel import Field, SQLModel, Relationship
-from sqlalchemy import DECIMAL, Column
+from sqlalchemy import DECIMAL, Column, TIMESTAMP, event
 from sqlalchemy.orm import backref
-from datetime import datetime
+from datetime import datetime, timezone
 
 #######################
 # Lieferant models
@@ -212,8 +212,8 @@ class Artikel(ArtikelBase, table=True):
     produktgruppen_id: int = Field(foreign_key="produktgruppe.produktgruppen_id", nullable=False, default=8)
     lieferant_id: int = Field(foreign_key="lieferant.lieferant_id", nullable=False, default=1)
 
-    von: datetime | None = Field(nullable=True, default=None)
-    bis: datetime | None = Field(nullable=True, default=None)
+    von: datetime | None = Field(sa_column=Column(TIMESTAMP, nullable=True), default=None)
+    bis: datetime | None = Field(sa_column=Column(TIMESTAMP, nullable=True), default=None)
     aktiv: bool = Field(nullable=False, default=True)
 
     # relationships
@@ -282,8 +282,8 @@ class RabattaktionBase(SQLModel):
     mengenrabatt_schwelle: int | None = Field(default=None) # sa_column_kwargs={"unsigned": True}
     mengenrabatt_anzahl_kostenlos: int | None = Field(default=None) # sa_column_kwargs={"unsigned": True}
     mengenrabatt_relativ: float | None = Field(sa_column=DECIMAL(precision=6, scale=5), default=None)
-    von: datetime = Field(nullable=False)
-    bis: datetime | None = Field(nullable=True, default=None)
+    von: datetime = Field(sa_column=Column(TIMESTAMP, nullable=False))
+    bis: datetime | None = Field(sa_column=Column(TIMESTAMP, nullable=True), default=None)
 
 
 # The table model
@@ -345,7 +345,7 @@ class VerkaufBase(SQLModel):
 class Verkauf(VerkaufBase, table=True):
     __tablename__ = 'verkauf'
 
-    verkaufsdatum: datetime = Field(nullable=False)
+    verkaufsdatum: datetime = Field(sa_column=Column(TIMESTAMP, nullable=False))
 
     # primary key
     rechnungs_nr: int | None = Field(default=None, primary_key=True)
@@ -455,3 +455,22 @@ class VerkaufDetailsPublic(VerkaufDetailsBase):
 class VerkaufDetailsCreate(VerkaufDetailsBase):
     artikel_id: int | None = None
     rabatt_id: int | None = None
+
+
+# Ensure datetime values read from the database are always UTC-aware.
+# MariaDB's Python connector (and SQLite) return naive datetimes even for
+# TIMESTAMP columns, so we attach UTC tzinfo on load/refresh.
+def _make_datetimes_aware(target):
+    for key, value in list(getattr(target, "__dict__", {}).items()):
+        if isinstance(value, datetime) and value.tzinfo is None:
+            setattr(target, key, value.replace(tzinfo=timezone.utc))
+
+
+@event.listens_for(SQLModel, "load", propagate=True)
+def _on_load(target, context):
+    _make_datetimes_aware(target)
+
+
+@event.listens_for(SQLModel, "refresh", propagate=True)
+def _on_refresh(target, context, attrs):
+    _make_datetimes_aware(target)

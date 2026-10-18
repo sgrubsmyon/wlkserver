@@ -40,9 +40,15 @@ def read_verkaeufe(
 ) -> List[dict]:
     selection = select(Verkauf)
     if since:
-        selection = selection.where(Verkauf.verkaufsdatum >= datetime.fromisoformat(since))
+        since_dt = datetime.fromisoformat(since)
+        if since_dt.tzinfo is None:
+            since_dt = since_dt.replace(tzinfo=timezone.utc)
+        selection = selection.where(Verkauf.verkaufsdatum >= since_dt)
     if until:
-        selection = selection.where(Verkauf.verkaufsdatum <= datetime.fromisoformat(until))
+        until_dt = datetime.fromisoformat(until)
+        if until_dt.tzinfo is None:
+            until_dt = until_dt.replace(tzinfo=timezone.utc)
+        selection = selection.where(Verkauf.verkaufsdatum <= until_dt)
     if only_storno:
         selection = selection.where(Verkauf.storno_von.is_not(None))
     verkaeufe = session.exec(

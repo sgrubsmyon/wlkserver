@@ -69,7 +69,12 @@ def read_single_rabattaktion(rabattaktion_id: int, session: SessionDep) -> Rabat
 @router.post("/", response_model=RabattaktionPublic)
 def create_rabattaktion(rabattaktion: RabattaktionCreate, session: SessionDep):
     new_rabattaktion = Rabattaktion.model_validate(rabattaktion)
-    
+    # Normalize naive datetimes to UTC
+    if new_rabattaktion.von.tzinfo is None:
+        new_rabattaktion.von = new_rabattaktion.von.replace(tzinfo=timezone.utc)
+    if new_rabattaktion.bis is not None and new_rabattaktion.bis.tzinfo is None:
+        new_rabattaktion.bis = new_rabattaktion.bis.replace(tzinfo=timezone.utc)
+
     # Add plausibility check
     if new_rabattaktion.bis is not None and new_rabattaktion.bis <= new_rabattaktion.von:
         raise HTTPException(status_code=400, detail="Invalid dates: 'bis' must be after 'von' or null")
@@ -127,6 +132,8 @@ def update_rabattaktion(rabattaktion_id: int, rabattaktion: RabattaktionUpdate, 
                 raise HTTPException(status_code=400, detail=f"Cannot change field '{key}' of started Rabattaktion, only 'aktionsname' and 'bis' can be changed")
     # Case 1 passed the checks or it is Case 2: Rabattaktion has not started yet, all fields can be changed
     for key, value in rabattaktion_data.items():
+        if isinstance(value, datetime) and value.tzinfo is None:
+            value = value.replace(tzinfo=timezone.utc)
         setattr(old_rabattaktion, key, value)
     session.add(old_rabattaktion)
     session.commit()
