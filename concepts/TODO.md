@@ -238,15 +238,15 @@
 
 ### Sale Workflow (`python/business/sale_workflow.py`)
 - [x] `check_ec_payment_threshold` invoked in sale endpoint (EC warning surfaced)
-- [ ] Voucher creation/redemption handling (Java Kassieren articles 6/7) not integrated into sale creation
-- [ ] Discount handling not integrated
+- [x] Voucher creation integrated into sale creation (GUTSCHEIN article creates Gutschein) - items 1-4
+- [x] Discount handling integrated in determine_ges_preis (rabatt_relativ/absolut/mengenrabatt) - items 1-4
 - [x] `require_user` enforced on all transaction create/mutate endpoints (step 4 enforcement follow-up)
 
 ### Storno (`python/business/storno_logic.py`)
-- [ ] `handle_storno_voucher` is a PLACEHOLDER (no voucher reversal)
-- [ ] `handle_storno_installment` is a PLACEHOLDER (no installment reversal)
-- [ ] No TSE transaction handling for storno
-- [ ] No reversing kassenstand entry for storno
+- [x] `handle_storno_voucher` implemented (cancels linked vouchers) - items 1-4
+- [x] `handle_storno_installment` implemented (resolves open installments against storno) - items 1-4
+- [x] TSE transaction handling for storno (best-effort) - items 1-4
+- [x] Reversing kassenstand entry for storno (step 1)
 - [ ] `get_all_current_mwst_values_by_id` unused
 
 ### Abrechnung Tag (`python/routers/abrechnung_tag.py`)

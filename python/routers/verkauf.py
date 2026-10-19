@@ -154,6 +154,26 @@ def create_verkauf(verkauf: VerkaufCreate, session: SessionDep, credentials: HTT
     session.commit()
     session.refresh(new_v)
 
+    # Voucher handling: selling article 6 (GUTSCHEIN) creates a new voucher
+    # (mirrors Java Kassieren.maybeInsertIntoGutschein).
+    from ..models import Artikel, Gutschein
+    max_nr = session.exec(select(Gutschein.gutschein_nr)).all()
+    next_nr = (max(max_nr) if max_nr else 199) + 1
+    for d in prepared:
+        art = session.get(Artikel, d.artikel_id) if d.artikel_id is not None else None
+        if art is not None and art.artikel_nr == "GUTSCHEIN":
+            g = Gutschein(
+                gutschein_nr=next_nr,
+                datum=new_v.verkaufsdatum,
+                gutschein_in_vd_id=d.vd_id,
+                einloesung_in_vd_id=None,
+                restbetrag=d.ges_preis if d.ges_preis is not None else 0.0,
+            )
+            g.gutschein_id = None
+            session.add(g)
+            next_nr += 1
+    session.commit()
+
     # Cash register side-effect: only cash (non-EC) sales add money to the register
     # (mirrors Java Kassieren.insertIntoKassenstand, called when ec == false).
     ec_warning = None
@@ -186,6 +206,28 @@ def storno_verkauf(rechnungs_nr: int, session: SessionDep, cash_refund: bool = F
     from ..business.storno_logic import handle_storno_voucher, handle_storno_installment
     handle_storno_voucher(session, original)
     handle_storno_installment(session, original)
+    # TSE transaction handling for storno (best-effort)
+    try:
+        from ..utils.tse_client import tse_client
+        from ..models import TSETransaction
+        signed = tse_client.create_transaction(process_type="Kassenbeleg-Storno", process_data=None, training=False)
+        tse = TSETransaction(
+            transaction_number=signed.get("transaction_number"),
+            rechnungs_nr=storno_sale.rechnungs_nr,
+            training=False,
+            transaction_start=signed.get("transaction_start"),
+            transaction_end=signed.get("transaction_end"),
+            process_type="Kassenbeleg-Storno",
+            signature_counter=signed.get("signature_counter"),
+            signature_base64=signed.get("signature_base64"),
+            tse_error=signed.get("tse_error"),
+            process_data=None,
+        )
+        tse.transaction_id = None
+        session.add(tse)
+        session.commit()
+    except Exception:
+        pass
     # Cash register side-effect: reversing entry for cash refunds
     # (mirrors Java HeutigeRechnungen.insertStornoIntoKassenstand).
     if (not original.ec_zahlung) or cash_refund:

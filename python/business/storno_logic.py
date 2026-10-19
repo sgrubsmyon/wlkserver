@@ -99,13 +99,58 @@ def create_storno(*args, **kwargs):
 
 # voucher/installment handling hooks (placeholders for integration)
 def handle_storno_voucher(session: Session, original: Verkauf) -> None:
-    """Placeholder: reverse voucher creation/redemption caused by the sale."""
-    return None
+    """Reverse voucher side-effects caused by the sale (best-effort)."""
+    from datetime import datetime, timezone
+    from ..models import Gutschein, VerkaufDetails
+    from sqlmodel import select
+    vd_ids = [d.vd_id for d in (original.verkauf_details or []) if d.vd_id is not None]
+    if not vd_ids:
+        return
+    gutscheine = session.exec(
+        select(Gutschein).where(Gutschein.gutschein_in_vd_id.in_(vd_ids))
+    ).all()
+    for g in gutscheine:
+        # Cancel the voucher by creating a new entry with restbetrag 0
+        new_g = Gutschein(
+            gutschein_nr=g.gutschein_nr,
+            datum=datetime.now(timezone.utc),
+            gutschein_in_vd_id=g.gutschein_in_vd_id,
+            einloesung_in_vd_id=None,
+            restbetrag=0.0,
+        )
+        new_g.gutschein_id = None
+        session.add(new_g)
+    if gutscheine:
+        session.commit()
 
 
 def handle_storno_installment(session: Session, original: Verkauf) -> None:
-    """Placeholder: reverse installment (Anzahlung) handling."""
-    return None
+    """Reverse installment (Anzahlung) handling: resolve open installments against storno."""
+    from datetime import datetime, timezone
+    from ..models import Anzahlung
+    from sqlmodel import select
+    open_anz = session.exec(
+        select(Anzahlung).where(
+            Anzahlung.anzahlung_in_rech_nr == original.rechnungs_nr,
+            Anzahlung.aufloesung_in_rech_nr.is_(None),
+        )
+    ).all()
+    # Find the storno sale created for original
+    from ..models import Verkauf
+    storno_sale = session.exec(
+        select(Verkauf).where(Verkauf.storno_von == original.rechnungs_nr)
+    ).first()
+    target_nr = storno_sale.rechnungs_nr if storno_sale is not None else original.rechnungs_nr
+    for a in open_anz:
+        new_a = Anzahlung(
+            datum=datetime.now(timezone.utc),
+            anzahlung_in_rech_nr=a.anzahlung_in_rech_nr,
+            aufloesung_in_rech_nr=target_nr,
+        )
+        new_a.anzahlung_id = None
+        session.add(new_a)
+    if open_anz:
+        session.commit()
 
 
 create_storno_sale = create_storno

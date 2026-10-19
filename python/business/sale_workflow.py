@@ -93,7 +93,24 @@ def determine_ges_preis(*args, **kwargs):
     if artikel_id is not None and session is not None:
         artikel = session.get(Artikel, artikel_id)
         if artikel is not None and not getattr(artikel, "variabler_preis", False) and artikel.vk_preis is not None:
-            return float(stueckzahl * artikel.vk_preis)
+            base = float(stueckzahl * artikel.vk_preis)
+            # Apply discount from Rabattaktion if present (item 4)
+            rabatt_id = getattr(detail, "rabatt_id", None)
+            if rabatt_id is None and isinstance(detail, dict):
+                rabatt_id = detail.get("rabatt_id")
+            if rabatt_id is not None:
+                rabatt = session.get(Rabattaktion, rabatt_id)
+                if rabatt is not None:
+                    if getattr(rabatt, "rabatt_relativ", None) is not None:
+                        base = base * (1.0 - float(rabatt.rabatt_relativ))
+                    elif getattr(rabatt, "rabatt_absolut", None) is not None:
+                        base = base - float(rabatt.rabatt_absolut) * stueckzahl
+                    if getattr(rabatt, "mengenrabatt_anzahl_kostenlos", None) and stueckzahl >= (rabatt.mengenrabatt_schwelle or 0):
+                        # buy X get Y free: reduce by free items
+                        free = (stueckzahl // (rabatt.mengenrabatt_schwelle or 1)) * (rabatt.mengenrabatt_anzahl_kostenlos or 0)
+                        if artikel.vk_preis is not None:
+                            base -= free * float(artikel.vk_preis)
+            return round(base, 2)
     return None
 
 
