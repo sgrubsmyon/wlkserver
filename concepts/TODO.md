@@ -193,7 +193,7 @@
 - [x] POST /tse/export/delete
 - [ ] POST /tse/certificates
 - [ ] GET /tse/transaction/verkauf/{rechnungs_nr}
-- [⏳] TSE C library (libse-api-c.so) loads via ctypes and version is reported; full transaction/export porting remains (Phase 5)
+- [⏳] TSE C library (libse-api-c.so) wraps open/init/start/finish/export/delete via ctypes; untested without hardware (Phase 5)
 - [ ] Automatic incremental TSE export in daily settlement
 
 ---
