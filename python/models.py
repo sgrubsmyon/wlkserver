@@ -519,6 +519,7 @@ class GutscheinPublic(SQLModel):
     gutschein_in_vd_id: int | None
     einloesung_in_vd_id: int | None
     restbetrag: float
+    restbetrag_anfang: float | None = None
 
 
 class GutscheinCreate(SQLModel):

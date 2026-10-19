@@ -108,7 +108,7 @@
 - [x] GET /kassenstand/{id}
 - [x] POST /kassenstand
 - [x] GET /kassenstand/aktuell
-- [ ] GET /kassenstand/letzte (not implemented; /aktuell covers latest)
+(no /kassenstand/letzte endpoint needed; /kassenstand/aktuell covers it)
 - [x] `update_kassenstand_for_sale` wired into sale creation + storno (cash only) - Phase 6 (step 1)
 - [ ] Advanced business logic (balance validation) - Phase 6
 - [ ] Non-negative validation on `neuer_kassenstand` not enforced
@@ -120,8 +120,8 @@
 - [x] POST /gutschein/{id}/einloesen
 - [x] GET /gutschein/ausstehend
 - [x] GET /gutschein/eingeloest
-- [ ] GET /gutschein/teilingeloest (not implemented)
-- [ ] GET /gutschein/verkauf/{rechnungs_nr} (not implemented)
+- [x] /gutschein/ausstehend now returns restbetrag_anfang (initial amount) for partial-redemption detection - done
+- [ ] GET /gutschein/verkauf/{rechnungs_nr} (not implemented) (optional)
 - [ ] Advanced redemption calculation - Phase 6
 
 [x] **Anzahlung** - models + router + smoke tests

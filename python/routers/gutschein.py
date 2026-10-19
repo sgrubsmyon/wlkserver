@@ -51,7 +51,17 @@ def read_ausstehende_gutscheine(session: SessionDep) -> list[GutscheinPublic]:
     rows = session.exec(
         select(Gutschein).where(Gutschein.gutschein_id.in_(ids), Gutschein.restbetrag > 0)
     ).all()
-    return [GutscheinPublic.model_validate(g) for g in rows]
+    result = []
+    for g in rows:
+        # initial restbetrag = restbetrag of the earliest entry for this gutschein_nr
+        first = session.exec(
+            select(Gutschein).where(Gutschein.gutschein_nr == g.gutschein_nr).order_by(Gutschein.gutschein_id)
+        ).first()
+        anfang = first.restbetrag if first is not None else g.restbetrag
+        obj = GutscheinPublic.model_validate(g)
+        obj.restbetrag_anfang = anfang
+        result.append(obj)
+    return result
 
 
 @router.get("/eingeloest")
