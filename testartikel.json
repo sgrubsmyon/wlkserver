@@ -1,0 +1,22 @@
+{
+  "artikel_nr": "TEST123",
+  "artikel_name": "Unser rauchender Testartikel in tollen Farben und Größen | 1 St.",
+  "kurzname": "Testartikel",
+  "menge": 1,
+  "einheit": "St.",
+  "barcode": "4319238494039",
+  "herkunft": "Taka-Tuka-Land",
+  "vpe": 1,
+  "setgroesse": 1,
+  "vk_preis": 12.50,
+  "empf_vk_preis": 0,
+  "ek_rabatt": 0.15,
+  "ek_preis": null,
+  "variabler_preis": false,
+  "sortiment": false,
+  "lieferbar": false,
+  "beliebtheit": 0,
+  "bestand": 0,
+  "produktgruppen_id": 90,
+  "lieferant_id": 17
+}

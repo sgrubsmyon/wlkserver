@@ -136,6 +136,20 @@ def create_abrechnung_tag(payload: Optional[AbrechnungTagCreate], session: Sessi
         session.refresh(new_ks)
         ks_id = new_ks.kassenstand_id
 
+    # Automatic incremental TSE export (best-effort), mirroring Java
+    # AbrechnungenTag.exportTSELog(): partial export by signature counter
+    # since the previous settlement, with fallback by TX number.
+    prev_sig = p.last_tse_sig_counter
+    if prev_sig is None and last is not None:
+        prev_sig = last.last_tse_sig_counter
+    if prev_sig is None:
+        prev_sig = 0
+    try:
+        from ..utils.tse_client import tse_client
+        tse_client.export_partial(last_excluded_signature_counter=prev_sig)
+    except Exception:
+        pass
+
     at = AbrechnungTag(
         z_kasse_id=p.z_kasse_id or "1",
         zeitpunkt=p.zeitpunkt or now,
@@ -143,7 +157,7 @@ def create_abrechnung_tag(payload: Optional[AbrechnungTagCreate], session: Sessi
         kassenstand_id=ks_id,
         rechnungs_nr_von=von,
         rechnungs_nr_bis=bis,
-        last_tse_sig_counter=p.last_tse_sig_counter,
+        last_tse_sig_counter=p.last_tse_sig_counter if p.last_tse_sig_counter is not None else prev_sig,
     )
     at.id = None
     session.add(at)

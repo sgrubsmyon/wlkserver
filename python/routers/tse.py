@@ -106,7 +106,12 @@ def init_tse():
 
 @router.post("/export/full")
 def export_full():
-    data = _make_tar_bytes("full")
+    try:
+        data = tse_client.export_full()
+    except Exception:
+        data = b""
+    if not data:
+        data = _make_tar_bytes("full")
     return Response(
         content=data,
         media_type="application/x-tar",
@@ -116,7 +121,22 @@ def export_full():
 
 @router.post("/export/partial")
 def export_partial(payload: Optional[TSEExportPartialRequest] = None):
-    data = _make_tar_bytes("partial")
+    p = payload or TSEExportPartialRequest()
+    kwargs = {
+        "criterion": p.criterion,
+        "start_tx_number": p.start_tx_number,
+        "end_tx_number": p.end_tx_number,
+        "start_date": p.start_date,
+        "end_date": p.end_date,
+        "last_excluded_signature_counter": p.last_excluded_signature_counter,
+        "max_records": p.max_records,
+    }
+    try:
+        data = tse_client.export_partial(**kwargs)
+    except Exception:
+        data = b""
+    if not data:
+        data = _make_tar_bytes("partial")
     return Response(
         content=data,
         media_type="application/x-tar",
@@ -126,7 +146,17 @@ def export_partial(payload: Optional[TSEExportPartialRequest] = None):
 
 @router.post("/export/delete")
 def export_delete(payload: Optional[TSEExportDeleteRequest] = None):
-    data = _make_tar_bytes("delete")
+    p = payload or TSEExportDeleteRequest()
+    kwargs = {
+        "last_excluded_signature_counter": p.last_excluded_signature_counter,
+        "max_records": p.max_records,
+    }
+    try:
+        data = tse_client.export_and_delete(**kwargs)
+    except Exception:
+        data = b""
+    if not data:
+        data = _make_tar_bytes("delete")
     return Response(
         content=data,
         media_type="application/x-tar",

@@ -1,0 +1,73 @@
+[
+  {
+    "comment": "Try to recreate rechnungs_nr 57874, the most complicated verkauf ever!",
+    "comparison_query1": "SELECT * FROM verkauf WHERE rechnungs_nr = 57874;",
+    "comparison_query2": "SELECT * FROM verkauf_mwst WHERE rechnungs_nr = 57874;",
+    "comparison_query3": "SELECT * FROM verkauf_details WHERE rechnungs_nr = 57874;"
+  },
+  {
+    "verkaufsdatum": "2026-03-26 23:35:56",
+    "ec_zahlung": false,
+    "kunde_gibt": 20.00,
+    "verkauf_details": [
+      {
+        "position": 1,
+        "stueckzahl": 10,
+        "artikel_id": 70102
+      },
+      {
+        "stueckzahl": 10,
+        "rabatt_id": 1
+      },
+      {
+        "stueckzahl": 10,
+        "artikel_id": 8
+      },
+      {
+      	"position": 2,
+        "stueckzahl": -2,
+        "artikel_id": 8
+      },
+      {
+        "position": 3,
+        "stueckzahl": -1,
+        "artikel_id": 74087
+      },
+      {
+        "position": 4,
+        "stueckzahl": 1,
+        "artikel_id": 47701
+      },
+      { 
+        "stueckzahl": 1,
+        "artikel_id": 1,
+        "ges_preis": -0.75,
+        "mwst_satz": 0.19
+      },
+      {
+        "position": 5,
+        "stueckzahl": 1,
+        "artikel_id": 58624
+      },
+      {
+        "position": 6,
+        "stueckzahl": 1,
+        "artikel_id": 6,
+        "ges_preis": 10.00
+      },
+      { 
+        "stueckzahl": 1,
+        "artikel_id": 2,
+        "ges_preis": -1.45,
+        "mwst_satz": 0.19
+
+      },
+      { 
+        "position": 7,
+        "stueckzahl": 1,
+        "artikel_id": 7,
+        "ges_preis": -20.00
+      }
+    ]
+  }
+]

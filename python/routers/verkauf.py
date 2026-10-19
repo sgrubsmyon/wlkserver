@@ -143,21 +143,48 @@ def create_verkauf(verkauf: VerkaufCreate, session: SessionDep):
 
     session.commit()
     session.refresh(new_v)
-    return read_single_verkauf(new_v.rechnungs_nr, session)
+
+    # Cash register side-effect: only cash (non-EC) sales add money to the register
+    # (mirrors Java Kassieren.insertIntoKassenstand, called when ec == false).
+    ec_warning = None
+    if not verkauf.ec_zahlung:
+        from ..business.cash_register import update_kassenstand_for_sale
+        update_kassenstand_for_sale(session=session, rechnungs_nr=new_v.rechnungs_nr)
+    else:
+        # EC payment threshold check (Java: ecSchwelle = 10.00)
+        from ..business.cash_register import ec_payment_threshold_check
+        total = sum((d.ges_preis or 0) for d in prepared)
+        ec_warning = ec_payment_threshold_check(total, True)
+
+    result = read_single_verkauf(new_v.rechnungs_nr, session)
+    if isinstance(result, dict):
+        result["ec_warning"] = ec_warning
+    return result
 
 
 # --- Storno endpoint ---
 
 
 @router.post("/{rechnungs_nr}/storno", response_model=dict)
-def storno_verkauf(rechnungs_nr: int, session: SessionDep):
+def storno_verkauf(rechnungs_nr: int, session: SessionDep, cash_refund: bool = False):
     from ..business.storno_logic import create_storno
+    original = session.get(Verkauf, rechnungs_nr)
+    if not original:
+        raise HTTPException(status_code=404, detail="Verkauf not found")
     storno_sale = create_storno(session, rechnungs_nr)
     # voucher/installment handling hooks
     from ..business.storno_logic import handle_storno_voucher, handle_storno_installment
-    original = session.get(Verkauf, rechnungs_nr)
     handle_storno_voucher(session, original)
     handle_storno_installment(session, original)
+    # Cash register side-effect: reversing entry for cash refunds
+    # (mirrors Java HeutigeRechnungen.insertStornoIntoKassenstand).
+    if (not original.ec_zahlung) or cash_refund:
+        from ..business.cash_register import update_kassenstand_for_sale
+        update_kassenstand_for_sale(
+            session=session,
+            rechnungs_nr=storno_sale.rechnungs_nr,
+            kommentar="Storno",
+        )
     return read_single_verkauf(storno_sale.rechnungs_nr, session)
 
 

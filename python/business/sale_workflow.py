@@ -220,6 +220,14 @@ def create_verkauf(*args, **kwargs):
         session.add(m_obj)
     session.commit()
     session.refresh(new_v)
+
+    # Cash register side-effect for cash (non-EC) sales, mirroring the router.
+    if not ec_zahlung:
+        try:
+            from .cash_register import update_kassenstand_for_sale
+            update_kassenstand_for_sale(session=session, rechnungs_nr=new_v.rechnungs_nr)
+        except Exception:
+            pass
     return new_v
 
 

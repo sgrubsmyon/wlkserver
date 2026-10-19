@@ -374,6 +374,7 @@ class VerkaufPublic(VerkaufBase):
     rechnungs_nr: int
     verkaufsdatum: datetime
     storno_von: int | None
+    ec_warning: str | None = None
 
 
 # For creating

@@ -54,6 +54,10 @@ def update_kassenstand_for_sale(*args, **kwargs) -> Kassenstand:
             session, rechnungs_nr = _resolve(args[0], args[1])
         elif len(args) == 1:
             session = args[0]
+    manuell = kwargs.get('manuell', False)
+    entnahme = kwargs.get('entnahme', False)
+    kommentar = kwargs.get('kommentar', None)
+    buchungsdatum = kwargs.get('buchungsdatum', None)
     v = session.get(Verkauf, rechnungs_nr)
     if v is None:
         raise HTTPException(status_code=404, detail="Verkauf not found")
@@ -65,12 +69,12 @@ def update_kassenstand_for_sale(*args, **kwargs) -> Kassenstand:
     alter = get_current_balance(session)
     neuer = (alter + total).quantize(Decimal("0.01"))
     new_ks = Kassenstand(
-        buchungsdatum=v.verkaufsdatum if v.verkaufsdatum is not None else datetime.now(timezone.utc),
+        buchungsdatum=buchungsdatum if buchungsdatum is not None else (v.verkaufsdatum if v.verkaufsdatum is not None else datetime.now(timezone.utc)),
         neuer_kassenstand=float(neuer),
-        manuell=False,
-        entnahme=False,
+        manuell=manuell,
+        entnahme=entnahme,
         rechnungs_nr=rechnungs_nr,
-        kommentar=None,
+        kommentar=kommentar,
     )
     new_ks.kassenstand_id = None
     session.add(new_ks)

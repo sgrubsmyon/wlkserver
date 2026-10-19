@@ -2,8 +2,8 @@
 
 > **Sync note**: This document and `concepts/IMPLEMENTATION_PLAN.md` must be kept in sync. When implementation progress changes, update both files so new sessions without prior memory see a consistent status.
 
-> **Last Updated**: 2026-10-18  
-> **Status**: Phases 1-4 implemented and tested; Phase 5 implemented as stubs (TSE C library not yet ported); Phase 6/7 pending
+> **Last Updated**: 2026-10-19  
+> **Status**: Phases 1-5 implemented at router level (TSE export still stubs); Phase 6/7 modules exist but much business logic is NOT wired into endpoints (see "Business Logic Wiring Gaps"); auth not enforced anywhere; test coverage low
 
 ---
 
@@ -39,6 +39,11 @@
 [x] Zaehlprotokoll models (Table, Public, Create, Update, Details)
 [x] Bestellung models (Table, Public, Create, Update, Details)
 [x] TSETransaction models (Table, Public, Create)
+[ ] Training table models (training_verkauf*, training_kassenstand, training_anzahlung*, training_gutschein, training_abrechnung_*, training_zaehlprotokoll*) - MISSING (not in models.py)
+[x] User model (Table, Public, Create, Update) - Phase 7.4
+[x] Anmeldung model (Table) - Phase 7.4 (login auditing)
+[ ] `user_id` FK column on gutschein, zaehlprotokoll, bestellung, tse_transaction - MISSING (only verkauf, kassenstand, anzahlung, abrechnung_tag have it)
+[ ] SQL migration for new `user`/`anmeldung` tables + `user_id` columns in `../git/mysql/` - MISSING
 
 ### Existing Router Functionality
 [x] Artikel router - Full CRUD with advanced versioning logic
@@ -73,6 +78,7 @@
 - [x] PATCH /mwst/{mwst_id} - Update VAT rate - **ADMIN ONLY**
 - [x] DELETE /mwst/{mwst_id} - Delete VAT rate (with constraints check) - **ADMIN ONLY**
 - [x] Add authentication/authorization dependency (stopgap: shared ADMIN_TOKEN)
+- [ ] `MwstBase.mwst_satz` has no `ge=0, le=1` constraint (only `MwstCreate`/`MwstUpdate` enforce it) - validation gap
 
 [x] **Pfand Admin-Only CRUD Completion** - `python/routers/pfand.py`
 - [x] POST /pfand - Create new deposit item - **ADMIN ONLY**
@@ -100,7 +106,9 @@
 - [x] POST /kassenstand
 - [x] GET /kassenstand/aktuell
 - [ ] GET /kassenstand/letzte (not implemented; /aktuell covers latest)
+- [x] `update_kassenstand_for_sale` wired into sale creation + storno (cash only) - Phase 6 (step 1)
 - [ ] Advanced business logic (balance validation) - Phase 6
+- [ ] Non-negative validation on `neuer_kassenstand` not enforced
 
 [x] **Gutschein** - models + router + smoke tests
 - [x] GET /gutschein
@@ -136,8 +144,9 @@
 - [x] GET /abrechnung/tag/offen
 - [ ] GET /abrechnung/tag/heute
 - [ ] GET /abrechnung/tag/{date}
-- [ ] Automatic incremental TSE export (Phase 5)
+- [x] Automatic incremental TSE export (best-effort) wired into POST /abrechnung/tag - step 3
 - [ ] Full Java aggregation (stornos, retouren, entnahmen) - Phase 6
+- [ ] kassenstand entry validation during Tagesabschluss
 
 [x] **Abrechnung Monat** - models + router + smoke tests
 - [x] GET /abrechnung/monat
@@ -194,30 +203,74 @@
 - [ ] POST /tse/certificates
 - [ ] GET /tse/transaction/verkauf/{rechnungs_nr}
 - [⏳] TSE C library (libse-api-c.so) wraps open/init/start/finish/export/delete via ctypes; untested without hardware (Phase 5)
-- [ ] Automatic incremental TSE export in daily settlement
+- [x] Automatic incremental TSE export in daily settlement - wired into POST /abrechnung/tag (step 3)
+- [x] Export endpoints now call tse_client.export_full/partial/export_and_delete (fallback to placeholder when no data/device) - step 2
+- [ ] `export_and_delete` does not call se_deleteStoredDataUpTo (deletion still missing; needs highest exported sig counter parsing)
+- [ ] `export_and_delete` does not call se_deleteStoredDataUpTo (deletion missing)
+- [ ] Partial export ignores request body criterion (tx number range / date range / sig counter) in response
+- [ ] POST /tse/certificates, GET /tse/transaction/verkauf/{rechnungs_nr} missing
 
 ---
 
 ## 🟡 MEDIUM PRIORITY - Business Logic Porting
 
-### Phase 6: Core Business Logic from Java
+### Phase 6: Core Business Logic from Java (modules exist; wiring incomplete)
 
-[✅] VAT Calculation Module (python/business/vat_calculator.py)
-[✅] Sale Workflow Enhancements (python/business/sale_workflow.py)
-[✅] Storno Logic Enhancements (python/business/storno_logic.py)
-[✅] Cash Register Operations (python/business/cash_register.py)
+[⏳] VAT Calculation Module (python/business/vat_calculator.py) - module complete, but `get_all_current_mwst_values_by_id` unused
+[⏳] Sale Workflow Enhancements (python/business/sale_workflow.py) - `prepare_detail`/`calculate_mwst_summary` used in router; `validate_detail`, `determine_mwst_satz`, `determine_ges_preis` not fully exercised; voucher/discount handling (Java Kassieren articles 6/7) NOT integrated; `check_ec_payment_threshold` NOT invoked; `user_id` not populated from auth token
+[⏳] Storno Logic Enhancements (python/business/storno_logic.py) - basic storno works; `handle_storno_voucher` and `handle_storno_installment` are PLACEHOLDERS; no TSE handling for storno; no reversing kassenstand entry
+[⏳] Cash Register Operations (python/business/cash_register.py) - `update_kassenstand_for_sale` NOT wired into sale creation or storno; `process_payment`/`ec_payment_threshold_check` unused; `end_of_day_procedure` is a STUB; `is_training_mode` always returns False
 
 ---
+
+## 🔴 HIGH PRIORITY - Business Logic Wiring Gaps (modules exist but not integrated)
+
+### Cash Register (`python/business/cash_register.py`)
+- [x] `update_kassenstand_for_sale` wired into `verkauf.py` create (cash only) and storno (cash refund) → per-sale kassenstand entries (manuell=False) now created
+- [x] `ec_payment_threshold_check` invoked in sale creation → EC warning surfaced in response (`ec_warning` field on VerkaufPublic)
+- [ ] `process_payment` still unused (helper available)
+- [ ] `end_of_day_procedure` is a STUB
+- [ ] `is_training_mode` always returns False (no training mode)
+
+### Sale Workflow (`python/business/sale_workflow.py`)
+- [x] `check_ec_payment_threshold` invoked in sale endpoint (EC warning surfaced)
+- [ ] Voucher creation/redemption handling (Java Kassieren articles 6/7) not integrated into sale creation
+- [ ] Discount handling not integrated
+- [ ] `user_id` not populated from auth token (transaction attribution)
+
+### Storno (`python/business/storno_logic.py`)
+- [ ] `handle_storno_voucher` is a PLACEHOLDER (no voucher reversal)
+- [ ] `handle_storno_installment` is a PLACEHOLDER (no installment reversal)
+- [ ] No TSE transaction handling for storno
+- [ ] No reversing kassenstand entry for storno
+- [ ] `get_all_current_mwst_values_by_id` unused
+
+### Abrechnung Tag (`python/routers/abrechnung_tag.py`)
+- [ ] Aggregation does not handle stornos, retouren, entnahmen
+- [x] Automatic incremental TSE export performed (best-effort) - step 3
+- [ ] `bar_brutto` aggregation is rough (sum of detail ges_preis for non-EC sales)
+
+### Auth / Transaction Attribution
+- [ ] Per-user auth not enforced on any endpoint (`require_user` unused)
+- [ ] `user_id` not auto-populated from JWT on any transaction table
+- [ ] logout/me use query param token instead of Authorization header
+- [ ] No SQL migration for user/anmeldung tables or user_id columns
 
 ## 🟢 LOW PRIORITY - Utilities and Enhancements
 
 ### Phase 7: Data Import/Export, Validation, Auth
 
-[✅] Import/Export Functionality
-[✅] Search and Filter Enhancements
-[✅] Validation Framework
-[✅] Authentication and Authorization System (per-user accounts, login auditing, transaction attribution) - HIGH PRIORITY
-[ ] Transport security (HTTPS on LAN)
+[⏳] Import/Export Functionality - endpoints exist; `import_bestellung_from_csv` is a PLACEHOLDER; `import_artikel` only maps 3 fields; CSV export of abrechnung minimal; `/import/artikel` session dependency questionable
+[⏳] Search and Filter Enhancements - minimal (only verkauf since/until/only_storno, mwst search_string); most routers have no filtering/sorting/pagination improvements
+[⏳] Validation Framework - `python/utils/validation.py` exists but rarely applied; non-negative checks not enforced on kassenstand/gutschein/anzahlung/bestellung/zaehlprotokoll; `MwstBase.mwst_satz` lacks 0-1 constraint
+[⏳] Authentication and Authorization System (per-user accounts, login auditing, transaction attribution) - HIGH PRIORITY
+  - Models + login/logout/me + user CRUD exist
+  - `require_user`/`get_current_user` defined but NEVER used (no endpoint protected by per-user auth)
+  - `user_id` not populated from auth token (client must pass manually)
+  - logout/me accept token only as query param, not Authorization header
+  - Password hashing uses PBKDF2 (plan: bcrypt); JWT is custom HMAC (plan: python-jose/pyjwt)
+  - No SQL migration for user/anmeldung tables or user_id columns in ../git/mysql/
+[ ] Transport security (HTTPS on LAN) - not configured
 
 ---
 
@@ -273,9 +326,11 @@
 ### Core Functionality
 
 - [x] Most database tables have corresponding models and endpoints (Phase 1-5)
-- [ ] All business logic from Java POS ported (Phase 6)
-- [ ] Comprehensive validation and error handling (Phase 7)
-- [ ] Per-user accounts with login auditing (Phase 7.4)
+- [ ] All database tables have models (training tables missing)
+- [ ] All business logic from Java POS ported (Phase 6) - modules exist but wiring incomplete
+- [ ] Comprehensive validation and error handling (Phase 7) - validation module exists but rarely applied
+- [ ] Per-user accounts with login auditing (Phase 7.4) - models + endpoints exist but auth not enforced anywhere; no DB migration
+- [ ] Transaction attribution via user_id (only 4 of 8 transaction tables have the column; not populated from token)
 - [ ] Proper separation of concerns
 
 ### Quality Assurance
@@ -301,33 +356,39 @@
 ## 📊 Summary Statistics
 
 ### Models Status
-- **Models Implemented**: 18 table models (Phase 1-5)
-- **Models Missing**: 15+ (training tables, user/anmeldung, import/export)
+- **Models Implemented**: 20 table models (Phase 1-5 + User + Anmeldung)
+- **Models Missing**: training tables (15+), user_id columns on gutschein/zaehlprotokoll/bestellung/tse_transaction
 
 ### Endpoints Status
-- **Routers Implemented**: 16 routers
+- **Routers Implemented**: 19 routers (incl. auth, users, import_export)
 - **Phase 1-5 endpoints**: implemented (with minor optional endpoints remaining)
-- **Phase 6/7**: pending
+- **Phase 6/7**: modules exist but wiring incomplete; auth not enforced
 
 ### Business Logic Status
-- **Business Logic Ported**: Basic CRUD + partial settlement aggregation
-- **Business Logic to Port**: ~90% of Java business logic still needs porting (Phase 6)
+- **Business Logic Ported**: Basic CRUD + partial settlement aggregation + VAT/storno/sale-workflow/cash-register modules
+- **Business Logic NOT wired**: cash-register side-effects, TSE export, voucher/installment storno, training mode, full Abrechnung aggregation, EC threshold warning
+- **Business Logic to Port**: ~90% of Java business logic still needs porting/integration (Phase 6)
 
 ### Testing Status
-- **Test Files**: 9 (2 original + 7 smoke)
-- **Test Coverage**: Low
+- **Test Files**: 9 (2 original + 7 smoke) - no dedicated tests for kassenstand/gutschein/anzahlung/abrechnung/zaehlprotokoll/bestellung/tse/auth/business modules
+- **Test Coverage**: Low (unmeasured; no pytest-cov installed)
 - **Target Coverage**: 80%+
 
 ---
 
 ## 🚀 Recommended Next Steps
 
-1. Port TSE C library (Phase 5 completion)
-2. Implement Phase 6 business logic (VAT calculator, sale workflow, storno, cash register)
-3. Implement Phase 7 (auth, import/export, validation)
-4. Comprehensive testing to reach 80%+ coverage
-5. Documentation
+1. Wire cash-register side-effects into sale creation + storno; surface EC threshold warning
+2. Wire TSE export endpoints to tse_client and perform automatic incremental export in daily settlement
+3. Implement voucher/installment reversal in storno
+4. Add SQL migration for user/anmeldung tables + user_id columns; enforce per-user auth on endpoints; populate user_id from token
+5. Port full Abrechnung aggregation (stornos, retouren, entnahmen) and end-of-day procedure
+6. Add training-table models (or explicitly descope)
+7. Apply validation utilities across all endpoints; add ge=0,le=1 to MwstBase.mwst_satz
+8. Implement import_bestellung_from_csv and full CSV import/export
+9. Write dedicated test files for each router + business module; add pytest-cov; reach 80%+
+10. Documentation + HTTPS setup on LAN
 
 ---
 
-*This TODO list reflects the current implementation state as of 2026-10-18.*
+*This TODO list reflects the current implementation state as of 2026-10-19 (completeness check against IMPLEMENTATION_PLAN.md).*

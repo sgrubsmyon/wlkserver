@@ -11,11 +11,11 @@ This document outlines the comprehensive implementation plan to complete the Fas
 ## Current Status Summary
 
 ### ✅ Already Implemented
-- **Database Models**: All core tables have SQLModel definitions in `python/models.py`
+- **Database Models**: Most core tables have SQLModel definitions in `python/models.py` (training tables, user/anmeldung partially; user_id columns only on 4 of 8 transaction tables)
 - **CRUD Operations**: Most major entities have basic CRUD functionality
-- **Business Logic**: Some core logic like article versioning and storno operations
+- **Business Logic**: Modules added under `python/business/`, but much logic is NOT wired into endpoints (cash-register side-effects, TSE export, voucher/installment storno, training mode, full Abrechnung aggregation). See `concepts/TODO.md` "Business Logic Wiring Gaps".
 - **API Structure**: Clean FastAPI structure with proper routing
-- **Phase 6 Business Logic**: `python/business/{vat_calculator,sale_workflow,storno_logic,cash_register}.py` added; VAT aggregation in sale creation switched to Decimal-safe calculation
+- **Auth**: Login/audit models + endpoints exist, but per-user auth is NOT enforced on any endpoint; no SQL migration; bcrypt/JWT not adopted
 
 ### 🎯 What Needs to be Done
 - Complete missing endpoints for existing models (CR, CRU or CRD per table, see Phases 1-4)
