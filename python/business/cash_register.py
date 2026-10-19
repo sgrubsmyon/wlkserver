@@ -93,8 +93,8 @@ def process_payment(total, ec_zahlung=False, kunde_gibt=None):
 
 
 def is_training_mode() -> bool:
-    # placeholder: no training tables in API yet
-    return False
+    import os
+    return os.getenv("TRAINING_MODE", "").strip().lower() in ("1", "true", "yes", "on")
 
 
 def end_of_day_procedure(session: Session) -> dict:

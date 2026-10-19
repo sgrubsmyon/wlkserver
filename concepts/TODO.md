@@ -149,7 +149,7 @@
 - [ ] GET /abrechnung/tag/{date}
 - [x] Automatic incremental TSE export (best-effort) wired into POST /abrechnung/tag - step 3
 - [x] Stornos/retouren handled in mwst + bar aggregation; entnahmen subtracted from closing balance (step 5)
-- [ ] Full Java aggregation parity (separate storno/retouren reporting) - Phase 6
+- [x] Full Java aggregation parity (storno/retouren reporting in abrechnung response) - items 5-8
 - [ ] kassenstand entry validation during Tagesabschluss
 
 [x] **Abrechnung Monat** - models + router + smoke tests
@@ -232,9 +232,9 @@
 ### Cash Register (`python/business/cash_register.py`)
 - [x] `update_kassenstand_for_sale` wired into `verkauf.py` create (cash only) and storno (cash refund) → per-sale kassenstand entries (manuell=False) now created
 - [x] `ec_payment_threshold_check` invoked in sale creation → EC warning surfaced in response (`ec_warning` field on VerkaufPublic)
-- [ ] `process_payment` still unused (helper available)
+- [x] `process_payment` wired into sale creation (change + EC warning) - items 5-8 (helper available)
 - [x] `end_of_day_procedure` implemented (basic summary) - step 5
-- [ ] `is_training_mode` always returns False (no training mode)
+- [x] `is_training_mode` reads TRAINING_MODE env var - items 5-8 (no training mode)
 
 ### Sale Workflow (`python/business/sale_workflow.py`)
 - [x] `check_ec_payment_threshold` invoked in sale endpoint (EC warning surfaced)
@@ -247,7 +247,7 @@
 - [x] `handle_storno_installment` implemented (resolves open installments against storno) - items 1-4
 - [x] TSE transaction handling for storno (best-effort) - items 1-4
 - [x] Reversing kassenstand entry for storno (step 1)
-- [ ] `get_all_current_mwst_values_by_id` unused
+- [x] `get_all_current_mwst_values_by_id` used in abrechnung_tag response (mwst_nach_id) - items 5-8
 
 ### Abrechnung Tag (`python/routers/abrechnung_tag.py`)
 - [x] Stornos/retouren handled via negative entries; entnahmen subtracted (step 5)

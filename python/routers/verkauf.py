@@ -177,18 +177,21 @@ def create_verkauf(verkauf: VerkaufCreate, session: SessionDep, credentials: HTT
     # Cash register side-effect: only cash (non-EC) sales add money to the register
     # (mirrors Java Kassieren.insertIntoKassenstand, called when ec == false).
     ec_warning = None
+    change = None
+    total = sum((d.ges_preis or 0) for d in prepared)
     if not verkauf.ec_zahlung:
-        from ..business.cash_register import update_kassenstand_for_sale
+        from ..business.cash_register import update_kassenstand_for_sale, process_payment
         update_kassenstand_for_sale(session=session, rechnungs_nr=new_v.rechnungs_nr)
+        change, _ = process_payment(total, ec_zahlung=False, kunde_gibt=verkauf.kunde_gibt)
     else:
         # EC payment threshold check (Java: ecSchwelle = 10.00)
-        from ..business.cash_register import ec_payment_threshold_check
-        total = sum((d.ges_preis or 0) for d in prepared)
-        ec_warning = ec_payment_threshold_check(total, True)
+        from ..business.cash_register import process_payment
+        change, ec_warning = process_payment(total, ec_zahlung=True, kunde_gibt=verkauf.kunde_gibt)
 
     result = read_single_verkauf(new_v.rechnungs_nr, session)
     if isinstance(result, dict):
         result["ec_warning"] = ec_warning
+        result["change"] = float(change) if change is not None else None
     return result
 
 

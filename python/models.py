@@ -375,6 +375,7 @@ class VerkaufPublic(VerkaufBase):
     verkaufsdatum: datetime
     storno_von: int | None
     ec_warning: str | None = None
+    change: float | None = None
 
 
 # For creating
@@ -618,6 +619,10 @@ class AbrechnungTagPublic(SQLModel):
     rechnungs_nr_von: int
     rechnungs_nr_bis: int
     last_tse_sig_counter: int | None
+    user_id: int | None = None
+    storno_summe: float | None = None
+    retouren_summe: float | None = None
+    mwst_nach_id: dict | None = None
 
 
 class AbrechnungTagCreate(SQLModel):

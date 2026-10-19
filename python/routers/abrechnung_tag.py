@@ -108,6 +108,18 @@ def create_abrechnung_tag(payload: Optional[AbrechnungTagCreate], session: Sessi
     if not sales:
         raise HTTPException(status_code=400, detail="No sales in range")
 
+    # Separate storno / retouren reporting (Java parity)
+    storno_summe = 0.0
+    retouren_summe = 0.0
+    for v in sales:
+        if v.storno_von is not None:
+            for m in (v.verkauf_mwst or []):
+                storno_summe += (m.mwst_netto or 0) + (m.mwst_betrag or 0)
+        else:
+            for d in (v.verkauf_details or []):
+                if d.stueckzahl is not None and d.stueckzahl < 0 and d.ges_preis is not None:
+                    retouren_summe += d.ges_preis
+
     # Aggregate VAT
     mwst_map = {}
     for v in sales:
@@ -201,7 +213,25 @@ def create_abrechnung_tag(payload: Optional[AbrechnungTagCreate], session: Sessi
         session.add(row)
     session.commit()
 
-    return AbrechnungTagPublic.model_validate(at)
+    # mwst values by ID (Java getAllCurrentMwstValuesByID)
+    from ..business.vat_calculator import get_all_current_mwst_values_by_id
+    from ..models import Mwst
+    mwst_rates = {m.mwst_id: m.mwst_satz for m in session.exec(select(Mwst)).all() if m.mwst_id is not None}
+    items = []
+    for v in sales:
+        for d in (v.verkauf_details or []):
+            items.append({"ges_preis": d.ges_preis, "mwst_satz": d.mwst_satz})
+    try:
+        vals = get_all_current_mwst_values_by_id(mwst_rates, items=items)
+        mwst_nach_id = {str(k): [float(x) for x in v] for k, v in vals.items()}
+    except Exception:
+        mwst_nach_id = None
+
+    obj = AbrechnungTagPublic.model_validate(at)
+    obj.storno_summe = storno_summe
+    obj.retouren_summe = retouren_summe
+    obj.mwst_nach_id = mwst_nach_id
+    return obj
 
 
 # Aliases
