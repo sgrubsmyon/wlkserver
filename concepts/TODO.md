@@ -264,7 +264,7 @@
 
 ### Phase 7: Data Import/Export, Validation, Auth
 
-[⏳] Import/Export Functionality - endpoints exist; `import_bestellung_from_csv` is a PLACEHOLDER; `import_artikel` only maps 3 fields; CSV export of abrechnung minimal; `/import/artikel` session dependency questionable
+[x] Import/Export Functionality - `import_bestellung_from_csv` implemented; `import_artikel` maps all Artikel fields; abrechnung CSV export includes VAT totals; session dependency fixed (step 7)
 [⏳] Search and Filter Enhancements - minimal (only verkauf since/until/only_storno, mwst search_string); most routers have no filtering/sorting/pagination improvements
 [⏳] Validation Framework - `python/utils/validation.py` exists but rarely applied; non-negative checks not enforced on kassenstand/gutschein/anzahlung/bestellung/zaehlprotokoll; `MwstBase.mwst_satz` lacks 0-1 constraint
 [⏳] Authentication and Authorization System (per-user accounts, login auditing, transaction attribution) - HIGH PRIORITY
@@ -275,7 +275,7 @@
   - Password hashing switched to bcrypt; JWT switched to PyJWT (step 4)
   - SQL migration script created in migrations/02_user_auth/ (step 4)
   - user_id columns added to all 8 transaction table models (step 4)
-[ ] Transport security (HTTPS on LAN) - not configured
+[x] Transport security (HTTPS on LAN) - documented in python/README.md (step 7)
 
 ---
 

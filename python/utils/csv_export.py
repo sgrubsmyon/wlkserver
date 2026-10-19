@@ -7,7 +7,7 @@ from typing import Any
 
 from sqlmodel import Session, select
 
-from ..models import Artikel, AbrechnungTag
+from ..models import Artikel, AbrechnungTag, AbrechnungTagMwst
 
 
 def export_artikel_to_csv(session: Session) -> str:
@@ -24,7 +24,12 @@ def export_abrechnung_to_csv(session: Session) -> str:
     rows = session.exec(select(AbrechnungTag)).all()
     buf = io.StringIO()
     writer = csv.writer(buf)
-    writer.writerow(["abrechnung_tag_id", "datum"])
+    writer.writerow(["abrechnung_tag_id", "zeitpunkt", "rechnungs_nr_von", "rechnungs_nr_bis", "kassenstand_id", "mwst_satz", "mwst_netto", "mwst_betrag", "bar_brutto"])
     for a in rows:
-        writer.writerow([getattr(a, "abrechnung_tag_id", None), getattr(a, "datum", None)])
+        mwsts = session.exec(select(AbrechnungTagMwst).where(AbrechnungTagMwst.id == a.id)).all()
+        if mwsts:
+            for m in mwsts:
+                writer.writerow([a.id, a.zeitpunkt, a.rechnungs_nr_von, a.rechnungs_nr_bis, a.kassenstand_id, m.mwst_satz, m.mwst_netto, m.mwst_betrag, m.bar_brutto])
+        else:
+            writer.writerow([a.id, a.zeitpunkt, a.rechnungs_nr_von, a.rechnungs_nr_bis, a.kassenstand_id, None, None, None, None])
     return buf.getvalue()

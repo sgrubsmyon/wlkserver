@@ -13,7 +13,7 @@ router = APIRouter(tags=["import_export"])
 
 
 @router.post("/import/artikel")
-def import_artikel(file: UploadFile = File(...), session: SessionDep = None):
+def import_artikel(session: SessionDep, file: UploadFile = File(...)):
     content = file.file.read().decode("utf-8", errors="replace")
     created = import_artikel_from_csv(content, session)
     return {"imported": len(created)}
@@ -26,7 +26,7 @@ def export_artikel(session: SessionDep):
 
 
 @router.post("/import/bestellung")
-def import_bestellung(file: UploadFile = File(...), session: SessionDep = None):
+def import_bestellung(session: SessionDep, file: UploadFile = File(...)):
     content = file.file.read().decode("utf-8", errors="replace")
     created = import_bestellung_from_csv(content, session)
     return {"imported": len(created)}
