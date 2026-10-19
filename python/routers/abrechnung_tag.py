@@ -132,9 +132,25 @@ def create_abrechnung_tag(payload: Optional[AbrechnungTagCreate], session: Sessi
         if last_ks:
             current_balance = last_ks.neuer_kassenstand
         total_bar = sum(e["bar"] for e in mwst_map.values())
+        # Entnahmen (cash withdrawals) within this period reduce the balance.
+        # An entnahme entry stores neuer = previous - amount, so amount = previous - new.
+        total_entnahmen = 0.0
+        all_ks = session.exec(select(Kassenstand).order_by(Kassenstand.kassenstand_id)).all()
+        last_abr_ks_id = 0
+        if last is not None and last.kassenstand_id is not None:
+            last_abr_ks_id = last.kassenstand_id
+        prev_neuer = None
+        for ks in all_ks:
+            if ks.kassenstand_id is None or ks.kassenstand_id <= last_abr_ks_id:
+                prev_neuer = ks.neuer_kassenstand
+                continue
+            if ks.entnahme:
+                base = prev_neuer if prev_neuer is not None else current_balance
+                total_entnahmen += (base - ks.neuer_kassenstand)
+            prev_neuer = ks.neuer_kassenstand
         new_ks = Kassenstand(
             buchungsdatum=now,
-            neuer_kassenstand=current_balance + total_bar,
+            neuer_kassenstand=current_balance + total_bar - total_entnahmen,
             manuell=True,
             entnahme=False,
             kommentar="Tagesabschluss",

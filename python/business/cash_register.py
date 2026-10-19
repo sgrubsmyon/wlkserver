@@ -98,7 +98,26 @@ def is_training_mode() -> bool:
 
 
 def end_of_day_procedure(session: Session) -> dict:
-    return {"message": "End of day procedure not fully implemented"}
+    """Basic end-of-day summary: cash balance, today's sales count, EC vs cash."""
+    from sqlmodel import select
+    from ..models import Verkauf, Kassenstand
+    from datetime import datetime, timezone, timedelta
+    today = datetime.now(timezone.utc).date()
+    sales = session.exec(select(Verkauf)).all()
+    today_sales = [v for v in sales if v.verkaufsdatum.date() == today]
+    cash_sales = [v for v in today_sales if not v.ec_zahlung]
+    ec_sales = [v for v in today_sales if v.ec_zahlung]
+    stornos = [v for v in today_sales if v.storno_von is not None]
+    balance = get_current_balance(session)
+    return {
+        "date": today.isoformat(),
+        "total_sales": len(today_sales),
+        "cash_sales": len(cash_sales),
+        "ec_sales": len(ec_sales),
+        "stornos": len(stornos),
+        "current_balance": str(balance),
+        "message": "End of day procedure completed",
+    }
 
 
 # aliases

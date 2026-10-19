@@ -148,7 +148,8 @@
 - [ ] GET /abrechnung/tag/heute
 - [ ] GET /abrechnung/tag/{date}
 - [x] Automatic incremental TSE export (best-effort) wired into POST /abrechnung/tag - step 3
-- [ ] Full Java aggregation (stornos, retouren, entnahmen) - Phase 6
+- [x] Stornos/retouren handled in mwst + bar aggregation; entnahmen subtracted from closing balance (step 5)
+- [ ] Full Java aggregation parity (separate storno/retouren reporting) - Phase 6
 - [ ] kassenstand entry validation during Tagesabschluss
 
 [x] **Abrechnung Monat** - models + router + smoke tests
@@ -232,7 +233,7 @@
 - [x] `update_kassenstand_for_sale` wired into `verkauf.py` create (cash only) and storno (cash refund) → per-sale kassenstand entries (manuell=False) now created
 - [x] `ec_payment_threshold_check` invoked in sale creation → EC warning surfaced in response (`ec_warning` field on VerkaufPublic)
 - [ ] `process_payment` still unused (helper available)
-- [ ] `end_of_day_procedure` is a STUB
+- [x] `end_of_day_procedure` implemented (basic summary) - step 5
 - [ ] `is_training_mode` always returns False (no training mode)
 
 ### Sale Workflow (`python/business/sale_workflow.py`)
