@@ -46,7 +46,7 @@
 [x] SQL migration script created in `migrations/02_user_auth/` (user_auth.sql + migrate_user_auth.py + migrate.sh) (step 4)
 [x] Auth utils switched to bcrypt + PyJWT (step 4)
 [x] Auth router logout/me now read token from Authorization header (step 4)
-[ ] Per-user auth enforcement on transaction endpoints still pending (require_user available but not enforced, to keep tests green)
+[x] Per-user auth enforcement on transaction endpoints (require_user enforced) - done
 
 ### Existing Router Functionality
 [x] Artikel router - Full CRUD with advanced versioning logic
@@ -210,9 +210,9 @@
 - [x] Automatic incremental TSE export in daily settlement - wired into POST /abrechnung/tag (step 3)
 - [x] Export endpoints now call tse_client.export_full/partial/export_and_delete (fallback to placeholder when no data/device) - step 2
 - [ ] `export_and_delete` does not call se_deleteStoredDataUpTo (deletion still missing; needs highest exported sig counter parsing)
-- [ ] `export_and_delete` does not call se_deleteStoredDataUpTo (deletion missing)
-- [ ] Partial export ignores request body criterion (tx number range / date range / sig counter) in response
-- [ ] POST /tse/certificates, GET /tse/transaction/verkauf/{rechnungs_nr} missing
+- [x] Export endpoints now call tse_client (fallback to placeholder) - done
+- [ ] Partial export ignores request body criterion in actual device call (router passes kwargs)
+- [ ] POST /tse/certificates, GET /tse/transaction/verkauf/{rechnungs_nr} missing (optional)
 
 ---
 
@@ -250,15 +250,15 @@
 - [ ] `get_all_current_mwst_values_by_id` unused
 
 ### Abrechnung Tag (`python/routers/abrechnung_tag.py`)
-- [ ] Aggregation does not handle stornos, retouren, entnahmen
+- [x] Stornos/retouren handled via negative entries; entnahmen subtracted (step 5)
 - [x] Automatic incremental TSE export performed (best-effort) - step 3
 - [ ] `bar_brutto` aggregation is rough (sum of detail ges_preis for non-EC sales)
 
 ### Auth / Transaction Attribution
-- [ ] Per-user auth not enforced on any endpoint (`require_user` unused)
-- [ ] `user_id` not auto-populated from JWT on any transaction table
-- [ ] logout/me use query param token instead of Authorization header
-- [ ] No SQL migration for user/anmeldung tables or user_id columns
+- [x] Per-user auth enforced on transaction create/mutate endpoints
+- [x] `user_id` auto-populated from JWT on all transaction tables
+- [x] logout/me read token from Authorization header
+- [x] SQL migration script created in migrations/02_user_auth/
 
 ## 🟢 LOW PRIORITY - Utilities and Enhancements
 
