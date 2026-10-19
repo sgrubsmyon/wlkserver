@@ -204,15 +204,15 @@
 - [x] POST /tse/export/full
 - [x] POST /tse/export/partial
 - [x] POST /tse/export/delete
-- [ ] POST /tse/certificates
-- [ ] GET /tse/transaction/verkauf/{rechnungs_nr}
+- [x] POST /tse/certificates - items 12
+- [x] GET /tse/transaction/verkauf/{rechnungs_nr} - items 12
 - [⏳] TSE C library (libse-api-c.so) wraps open/init/start/finish/export/delete via ctypes; untested without hardware (Phase 5)
 - [x] Automatic incremental TSE export in daily settlement - wired into POST /abrechnung/tag (step 3)
 - [x] Export endpoints now call tse_client.export_full/partial/export_and_delete (fallback to placeholder when no data/device) - step 2
 - [x] `export_and_delete` now calls se_deleteStoredDataUpTo (up to current signature counter) - items 9-11
 - [x] Export endpoints now call tse_client (fallback to placeholder) - done
 - [x] Partial export honors tx number range, date range (converted to epoch), sig counter, max_records - items 9-11
-- [ ] POST /tse/certificates, GET /tse/transaction/verkauf/{rechnungs_nr} missing (optional)
+- [x] POST /tse/certificates, GET /tse/transaction/verkauf/{rechnungs_nr} implemented - items 12
 
 ---
 

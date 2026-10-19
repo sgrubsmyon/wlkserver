@@ -95,6 +95,8 @@ def _load_library():
             lib.se_free.restype = None
             lib.se_getSignatureCounter1.argtypes = [ctypes.POINTER(ctypes.c_uint32)]
             lib.se_getSignatureCounter1.restype = ctypes.c_int
+            lib.se_exportCertificates.argtypes = [ctypes.POINTER(ctypes.POINTER(ctypes.c_ubyte)), ctypes.POINTER(ctypes.c_uint32)]
+            lib.se_exportCertificates.restype = ctypes.c_int
             return lib
         except OSError:
             continue
@@ -261,6 +263,21 @@ class TSEClient:
     def export_full(self):
         data = self._export_bytes(CLIENT_ID, max_records=0)
         return data
+
+    def export_certificates(self):
+        if not self._ensure_open():
+            return b""
+        exported = ctypes.POINTER(ctypes.c_ubyte)()
+        length = ctypes.c_uint32(0)
+        try:
+            rc = self.lib.se_exportCertificates(ctypes.byref(exported), ctypes.byref(length))
+            if rc != 0 or not exported or length.value == 0:
+                return b""
+            data = bytes(exported[:length.value])
+            self.lib.se_free(exported)
+            return data
+        except Exception:
+            return b""
 
     def export_partial(self, **kwargs):
         # Prefer exportMoreData by signature counter if provided

@@ -45,6 +45,14 @@ def _make_tar_bytes(name: str) -> bytes:
     return buf.getvalue()
 
 
+@router.get("/transaction/verkauf/{rechnungs_nr}")
+def read_tse_transactions_for_verkauf(rechnungs_nr: int, session: SessionDep) -> list[TSETransactionPublic]:
+    rows = session.exec(
+        select(TSETransaction).where(TSETransaction.rechnungs_nr == rechnungs_nr)
+    ).all()
+    return [TSETransactionPublic.model_validate(r) for r in rows]
+
+
 @router.get("/transaction")
 def read_tse_transactions(
     session: SessionDep,
@@ -111,6 +119,21 @@ def get_tse_status():
 @router.post("/init")
 def init_tse():
     return tse_client.init()
+
+
+@router.post("/certificates")
+def export_certificates():
+    try:
+        data = tse_client.export_certificates()
+    except Exception:
+        data = b""
+    if not data:
+        data = _make_tar_bytes("certificates")
+    return Response(
+        content=data,
+        media_type="application/x-tar",
+        headers={"Content-Disposition": 'attachment; filename="tse_certificates.tar"'},
+    )
 
 
 @router.post("/export/full")
