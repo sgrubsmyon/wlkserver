@@ -525,7 +525,7 @@ class GutscheinCreate(SQLModel):
     datum: datetime | None = None
     gutschein_in_vd_id: int | None = None
     einloesung_in_vd_id: int | None = None
-    restbetrag: float
+    restbetrag: float = Field(ge=0)
 
 
 class GutscheinEinloesen(SQLModel):

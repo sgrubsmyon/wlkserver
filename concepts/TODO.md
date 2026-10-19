@@ -323,7 +323,7 @@
 
 ### Test Coverage Target
 
-- [ ] Achieve 80%+ coverage
+- [⏳] Achieve 80%+ coverage (currently ~75% with pytest-cov)
 
 ---
 
