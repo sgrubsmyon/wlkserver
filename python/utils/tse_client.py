@@ -1,30 +1,68 @@
 """Adapter module for the TSE (Technical Security Equipment).
 
-There is no Python TSE library for the cryptovision/D-Trust SEAPI TSE used
-by the Java POS; the vendor only provides Java and C APIs. This module
-isolates all TSE access behind a clean Python interface. The current
-implementation is a stub that keeps the API usable (and testable) without
-the actual TSE hardware/C library. Replace the method bodies with ctypes/cffi
-calls to the vendor C library when deploying on real hardware.
+The TSE in use is a cryptovision/D-Trust SEAPI device. The vendor provides
+only Java and C APIs. This module isolates all TSE access behind a clean
+Python interface and wraps the C library (libse-api-c.so) with ctypes when it
+is available. The transaction/export methods are still stubs: fully porting
+the Java TSE workflow (process data formatting, transaction life-cycle,
+export/delete orchestration) requires a connected device and is tracked as
+remaining Phase 5 work.
 """
+
+import ctypes
+import os
+
+_LIB_PATHS = [
+    os.getenv("TSE_LIB_PATH"),
+    os.path.join(os.path.dirname(__file__), "..", "..", "assets", "SE-API-C", "bin", "libse-api-c.so"),
+    "libse-api-c.so",
+]
+
+
+def _load_library():
+    for path in _LIB_PATHS:
+        if not path:
+            continue
+        try:
+            lib = ctypes.CDLL(path)
+            lib.se_getApiVersionString.restype = ctypes.c_char_p
+            return lib
+        except OSError:
+            continue
+    return None
 
 
 class TSEClient:
     def __init__(self):
+        self.lib = _load_library()
         self.initialized = False
+        self.device_path = os.getenv("TSE_DEVICE_PATH")
 
     def status(self):
-        return {
+        result = {
             "initialized": self.initialized,
+            "library_loaded": self.lib is not None,
+            "api_version": None,
             "serial": None,
             "transaction_counter": 0,
         }
+        if self.lib is not None:
+            try:
+                result["api_version"] = self.lib.se_getApiVersionString().decode("utf-8", "replace")
+            except Exception:
+                pass
+        return result
 
     def init(self):
+        if self.lib is None:
+            self.initialized = True
+            return {"status": "initialized (stub: no C library)"}
+        # Opening a real device requires TSE_DEVICE_PATH and is device-specific.
         self.initialized = True
-        return {"status": "initialized"}
+        return {"status": "initialized (C library loaded; device open not yet wired)"}
 
     def create_transaction(self, process_type, process_data, training=False):
+        # Full transaction life-cycle porting is remaining Phase 5 work.
         return {
             "transaction_number": 1,
             "signature_counter": 1,

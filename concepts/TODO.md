@@ -193,7 +193,7 @@
 - [x] POST /tse/export/delete
 - [ ] POST /tse/certificates
 - [ ] GET /tse/transaction/verkauf/{rechnungs_nr}
-- [ ] Port/wrap TSE C library (ctypes/cffi) in python/utils/tse_client.py (currently stub)
+- [⏳] TSE C library (libse-api-c.so) loads via ctypes and version is reported; full transaction/export porting remains (Phase 5)
 - [ ] Automatic incremental TSE export in daily settlement
 
 ---
