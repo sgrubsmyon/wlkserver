@@ -39,7 +39,7 @@
 [x] Zaehlprotokoll models (Table, Public, Create, Update, Details)
 [x] Bestellung models (Table, Public, Create, Update, Details)
 [x] TSETransaction models (Table, Public, Create)
-[ ] Training table models (training_verkauf*, training_kassenstand, training_anzahlung*, training_gutschein, training_abrechnung_*, training_zaehlprotokoll*) - MISSING (not in models.py)
+[x] Training table models added (Table-only) for all training_* tables (step 6)
 [x] User model (Table, Public, Create, Update) - Phase 7.4
 [x] Anmeldung model (Table) - Phase 7.4 (login auditing)
 [x] `user_id` FK column added to gutschein, zaehlprotokoll, bestellung, tse_transaction models (step 4)
@@ -309,7 +309,8 @@
 - [ ] tests/test_bestellung.py
 - [ ] tests/test_tse.py
 - [ ] tests/test_auth.py
-- [ ] tests/test_vat_calculator.py
+- [x] tests/test_vat_calculator.py (step 6)
+- [x] tests/test_auth.py (step 6)
 - [ ] tests/test_sale_workflow.py
 - [ ] tests/test_storno_logic.py
 - [ ] tests/test_import_export.py
@@ -361,8 +362,8 @@
 ## 📊 Summary Statistics
 
 ### Models Status
-- **Models Implemented**: 20 table models (Phase 1-5 + User + Anmeldung)
-- **Models Missing**: training tables (15+), user_id columns on gutschein/zaehlprotokoll/bestellung/tse_transaction
+- **Models Implemented**: 35+ table models (Phase 1-5 + User + Anmeldung + training tables)
+- **Models Missing**: (none major; endpoints for training tables not implemented)
 
 ### Endpoints Status
 - **Routers Implemented**: 19 routers (incl. auth, users, import_export)
