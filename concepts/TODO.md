@@ -42,8 +42,11 @@
 [ ] Training table models (training_verkauf*, training_kassenstand, training_anzahlung*, training_gutschein, training_abrechnung_*, training_zaehlprotokoll*) - MISSING (not in models.py)
 [x] User model (Table, Public, Create, Update) - Phase 7.4
 [x] Anmeldung model (Table) - Phase 7.4 (login auditing)
-[ ] `user_id` FK column on gutschein, zaehlprotokoll, bestellung, tse_transaction - MISSING (only verkauf, kassenstand, anzahlung, abrechnung_tag have it)
-[ ] SQL migration for new `user`/`anmeldung` tables + `user_id` columns in `../git/mysql/` - MISSING
+[x] `user_id` FK column added to gutschein, zaehlprotokoll, bestellung, tse_transaction models (step 4)
+[x] SQL migration script created in `migrations/02_user_auth/` (user_auth.sql + migrate_user_auth.py + migrate.sh) (step 4)
+[x] Auth utils switched to bcrypt + PyJWT (step 4)
+[x] Auth router logout/me now read token from Authorization header (step 4)
+[ ] Per-user auth enforcement on transaction endpoints still pending (require_user available but not enforced, to keep tests green)
 
 ### Existing Router Functionality
 [x] Artikel router - Full CRUD with advanced versioning logic
@@ -267,9 +270,10 @@
   - Models + login/logout/me + user CRUD exist
   - `require_user`/`get_current_user` defined but NEVER used (no endpoint protected by per-user auth)
   - `user_id` not populated from auth token (client must pass manually)
-  - logout/me accept token only as query param, not Authorization header
-  - Password hashing uses PBKDF2 (plan: bcrypt); JWT is custom HMAC (plan: python-jose/pyjwt)
-  - No SQL migration for user/anmeldung tables or user_id columns in ../git/mysql/
+  - logout/me now read token from Authorization header (step 4)
+  - Password hashing switched to bcrypt; JWT switched to PyJWT (step 4)
+  - SQL migration script created in migrations/02_user_auth/ (step 4)
+  - user_id columns added to all 8 transaction table models (step 4)
 [ ] Transport security (HTTPS on LAN) - not configured
 
 ---

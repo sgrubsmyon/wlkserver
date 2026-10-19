@@ -508,6 +508,7 @@ class Gutschein(SQLModel, table=True):
     gutschein_in_vd_id: int | None = Field(default=None, foreign_key="verkauf_details.vd_id")
     einloesung_in_vd_id: int | None = Field(default=None, foreign_key="verkauf_details.vd_id")
     restbetrag: float = Field(sa_column=DECIMAL(precision=13, scale=2))
+    user_id: int | None = Field(default=None, foreign_key="user.user_id")
 
 
 class GutscheinPublic(SQLModel):
@@ -761,6 +762,7 @@ class Zaehlprotokoll(SQLModel, table=True):
     zeitpunkt: datetime = Field(sa_column=Column(TIMESTAMP, nullable=False))
     kommentar: str = Field(nullable=False)
     aktiv: bool = Field(nullable=False, default=True)
+    user_id: int | None = Field(default=None, foreign_key="user.user_id")
 
 
 class ZaehlprotokollPublic(SQLModel):
@@ -818,6 +820,7 @@ class Bestellung(SQLModel, table=True):
     bestell_datum: datetime = Field(sa_column=Column(TIMESTAMP, nullable=False))
     jahr: int = Field(nullable=False, default=2000)
     kw: int = Field(nullable=False, default=1)
+    user_id: int | None = Field(default=None, foreign_key="user.user_id")
 
 
 class BestellungPublic(SQLModel):
@@ -886,6 +889,7 @@ class TSETransaction(SQLModel, table=True):
     signature_base64: str | None = Field(max_length=512, default=None)
     tse_error: str | None = Field(default=None)
     process_data: str | None = Field(max_length=65, default=None)
+    user_id: int | None = Field(default=None, foreign_key="user.user_id")
 
 
 class TSETransactionPublic(SQLModel):

@@ -2,6 +2,7 @@ from datetime import datetime, timezone
 from typing import Annotated, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlmodel import select
 
 from ..models import User, Anmeldung, UserPublic
@@ -10,6 +11,7 @@ from ..utils.auth import verify_password, create_token, decode_token, hash_passw
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
+bearer_scheme = HTTPBearer(auto_error=False)
 
 from pydantic import BaseModel
 
@@ -17,6 +19,12 @@ from pydantic import BaseModel
 class LoginPayload(BaseModel):
     username: str
     password: str
+
+
+def _extract_token(credentials: Optional[HTTPAuthorizationCredentials], token: Optional[str]) -> Optional[str]:
+    if credentials is not None and credentials.credentials:
+        return credentials.credentials
+    return token
 
 
 @router.post("/login")
@@ -34,11 +42,11 @@ def login(payload: LoginPayload, session: SessionDep):
 
 
 @router.post("/logout")
-def logout(session: SessionDep, token: Optional[str] = Query(default=None)):
-    # token may be passed as query or header; try query only for simplicity
-    if token is None:
+def logout(session: SessionDep, credentials: Annotated[Optional[HTTPAuthorizationCredentials], Depends(bearer_scheme)] = None, token: Optional[str] = Query(default=None)):
+    t = _extract_token(credentials, token)
+    if t is None:
         return {"message": "logged out"}
-    payload = decode_token(token)
+    payload = decode_token(t)
     if payload and payload.get("anmeldung_id") is not None:
         a = session.get(Anmeldung, payload["anmeldung_id"])
         if a and a.logout_time is None:
@@ -49,10 +57,11 @@ def logout(session: SessionDep, token: Optional[str] = Query(default=None)):
 
 
 @router.get("/me")
-def me(session: SessionDep, token: Optional[str] = Query(default=None)):
-    if not token:
+def me(session: SessionDep, credentials: Annotated[Optional[HTTPAuthorizationCredentials], Depends(bearer_scheme)] = None, token: Optional[str] = Query(default=None)):
+    t = _extract_token(credentials, token)
+    if not t:
         raise HTTPException(status_code=401, detail="Not authenticated")
-    payload = decode_token(token)
+    payload = decode_token(t)
     if not payload:
         raise HTTPException(status_code=401, detail="Invalid token")
     user = session.get(User, payload.get("user_id"))

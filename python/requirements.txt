@@ -3,3 +3,5 @@ sqlmodel
 mariadb # the Python MariaDB Connector
 python-dotenv # for storing DB credentials
 pytest
+bcrypt
+PyJWT
