@@ -1,0 +1,1 @@
+/usr/bin/cc -rdynamic "CMakeFiles/se-api-c-test.dir/se_parse_certificate.c.o" "CMakeFiles/se-api-c-test.dir/se_api_test.c.o" -o /home/mvoge/Documents/Markus/i/code/Weltladenkasse/wlkserver/assets/SE-API-C/bin/se-api-c-test  /home/mvoge/Documents/Markus/i/code/Weltladenkasse/wlkserver/assets/SE-API-C/bin/libse-api-c-lib.a 

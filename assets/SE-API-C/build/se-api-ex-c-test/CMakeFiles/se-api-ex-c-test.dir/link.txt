@@ -1,0 +1,1 @@
+/usr/bin/cc -rdynamic "CMakeFiles/se-api-ex-c-test.dir/se_api_ex_test.c.o" -o /home/mvoge/Documents/Markus/i/code/Weltladenkasse/wlkserver/assets/SE-API-C/bin/se-api-ex-c-test  /home/mvoge/Documents/Markus/i/code/Weltladenkasse/wlkserver/assets/SE-API-C/bin/libse-api-ex-c-lib.a 

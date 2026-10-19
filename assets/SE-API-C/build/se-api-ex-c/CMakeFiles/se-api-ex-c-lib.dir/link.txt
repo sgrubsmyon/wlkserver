@@ -1,0 +1,2 @@
+/usr/bin/ar qc /home/mvoge/Documents/Markus/i/code/Weltladenkasse/wlkserver/assets/SE-API-C/bin/libse-api-ex-c-lib.a "CMakeFiles/se-api-ex-c-lib.dir/__/se-api-common/src/se_memory_util.c.o" "CMakeFiles/se-api-ex-c-lib.dir/__/se-api-common/src/se_transport_util.c.o" "CMakeFiles/se-api-ex-c-lib.dir/src/se_api_ex.c.o" "CMakeFiles/se-api-ex-c-lib.dir/src/se_msc_transport_ex.c.o" "CMakeFiles/se-api-ex-c-lib.dir/src/se_transport_ex.c.o"
+/usr/bin/ranlib /home/mvoge/Documents/Markus/i/code/Weltladenkasse/wlkserver/assets/SE-API-C/bin/libse-api-ex-c-lib.a

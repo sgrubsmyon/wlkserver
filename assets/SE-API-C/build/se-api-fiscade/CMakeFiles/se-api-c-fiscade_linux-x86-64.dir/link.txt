@@ -1,0 +1,1 @@
+/usr/bin/cc -fPIC -shared -Wl,-soname,libse-api-c-fiscade_linux-x86-64.so -o /home/mvoge/Documents/Markus/i/code/Weltladenkasse/wlkserver/assets/SE-API-C/bin/libse-api-c-fiscade_linux-x86-64.so "CMakeFiles/se-api-c-fiscade_linux-x86-64.dir/fiscade.c.o"  /home/mvoge/Documents/Markus/i/code/Weltladenkasse/wlkserver/assets/SE-API-C/bin/libse-api-c-lib.a 
