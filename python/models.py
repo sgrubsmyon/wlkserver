@@ -571,7 +571,7 @@ class AnzahlungDetails(SQLModel, table=True):
     ad_id: int | None = Field(default=None, primary_key=True)
     rechnungs_nr: int = Field(foreign_key="verkauf.rechnungs_nr", nullable=False)
     vd_id: int = Field(foreign_key="verkauf_details.vd_id", nullable=False)
-    ges_preis: float = Field(sa_column=DECIMAL(precision=13, scale=2))
+    ges_preis: float = Field(ge=0, sa_column=DECIMAL(precision=13, scale=2))
 
 
 class AnzahlungDetailsPublic(SQLModel):
@@ -857,7 +857,7 @@ class BestellungDetails(SQLModel, table=True):
     typ: str = Field(max_length=12, nullable=False, default="", primary_key=True)
     position: int = Field(primary_key=True)
     artikel_id: int = Field(foreign_key="artikel.artikel_id", nullable=False)
-    stueckzahl: int = Field(nullable=False, default=1)
+    stueckzahl: int = Field(nullable=False, default=1, ge=1)
 
 
 class BestellungDetailsPublic(SQLModel):

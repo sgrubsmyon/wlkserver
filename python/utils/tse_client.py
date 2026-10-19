@@ -93,6 +93,8 @@ def _load_library():
             lib.se_deleteStoredDataUpTo.restype = ctypes.c_int
             lib.se_free.argtypes = [ctypes.c_void_p]
             lib.se_free.restype = None
+            lib.se_getSignatureCounter1.argtypes = [ctypes.POINTER(ctypes.c_uint32)]
+            lib.se_getSignatureCounter1.restype = ctypes.c_int
             return lib
         except OSError:
             continue
@@ -272,16 +274,46 @@ class TSEClient:
                 max_records=kwargs.get("max_records", 0) or 0,
             )
         if kwargs.get("start_date") or kwargs.get("end_date"):
-            # dates are not converted here; leave as 0 to export all
-            return self._export_bytes(CLIENT_ID, max_records=kwargs.get("max_records", 0) or 0)
+            def _to_epoch(s):
+                if not s:
+                    return 0
+                try:
+                    from datetime import datetime, timezone
+                    dt = datetime.fromisoformat(s)
+                    if dt.tzinfo is None:
+                        dt = dt.replace(tzinfo=timezone.utc)
+                    return int(dt.timestamp())
+                except Exception:
+                    return 0
+            sd = _to_epoch(kwargs.get("start_date"))
+            ed = _to_epoch(kwargs.get("end_date"))
+            return self._export_bytes(CLIENT_ID, start_date=sd, end_date=ed, max_records=kwargs.get("max_records", 0) or 0)
         return self._export_bytes(CLIENT_ID, use_more=True, previous_sig_counter=prev, max_records2=maxr)
+
+    def get_signature_counter(self):
+        if not self._ensure_open():
+            return None
+        counter = ctypes.c_uint32(0)
+        try:
+            rc = self.lib.se_getSignatureCounter1(ctypes.byref(counter))
+            if rc == 0:
+                return counter.value
+        except Exception:
+            pass
+        return None
 
     def export_and_delete(self, **kwargs):
         prev = kwargs.get("last_excluded_signature_counter", 0) or 0
         data = self.export_partial(last_excluded_signature_counter=prev, max_records=kwargs.get("max_records", 0))
         if not data:
             return b""
-        # delete up to highest exported signature counter unknown; skip deletion if no counter
+        # Delete stored TSE data up to the current signature counter.
+        counter = self.get_signature_counter()
+        if counter is not None and self.lib is not None and self.opened:
+            try:
+                self.lib.se_deleteStoredDataUpTo(CLIENT_ID, len(CLIENT_ID), counter)
+            except Exception:
+                pass
         return data
 
 

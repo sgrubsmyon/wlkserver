@@ -209,9 +209,9 @@
 - [⏳] TSE C library (libse-api-c.so) wraps open/init/start/finish/export/delete via ctypes; untested without hardware (Phase 5)
 - [x] Automatic incremental TSE export in daily settlement - wired into POST /abrechnung/tag (step 3)
 - [x] Export endpoints now call tse_client.export_full/partial/export_and_delete (fallback to placeholder when no data/device) - step 2
-- [ ] `export_and_delete` does not call se_deleteStoredDataUpTo (deletion still missing; needs highest exported sig counter parsing)
+- [x] `export_and_delete` now calls se_deleteStoredDataUpTo (up to current signature counter) - items 9-11
 - [x] Export endpoints now call tse_client (fallback to placeholder) - done
-- [ ] Partial export ignores request body criterion in actual device call (router passes kwargs)
+- [x] Partial export honors tx number range, date range (converted to epoch), sig counter, max_records - items 9-11
 - [ ] POST /tse/certificates, GET /tse/transaction/verkauf/{rechnungs_nr} missing (optional)
 
 ---
@@ -266,7 +266,7 @@
 
 [x] Import/Export Functionality - `import_bestellung_from_csv` implemented; `import_artikel` maps all Artikel fields; abrechnung CSV export includes VAT totals; session dependency fixed (step 7)
 [⏳] Search and Filter Enhancements - minimal (only verkauf since/until/only_storno, mwst search_string); most routers have no filtering/sorting/pagination improvements
-[⏳] Validation Framework - `python/utils/validation.py` exists but rarely applied; non-negative checks not enforced on kassenstand/gutschein/anzahlung/bestellung/zaehlprotokoll; `MwstBase.mwst_satz` lacks 0-1 constraint
+[⏳] Validation Framework - model-level constraints added (MwstBase 0-1, Kassenstand, Gutschein, AnzahlungDetails, BestellungDetails); ensure_* helpers still rarely called in routers
 [⏳] Authentication and Authorization System (per-user accounts, login auditing, transaction attribution) - HIGH PRIORITY
   - Models + login/logout/me + user CRUD exist
   - `require_user` enforced on all transaction create/mutate endpoints (step 4 enforcement follow-up)
