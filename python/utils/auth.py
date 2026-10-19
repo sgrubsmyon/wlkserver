@@ -9,7 +9,7 @@ from typing import Any, Optional
 import bcrypt
 import jwt
 
-TOKEN_SECRET = os.getenv("AUTH_SECRET", os.getenv("SECRET_KEY", "dev-secret-change-me"))
+TOKEN_SECRET = os.getenv("AUTH_SECRET", os.getenv("SECRET_KEY", "dev-secret-change-me-please-set-AUTH_SECRET-in-env"))
 TOKEN_TTL = int(os.getenv("AUTH_TOKEN_TTL", "3600"))
 
 ALGO = "HS256"

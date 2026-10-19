@@ -15,6 +15,9 @@ from ..models import (
     AbrechnungTag,
 )
 from ..session import SessionDep
+from ..dependencies import bearer_scheme, require_user
+from fastapi.security import HTTPAuthorizationCredentials
+from fastapi import Depends
 
 router = APIRouter(
     prefix="/zaehlprotokoll",
@@ -52,7 +55,13 @@ def read_single_zaehlprotokoll(zp_id: int, session: SessionDep) -> Zaehlprotokol
 
 
 @router.post("/", response_model=ZaehlprotokollPublic)
-def create_zaehlprotokoll(zp: ZaehlprotokollCreate, session: SessionDep):
+def create_zaehlprotokoll(zp: ZaehlprotokollCreate, session: SessionDep, credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme), _user=Depends(require_user)):
+    user_id = None
+    if credentials is not None and credentials.credentials:
+        from ..utils.auth import decode_token
+        tok = decode_token(credentials.credentials)
+        if tok:
+            user_id = tok.get("user_id")
     abr = session.get(AbrechnungTag, zp.abrechnung_tag_id)
     if not abr:
         raise HTTPException(status_code=400, detail="AbrechnungTag not found")
@@ -61,6 +70,7 @@ def create_zaehlprotokoll(zp: ZaehlprotokollCreate, session: SessionDep):
         zeitpunkt=zp.zeitpunkt if zp.zeitpunkt is not None else datetime.now(timezone.utc),
         kommentar=zp.kommentar,
         aktiv=zp.aktiv,
+        user_id=user_id,
     )
     new_zp.id = None
     session.add(new_zp)
@@ -80,7 +90,7 @@ def create_zaehlprotokoll(zp: ZaehlprotokollCreate, session: SessionDep):
 
 
 @router.patch("/{zp_id}", response_model=ZaehlprotokollPublic)
-def update_zaehlprotokoll(zp_id: int, zp: ZaehlprotokollUpdate, session: SessionDep):
+def update_zaehlprotokoll(zp_id: int, zp: ZaehlprotokollUpdate, session: SessionDep, _user=Depends(require_user)):
     old = session.get(Zaehlprotokoll, zp_id)
     if not old:
         raise HTTPException(status_code=404, detail="Zaehlprotokoll not found")

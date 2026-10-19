@@ -6,6 +6,9 @@ from sqlmodel import select
 
 from ..models import Kassenstand, KassenstandPublic, KassenstandCreate, Verkauf
 from ..session import SessionDep
+from ..dependencies import bearer_scheme, require_user
+from fastapi.security import HTTPAuthorizationCredentials
+from fastapi import Depends
 
 router = APIRouter(
     prefix="/kassenstand",
@@ -49,7 +52,13 @@ def read_single_kassenstand(kassenstand_id: int, session: SessionDep) -> Kassens
 
 
 @router.post("/", response_model=KassenstandPublic)
-def create_kassenstand(kassenstand: KassenstandCreate, session: SessionDep):
+def create_kassenstand(kassenstand: KassenstandCreate, session: SessionDep, credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme), _user=Depends(require_user)):
+    user_id = kassenstand.user_id if hasattr(kassenstand, "user_id") else None
+    if user_id is None and credentials is not None and credentials.credentials:
+        from ..utils.auth import decode_token
+        p = decode_token(credentials.credentials)
+        if p:
+            user_id = p.get("user_id")
     if kassenstand.rechnungs_nr is not None:
         v = session.get(Verkauf, kassenstand.rechnungs_nr)
         if not v:
@@ -61,6 +70,7 @@ def create_kassenstand(kassenstand: KassenstandCreate, session: SessionDep):
         entnahme=kassenstand.entnahme,
         rechnungs_nr=kassenstand.rechnungs_nr,
         kommentar=kassenstand.kommentar,
+        user_id=user_id,
     )
     new_ks.kassenstand_id = None
     session.add(new_ks)

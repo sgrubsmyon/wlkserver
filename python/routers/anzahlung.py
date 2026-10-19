@@ -16,6 +16,9 @@ from ..models import (
     VerkaufDetails,
 )
 from ..session import SessionDep
+from ..dependencies import bearer_scheme, require_user
+from fastapi.security import HTTPAuthorizationCredentials
+from fastapi import Depends
 
 router = APIRouter(
     prefix="/anzahlung",
@@ -61,7 +64,13 @@ def read_single_anzahlung(anzahlung_id: int, session: SessionDep) -> AnzahlungPu
 
 
 @router.post("/", response_model=AnzahlungPublic)
-def create_anzahlung(anzahlung: AnzahlungCreate, session: SessionDep):
+def create_anzahlung(anzahlung: AnzahlungCreate, session: SessionDep, credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme), _user=Depends(require_user)):
+    user_id = getattr(anzahlung, "user_id", None)
+    if user_id is None and credentials is not None and credentials.credentials:
+        from ..utils.auth import decode_token
+        p = decode_token(credentials.credentials)
+        if p:
+            user_id = p.get("user_id")
     # validate sales
     v = session.get(Verkauf, anzahlung.anzahlung_in_rech_nr)
     if not v:
@@ -75,6 +84,7 @@ def create_anzahlung(anzahlung: AnzahlungCreate, session: SessionDep):
         anzahlung_in_rech_nr=anzahlung.anzahlung_in_rech_nr,
         aufloesung_in_rech_nr=anzahlung.aufloesung_in_rech_nr,
         datum=anzahlung.datum if anzahlung.datum is not None else datetime.now(timezone.utc),
+        user_id=user_id,
     )
     new_a.anzahlung_id = None
     session.add(new_a)
@@ -102,6 +112,7 @@ def aufloesen_anzahlung(
     payload: Optional[AnzahlungAufloesen] = None,
     aufloesung_in_rech_nr: Optional[int] = Query(default=None),
     datum: Optional[datetime] = Query(default=None),
+    _user=Depends(require_user),
 ):
     original = session.get(Anzahlung, anzahlung_id)
     if not original:

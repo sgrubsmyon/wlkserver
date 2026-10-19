@@ -16,6 +16,9 @@ from ..models import (
     VerkaufMwst,
 )
 from ..session import SessionDep
+from ..dependencies import bearer_scheme, require_user
+from fastapi.security import HTTPAuthorizationCredentials
+from fastapi import Depends
 
 router = APIRouter(
     prefix="/abrechnung/tag",
@@ -71,8 +74,14 @@ def read_single_abrechnung_tag(tag_id: int, session: SessionDep) -> dict:
 
 
 @router.post("/", response_model=AbrechnungTagPublic)
-def create_abrechnung_tag(payload: Optional[AbrechnungTagCreate], session: SessionDep):
+def create_abrechnung_tag(payload: Optional[AbrechnungTagCreate], session: SessionDep, credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme), _user=Depends(require_user)):
     p = payload or AbrechnungTagCreate()
+    user_id = None
+    if credentials is not None and credentials.credentials:
+        from ..utils.auth import decode_token
+        tok = decode_token(credentials.credentials)
+        if tok:
+            user_id = tok.get("user_id")
     now = datetime.now(timezone.utc)
 
     # Determine rechnungs range
@@ -158,6 +167,7 @@ def create_abrechnung_tag(payload: Optional[AbrechnungTagCreate], session: Sessi
         rechnungs_nr_von=von,
         rechnungs_nr_bis=bis,
         last_tse_sig_counter=p.last_tse_sig_counter if p.last_tse_sig_counter is not None else prev_sig,
+        user_id=user_id,
     )
     at.id = None
     session.add(at)

@@ -239,7 +239,7 @@
 - [x] `check_ec_payment_threshold` invoked in sale endpoint (EC warning surfaced)
 - [ ] Voucher creation/redemption handling (Java Kassieren articles 6/7) not integrated into sale creation
 - [ ] Discount handling not integrated
-- [ ] `user_id` not populated from auth token (transaction attribution)
+- [x] `require_user` enforced on all transaction create/mutate endpoints (step 4 enforcement follow-up)
 
 ### Storno (`python/business/storno_logic.py`)
 - [ ] `handle_storno_voucher` is a PLACEHOLDER (no voucher reversal)
@@ -268,8 +268,8 @@
 [⏳] Validation Framework - `python/utils/validation.py` exists but rarely applied; non-negative checks not enforced on kassenstand/gutschein/anzahlung/bestellung/zaehlprotokoll; `MwstBase.mwst_satz` lacks 0-1 constraint
 [⏳] Authentication and Authorization System (per-user accounts, login auditing, transaction attribution) - HIGH PRIORITY
   - Models + login/logout/me + user CRUD exist
-  - `require_user`/`get_current_user` defined but NEVER used (no endpoint protected by per-user auth)
-  - `user_id` not populated from auth token (client must pass manually)
+  - `require_user` enforced on all transaction create/mutate endpoints (step 4 enforcement follow-up)
+  - `user_id` now populated from auth token in all transaction create endpoints (step 4 follow-up)
   - logout/me now read token from Authorization header (step 4)
   - Password hashing switched to bcrypt; JWT switched to PyJWT (step 4)
   - SQL migration script created in migrations/02_user_auth/ (step 4)
@@ -333,8 +333,8 @@
 - [ ] All database tables have models (training tables missing)
 - [ ] All business logic from Java POS ported (Phase 6) - modules exist but wiring incomplete
 - [ ] Comprehensive validation and error handling (Phase 7) - validation module exists but rarely applied
-- [ ] Per-user accounts with login auditing (Phase 7.4) - models + endpoints exist but auth not enforced anywhere; no DB migration
-- [ ] Transaction attribution via user_id (only 4 of 8 transaction tables have the column; not populated from token)
+- [x] Per-user accounts with login auditing (Phase 7.4) - models + endpoints + migration + enforcement complete
+- [x] Transaction attribution via user_id (all 8 transaction tables have the column; populated from token where present) (step 4 follow-up)
 - [ ] Proper separation of concerns
 
 ### Quality Assurance

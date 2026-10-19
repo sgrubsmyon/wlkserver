@@ -2,7 +2,8 @@ from datetime import datetime, timezone, date
 from typing import Annotated, Optional
 import calendar
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.security import HTTPAuthorizationCredentials
 from sqlmodel import select
 
 from ..models import (
@@ -15,6 +16,7 @@ from ..models import (
     AbrechnungMonatMwst,
 )
 from ..session import SessionDep
+from ..dependencies import bearer_scheme, require_user
 
 router = APIRouter(
     prefix="/abrechnung/jahr",
@@ -67,7 +69,7 @@ def read_single_abrechnung_jahr(jahr_id: int, session: SessionDep) -> dict:
 
 
 @router.post("/", response_model=AbrechnungJahrPublic)
-def create_abrechnung_jahr(payload: Optional[AbrechnungJahrCreate], session: SessionDep):
+def create_abrechnung_jahr(payload: Optional[AbrechnungJahrCreate], session: SessionDep, credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme), _user=Depends(require_user)):
     p = payload or AbrechnungJahrCreate()
 
     if p.jahr is not None:

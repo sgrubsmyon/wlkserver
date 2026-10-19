@@ -6,6 +6,9 @@ from sqlmodel import select, func
 
 from ..models import Gutschein, GutscheinPublic, GutscheinCreate, GutscheinEinloesen, VerkaufDetails
 from ..session import SessionDep
+from ..dependencies import bearer_scheme, require_user
+from fastapi.security import HTTPAuthorizationCredentials
+from fastapi import Depends
 
 router = APIRouter(
     prefix="/gutschein",
@@ -72,7 +75,13 @@ def read_single_gutschein(gutschein_id: int, session: SessionDep) -> GutscheinPu
 
 
 @router.post("/", response_model=GutscheinPublic)
-def create_gutschein(gutschein: GutscheinCreate, session: SessionDep):
+def create_gutschein(gutschein: GutscheinCreate, session: SessionDep, credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme), _user=Depends(require_user)):
+    user_id = getattr(gutschein, "user_id", None)
+    if user_id is None and credentials is not None and credentials.credentials:
+        from ..utils.auth import decode_token
+        p = decode_token(credentials.credentials)
+        if p:
+            user_id = p.get("user_id")
     if gutschein.gutschein_in_vd_id is not None:
         vd = session.get(VerkaufDetails, gutschein.gutschein_in_vd_id)
         if not vd:
@@ -87,6 +96,7 @@ def create_gutschein(gutschein: GutscheinCreate, session: SessionDep):
         gutschein_in_vd_id=gutschein.gutschein_in_vd_id,
         einloesung_in_vd_id=gutschein.einloesung_in_vd_id,
         restbetrag=gutschein.restbetrag,
+        user_id=user_id,
     )
     new_g.gutschein_id = None
     session.add(new_g)
@@ -104,6 +114,7 @@ def einloesen_gutschein(
     restbetrag: Optional[float] = Query(default=None),
     betrag: Optional[float] = Query(default=None),
     gutschein_in_vd_id: Optional[int] = Query(default=None),
+    _user=Depends(require_user),
 ):
     original = session.get(Gutschein, gutschein_id)
     if not original:

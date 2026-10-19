@@ -1,7 +1,8 @@
 from datetime import datetime, timezone
 from typing import Annotated, List, Optional
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.security import HTTPAuthorizationCredentials
 from sqlmodel import select
 
 from ..models import (
@@ -18,6 +19,8 @@ from ..models import (
     # VerkaufDetailsCreate,
 )
 from ..session import SessionDep
+from ..dependencies import bearer_scheme, require_user
+from ..models import User
 from ..business.vat_calculator import calculate_vat
 from ..business.sale_workflow import prepare_detail, calculate_mwst_summary
 
@@ -103,14 +106,21 @@ def read_single_verkauf(
 
 
 @router.post("/", response_model=VerkaufPublic)
-def create_verkauf(verkauf: VerkaufCreate, session: SessionDep):
+def create_verkauf(verkauf: VerkaufCreate, session: SessionDep, credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme), _user: User = Depends(require_user)):
+    # Resolve user_id from token if present (transaction attribution)
+    user_id = getattr(verkauf, "user_id", None)
+    if user_id is None and credentials is not None and credentials.credentials:
+        from ..utils.auth import decode_token
+        payload = decode_token(credentials.credentials)
+        if payload:
+            user_id = payload.get("user_id")
     # base = VerkaufCreate.model_validate(verkauf)
     new_v = Verkauf(
         verkaufsdatum=datetime.now(timezone.utc),
         ec_zahlung=verkauf.ec_zahlung,
         kunde_gibt=verkauf.kunde_gibt,
         storno_von=verkauf.storno_von,
-        user_id=getattr(verkauf, "user_id", None),
+        user_id=user_id,
     )
     new_v.rechnungs_nr = None
     session.add(new_v)
@@ -166,7 +176,7 @@ def create_verkauf(verkauf: VerkaufCreate, session: SessionDep):
 
 
 @router.post("/{rechnungs_nr}/storno", response_model=dict)
-def storno_verkauf(rechnungs_nr: int, session: SessionDep, cash_refund: bool = False):
+def storno_verkauf(rechnungs_nr: int, session: SessionDep, cash_refund: bool = False, _user: User = Depends(require_user)):
     from ..business.storno_logic import create_storno
     original = session.get(Verkauf, rechnungs_nr)
     if not original:

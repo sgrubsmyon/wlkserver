@@ -8,6 +8,9 @@ from python.session import get_session
 def client(session):
     app.dependency_overrides[get_session] = lambda: session
     with TestClient(app) as c:
+        r = c.post("/auth/login", json={"username": "test", "password": "test"})
+        if r.status_code == 200:
+            c.headers["Authorization"] = "Bearer " + r.json()["access_token"]
         yield c
     app.dependency_overrides.clear()
 

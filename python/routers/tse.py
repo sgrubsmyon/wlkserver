@@ -2,7 +2,8 @@ import io
 import tarfile
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.security import HTTPAuthorizationCredentials
 from fastapi.responses import Response
 from pydantic import BaseModel
 from sqlmodel import select
@@ -10,6 +11,7 @@ from sqlmodel import select
 from ..models import TSETransaction, TSETransactionPublic, TSETransactionCreate, Verkauf
 from ..session import SessionDep
 from ..utils.tse_client import tse_client
+from ..dependencies import bearer_scheme, require_user
 
 router = APIRouter(
     prefix="/tse",
@@ -64,11 +66,17 @@ def read_single_tse_transaction(transaction_id: int, session: SessionDep) -> TSE
 
 
 @router.post("/transaction", response_model=TSETransactionPublic)
-def create_tse_transaction(payload: TSETransactionCreate, session: SessionDep):
+def create_tse_transaction(payload: TSETransactionCreate, session: SessionDep, credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme), _user=Depends(require_user)):
     if payload.rechnungs_nr is not None:
         v = session.get(Verkauf, payload.rechnungs_nr)
         if not v:
             raise HTTPException(status_code=400, detail="Verkauf not found")
+    user_id = payload.user_id if hasattr(payload, "user_id") else None
+    if user_id is None and credentials is not None and credentials.credentials:
+        from ..utils.auth import decode_token
+        tok = decode_token(credentials.credentials)
+        if tok:
+            user_id = tok.get("user_id")
     # Use client to "sign"
     signed = tse_client.create_transaction(
         process_type=payload.process_type,
@@ -86,6 +94,7 @@ def create_tse_transaction(payload: TSETransactionCreate, session: SessionDep):
         signature_base64=payload.signature_base64 if payload.signature_base64 is not None else signed["signature_base64"],
         tse_error=payload.tse_error if payload.tse_error is not None else signed["tse_error"],
         process_data=payload.process_data,
+        user_id=user_id,
     )
     new_t.transaction_id = None
     session.add(new_t)

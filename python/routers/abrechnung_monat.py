@@ -2,7 +2,8 @@ from datetime import datetime, timezone, date
 from typing import Annotated, Optional
 import calendar
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.security import HTTPAuthorizationCredentials
 from sqlmodel import select
 
 from ..models import (
@@ -15,6 +16,7 @@ from ..models import (
     AbrechnungTagMwst,
 )
 from ..session import SessionDep
+from ..dependencies import bearer_scheme, require_user
 
 router = APIRouter(
     prefix="/abrechnung/monat",
@@ -91,7 +93,7 @@ def read_single_abrechnung_monat(monat_id: int, session: SessionDep) -> dict:
 
 
 @router.post("/", response_model=AbrechnungMonatPublic)
-def create_abrechnung_monat(payload: Optional[AbrechnungMonatCreate], session: SessionDep):
+def create_abrechnung_monat(payload: Optional[AbrechnungMonatCreate], session: SessionDep, credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme), _user=Depends(require_user)):
     p = payload or AbrechnungMonatCreate()
 
     # Determine target month

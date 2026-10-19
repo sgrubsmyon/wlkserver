@@ -12,6 +12,9 @@ from ..models import (
     Artikel,
 )
 from ..session import SessionDep
+from ..dependencies import bearer_scheme, require_user
+from fastapi.security import HTTPAuthorizationCredentials
+from fastapi import Depends
 
 router = APIRouter(
     prefix="/bestellung",
@@ -41,13 +44,20 @@ def read_single_bestellung(bestell_nr: int, session: SessionDep) -> BestellungPu
 
 
 @router.post("/", response_model=BestellungPublic)
-def create_bestellung(bestellung: BestellungCreate, session: SessionDep):
+def create_bestellung(bestellung: BestellungCreate, session: SessionDep, credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme), _user=Depends(require_user)):
+    user_id = None
+    if credentials is not None and credentials.credentials:
+        from ..utils.auth import decode_token
+        tok = decode_token(credentials.credentials)
+        if tok:
+            user_id = tok.get("user_id")
     now = datetime.now(timezone.utc)
     new_b = Bestellung(
         typ=bestellung.typ if bestellung.typ is not None else "",
         bestell_datum=bestellung.bestell_datum if bestellung.bestell_datum is not None else now,
         jahr=bestellung.jahr if bestellung.jahr is not None else now.year,
         kw=bestellung.kw if bestellung.kw is not None else 1,
+        user_id=user_id,
     )
     new_b.bestell_nr = None
     session.add(new_b)
@@ -57,7 +67,7 @@ def create_bestellung(bestellung: BestellungCreate, session: SessionDep):
 
 
 @router.patch("/{bestell_nr}", response_model=BestellungPublic)
-def update_bestellung(bestell_nr: int, bestellung: BestellungUpdate, session: SessionDep):
+def update_bestellung(bestell_nr: int, bestellung: BestellungUpdate, session: SessionDep, _user=Depends(require_user)):
     old = session.get(Bestellung, bestell_nr)
     if not old:
         raise HTTPException(status_code=404, detail="Bestellung not found")
@@ -71,7 +81,7 @@ def update_bestellung(bestell_nr: int, bestellung: BestellungUpdate, session: Se
 
 
 @router.delete("/{bestell_nr}")
-def delete_bestellung(bestell_nr: int, session: SessionDep):
+def delete_bestellung(bestell_nr: int, session: SessionDep, _user=Depends(require_user)):
     b = session.get(Bestellung, bestell_nr)
     if not b:
         raise HTTPException(status_code=404, detail="Bestellung not found")
