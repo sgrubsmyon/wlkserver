@@ -9,6 +9,9 @@ from ..models import (
     BestellungPublic,
     BestellungCreate,
     BestellungUpdate,
+    BestellungDetails,
+    BestellungDetailsPublic,
+    BestellungDetailsCreate,
     Artikel,
 )
 from ..session import SessionDep
@@ -21,6 +24,36 @@ router = APIRouter(
     tags=["bestellung"],
     responses={404: {"description": "Not found"}},
 )
+
+
+def _validated_details(session: SessionDep, details: list[BestellungDetailsCreate]):
+    """Check positions are unique and articles exist before touching the DB."""
+    positions = [d.position for d in details]
+    if len(positions) != len(set(positions)):
+        raise HTTPException(status_code=400, detail="Duplicate position in details")
+    for d in details:
+        if not session.get(Artikel, d.artikel_id):
+            raise HTTPException(status_code=400, detail=f"Artikel {d.artikel_id} not found")
+
+
+def _add_details(session: SessionDep, bestell_nr: int, typ: str, details: list[BestellungDetailsCreate]):
+    for d in details:
+        row = BestellungDetails(
+            bestell_nr=bestell_nr,
+            typ=typ,
+            position=d.position,
+            artikel_id=d.artikel_id,
+            stueckzahl=d.stueckzahl,
+        )
+        session.add(row)
+
+
+def _delete_details(session: SessionDep, bestell_nr: int, typ: str):
+    rows = session.exec(
+        select(BestellungDetails).where(BestellungDetails.bestell_nr == bestell_nr, BestellungDetails.typ == typ)
+    ).all()
+    for row in rows:
+        session.delete(row)
 
 
 @router.get("/")
@@ -36,11 +69,18 @@ def read_bestellungen(
 
 
 @router.get("/{bestell_nr}")
-def read_single_bestellung(bestell_nr: int, session: SessionDep) -> BestellungPublic:
+def read_single_bestellung(bestell_nr: int, session: SessionDep) -> dict:
     b = session.get(Bestellung, bestell_nr)
     if not b:
         raise HTTPException(status_code=404, detail="Bestellung not found")
-    return BestellungPublic.model_validate(b)
+    details = session.exec(
+        select(BestellungDetails)
+        .where(BestellungDetails.bestell_nr == bestell_nr, BestellungDetails.typ == b.typ)
+        .order_by(BestellungDetails.position)
+    ).all()
+    obj = BestellungPublic.model_validate(b).model_dump()
+    obj["details"] = [BestellungDetailsPublic.model_validate(d).model_dump() for d in details]
+    return obj
 
 
 @router.post("/", response_model=BestellungPublic)
@@ -51,6 +91,8 @@ def create_bestellung(bestellung: BestellungCreate, session: SessionDep, credent
         tok = decode_token(credentials.credentials)
         if tok:
             user_id = tok.get("user_id")
+    if bestellung.details:
+        _validated_details(session, bestellung.details)
     now = datetime.now(timezone.utc)
     new_b = Bestellung(
         typ=bestellung.typ if bestellung.typ is not None else "",
@@ -63,6 +105,9 @@ def create_bestellung(bestellung: BestellungCreate, session: SessionDep, credent
     session.add(new_b)
     session.commit()
     session.refresh(new_b)
+    if bestellung.details:
+        _add_details(session, new_b.bestell_nr, new_b.typ, bestellung.details)
+        session.commit()
     return BestellungPublic.model_validate(new_b)
 
 
@@ -72,9 +117,25 @@ def update_bestellung(bestell_nr: int, bestellung: BestellungUpdate, session: Se
     if not old:
         raise HTTPException(status_code=404, detail="Bestellung not found")
     data = bestellung.model_dump(exclude_unset=True)
+    details = bestellung.details
+    data.pop("details", None)
+    if details is not None:
+        _validated_details(session, details)
+    old_typ = old.typ
     for key, value in data.items():
         setattr(old, key, value)
     session.add(old)
+    if details is not None:
+        _delete_details(session, bestell_nr, old_typ)
+        _add_details(session, bestell_nr, old.typ, details)
+    elif old.typ != old_typ:
+        # typ is part of the detail primary key, keep the children consistent
+        rows = session.exec(
+            select(BestellungDetails).where(BestellungDetails.bestell_nr == bestell_nr, BestellungDetails.typ == old_typ)
+        ).all()
+        for row in rows:
+            row.typ = old.typ
+            session.add(row)
     session.commit()
     session.refresh(old)
     return BestellungPublic.model_validate(old)
@@ -85,6 +146,7 @@ def delete_bestellung(bestell_nr: int, session: SessionDep, _user=Depends(requir
     b = session.get(Bestellung, bestell_nr)
     if not b:
         raise HTTPException(status_code=404, detail="Bestellung not found")
+    _delete_details(session, bestell_nr, b.typ)
     session.delete(b)
     session.commit()
     return {"message": "Bestellung deleted"}

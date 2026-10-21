@@ -842,6 +842,7 @@ class BestellungCreate(SQLModel):
     bestell_datum: datetime | None = None
     jahr: int | None = None
     kw: int | None = None
+    details: list["BestellungDetailsCreate"] | None = None
 
 
 class BestellungUpdate(SQLModel):
@@ -849,6 +850,7 @@ class BestellungUpdate(SQLModel):
     bestell_datum: datetime | None = None
     jahr: int | None = None
     kw: int | None = None
+    details: list["BestellungDetailsCreate"] | None = None
 
 
 class BestellungDetails(SQLModel, table=True):

@@ -1,7 +1,9 @@
 import pytest
 from fastapi.testclient import TestClient
+from sqlmodel import select
 
 from python.main import app
+from python.models import Artikel, BestellungDetails
 from python.session import get_session
 
 
@@ -16,7 +18,7 @@ def client(session):
     app.dependency_overrides.clear()
 
 
-def test_crud(client):
+def test_crud(client, session):
     r = client.post("/bestellung/", json={"typ": "L", "jahr": 2026, "kw": 1})
     assert r.status_code == 200
     bid = r.json()["bestell_nr"]
@@ -29,3 +31,56 @@ def test_crud(client):
     assert r.status_code == 200
     r = client.get(f"/bestellung/{bid}")
     assert r.status_code == 404
+
+
+def test_positions_roundtrip(client, session):
+    a = Artikel(artikel_nr="A1", artikel_name="Testartikel")
+    session.add(a)
+    session.commit()
+    session.refresh(a)
+
+    r = client.post("/bestellung/", json={
+        "typ": "L", "jahr": 2026, "kw": 1,
+        "details": [{"position": 1, "artikel_id": a.artikel_id, "stueckzahl": 3}],
+    })
+    assert r.status_code == 200
+    bid = r.json()["bestell_nr"]
+    r = client.get(f"/bestellung/{bid}")
+    assert [(d["position"], d["stueckzahl"]) for d in r.json()["details"]] == [(1, 3)]
+
+    # PATCH replaces all positions
+    r = client.patch(f"/bestellung/{bid}", json={
+        "details": [{"position": 1, "artikel_id": a.artikel_id, "stueckzahl": 2}],
+    })
+    assert r.status_code == 200
+    r = client.get(f"/bestellung/{bid}")
+    assert [(d["position"], d["stueckzahl"]) for d in r.json()["details"]] == [(1, 2)]
+
+    # changing typ keeps the positions consistent
+    r = client.patch(f"/bestellung/{bid}", json={"typ": "K"})
+    assert r.status_code == 200
+    assert session.exec(select(BestellungDetails).where(BestellungDetails.bestell_nr == bid)).one().typ == "K"
+
+    r = client.delete(f"/bestellung/{bid}")
+    assert r.status_code == 200
+    assert session.exec(select(BestellungDetails).where(BestellungDetails.bestell_nr == bid)).all() == []
+
+
+def test_positions_validation(client, session):
+    r = client.post("/bestellung/", json={
+        "details": [{"position": 1, "artikel_id": 999999}],
+    })
+    assert r.status_code == 400
+    assert client.get("/bestellung/").json() == []
+
+    a = Artikel(artikel_nr="A2", artikel_name="Testartikel 2")
+    session.add(a)
+    session.commit()
+    session.refresh(a)
+    r = client.post("/bestellung/", json={
+        "details": [
+            {"position": 1, "artikel_id": a.artikel_id},
+            {"position": 1, "artikel_id": a.artikel_id},
+        ],
+    })
+    assert r.status_code == 400

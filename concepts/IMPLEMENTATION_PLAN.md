@@ -11,18 +11,23 @@ This document outlines the comprehensive implementation plan to complete the Fas
 ## Current Status Summary
 
 ### ✅ Already Implemented
-- **Database Models**: Most core tables have SQLModel definitions in `python/models.py` (training tables, user/anmeldung partially; user_id columns only on 4 of 8 transaction tables)
-- **CRUD Operations**: Most major entities have basic CRUD functionality
-- **Business Logic**: Modules added under `python/business/`, but much logic is NOT wired into endpoints (cash-register side-effects, TSE export, voucher/installment storno, training mode, full Abrechnung aggregation). See `concepts/TODO.md` "Business Logic Wiring Gaps".
+- **Database Models**: All core tables have SQLModel definitions in `python/models.py` (training tables table-only; `user_id` columns on all 8 transaction tables)
+- **CRUD Operations**: All planned entities have CRUD functionality, including Bestellung positions (`details` embedded in the order payload)
+- **Business Logic**: Modules under `python/business/` are wired into the main flows (VAT, sale workflow incl. vouchers/discounts, storno incl. voucher/installment reversal and kassenstand reversal, cash-register side-effects, TSE export best-effort). Remaining gaps: training mode, exact `bar_brutto`, kassenstand balance validation.
 - **API Structure**: Clean FastAPI structure with proper routing
-- **Auth**: Login/audit models + endpoints exist, but per-user auth is NOT enforced on any endpoint; no SQL migration; bcrypt/JWT not adopted
+- **Auth**: Per-user accounts (bcrypt + JWT), login auditing, `user_id` attribution on transaction endpoints, SQL migration in `migrations/02_user_auth/`; `require_user` enforced on transaction create/mutate endpoints, admin endpoints accept the shared `ADMIN_TOKEN` stopgap
 
 ### 🎯 What Needs to be Done
-- Complete missing endpoints for existing models (CR, CRU or CRD per table, see Phases 1-4)
-- Add missing database table models and endpoints
-- Port business logic from Java POS classes
-- Add validation, security, and error handling
-- Comprehensive test coverage
+- Validate against a real MariaDB instance (tests are SQLite-only)
+- Prepare the last frontend blockers (CORS/proxy, Bestellung date filter)
+- Fill the missing dedicated/integration tests and raise coverage to 80%+
+- Finish validation/edge cases (training mode, exact `bar_brutto`, kassenstand balance)
+- Complete documentation (migration guide, DB schema reference, docstrings)
+
+> **Note**: The Phase sections below contain the original plan text (some "Current" states are outdated). The authoritative per-endpoint status is in `concepts/TODO.md`; the priority matrix and success criteria below are kept up to date.
+
+### 🔎 Parity audit of remaining low-priority items (2026-10-22)
+See the "Parity Audit" section in `concepts/TODO.md`. The optional per-sale installment lookup, per-date/per-period settlement lookups and the zaehlprotokoll validation were removed as not needed for Java parity; Bestellung positions were the only real functional gap and are now implemented (positions embedded in the order payload). The remaining testing/documentation/production items are quality tasks, not functional gaps.
 
 ---
 
@@ -275,10 +280,12 @@ This document outlines the comprehensive implementation plan to complete the Fas
 
 **Required endpoints (full CRUD - the SQL user has INSERT, UPDATE, DELETE grants on `bestellung*`):**
 - GET /bestellung - List orders
-- GET /bestellung/{bestell_nr} - Get single order (`bestell_nr` is unique; there cannot be multiple orders with different `typ` under the same bestell_nr, so no `typ` in the endpoint path)
-- POST /bestellung - Create new order
-- PATCH /bestellung/{bestell_nr} - Update order
-- DELETE /bestellung/{bestell_nr} - Delete order
+- GET /bestellung/{bestell_nr} - Get single order incl. its positions (`bestellung_details`)
+- POST /bestellung - Create new order incl. positions (the Java POS always saves header + positions together, see `Bestellen.abschliessen()`)
+- PATCH /bestellung/{bestell_nr} - Update order; a supplied `details` list replaces all positions
+- DELETE /bestellung/{bestell_nr} - Delete order incl. its positions
+
+**Note - no separate position endpoints**: `bestellung_details` is only ever written/read together with its order (Java deletes and recreates the whole order on edit), so positions are embedded in the order payload instead of separate `POST/DELETE .../Position` endpoints. See the parity audit in `concepts/TODO.md`.
 
 **Business logic from Java:**
 - `../git/src/org/weltladen_bonn/pos/besteller/Bestellen.java` - Order creation
@@ -499,15 +506,15 @@ Security pitfalls of using unencrypted HTTP within a local network:
 
 | Priority | Category | Items | Estimated Effort | Status |
 |----------|----------|-------|------------------|--------|
-| 🔴 HIGH | Core CRUD | MwSt, Pfand admin CRUD with auth (Verkauf stays update-free by design) | 2-3 days | ⏳ TODO |
-| 🔴 HIGH | Core Tables | Kassenstand (CR), Gutschein (CR), Anzahlung (CR) | 3-4 days | ⏳ TODO |
-| 🔴 HIGH | Validation | Comprehensive input validation | 1-2 days | ⏳ TODO |
-| 🔴 HIGH | Security | User accounts, authentication and authorization | 2-3 days | ⏳ TODO |
-| 🟡 MEDIUM | Accounting | Abrechnung Tag (CR), Monat (CRD), Jahr (CRD) | 3-5 days | ⏳ TODO |
-| 🟡 MEDIUM | Business Logic | VAT calculation, sale creation | 2-3 days | ⏳ TODO |
-| 🟡 MEDIUM | TSE | TSE transaction support + export endpoints | 2-3 days | ⏳ TODO |
-| 🟡 MEDIUM | Supporting | Zaehlprotokoll (CRU), Bestellung (CRUD) | 2-3 days | ⏳ TODO |
-| 🟢 LOW | Utilities | Import/Export, Search | 1-2 days | ⏳ TODO |
+| 🔴 HIGH | Core CRUD | MwSt, Pfand admin CRUD with auth (Verkauf stays update-free by design) | 2-3 days | ✅ Done |
+| 🔴 HIGH | Core Tables | Kassenstand (CR), Gutschein (CR), Anzahlung (CR) | 3-4 days | ✅ Done |
+| 🔴 HIGH | Validation | Comprehensive input validation | 1-2 days | ⏳ Partial |
+| 🔴 HIGH | Security | User accounts, authentication and authorization | 2-3 days | ✅ Done (ADMIN_TOKEN stopgap remains) |
+| 🟡 MEDIUM | Accounting | Abrechnung Tag (CR), Monat (CRD), Jahr (CRD) | 3-5 days | ✅ Done |
+| 🟡 MEDIUM | Business Logic | VAT calculation, sale creation | 2-3 days | ⏳ Wired, edge cases/tests missing |
+| 🟡 MEDIUM | TSE | TSE transaction support + export endpoints | 2-3 days | ⏳ Adapter untested without hardware |
+| 🟡 MEDIUM | Supporting | Zaehlprotokoll (CRU), Bestellung (CRUD incl. positions) | 2-3 days | ✅ Done |
+| 🟢 LOW | Utilities | Import/Export, Search | 1-2 days | ⏳ Partial |
 
 ---
 
@@ -570,19 +577,16 @@ Security pitfalls of using unencrypted HTTP within a local network:
 - Minimum 80% code coverage
 - All critical paths tested
 - All business logic validated
+- Current: 69% (67 tests passing, measured 2026-10-22)
 
-### Test Files to Create
-- `tests/test_mwst.py` - MwSt CRUD tests
-- `tests/test_pfand.py` - Pfand CRUD tests
-- `tests/test_kassenstand.py` - Cash register tests
-- `tests/test_gutschein.py` - Voucher management tests
-- `tests/test_anzahlung.py` - Installment payment tests
-- `tests/test_abrechnung*.py` - Accounting tests
-- `tests/test_zaehlprotokoll.py` - Counting protocol tests
-- `tests/test_bestellung.py` - Order management tests
-- `tests/test_tse.py` - TSE integration tests
-- `tests/test_auth.py` - Authentication/authorization tests
-- `tests/test_vat_calculator.py` - Business logic tests
+### Real Database Tests
+- Tests run on in-memory SQLite, which does not enforce foreign keys and ignores `UNSIGNED`/`YEAR`/`TIMESTAMP` semantics
+- A smoke run against the real MariaDB schema (`../git/mysql/generateDB.sql`) with the real `mitarbeiter`/`kassenadmin` grants is still missing; it must cover `bestellung` composite PK/`AUTO_INCREMENT`, delete order of parent/child rows, timezone round-trips and DECIMAL rounding
+
+### Test Files
+Existing: `test_mwst.py`, `test_pfand.py`, `test_kassenstand.py`, `test_gutschein.py`, `test_anzahlung.py`, `test_abrechnung_tag.py`, `test_zaehlprotokoll.py`, `test_bestellung.py` (incl. positions), `test_auth.py`, `test_vat_calculator.py`, `test_verkauf_storno.py`, smoke tests for Phases 2-5, `test_timestamps.py`.
+
+Still missing: `test_abrechnung_monat.py`, `test_abrechnung_jahr.py`, `test_tse.py`, `test_sale_workflow.py`, `test_storno_logic.py`, `test_import_export.py`, plus integration tests for complete workflows.
 
 ---
 
@@ -599,15 +603,15 @@ Security pitfalls of using unencrypted HTTP within a local network:
 
 ## Success Criteria
 
-- [ ] All database tables have corresponding models and endpoints
-- [ ] Bookkeeping integrity: no update/delete endpoints for immutable tables (verkauf, kassenstand, gutschein, anzahlung, abrechnung_tag)
-- [ ] All business logic from Java POS is ported to API
-- [ ] Per-user accounts with login auditing and transaction attribution
+- [x] All database tables have corresponding models and endpoints (training tables are model-only)
+- [x] Bookkeeping integrity: no update/delete endpoints for immutable tables (verkauf, kassenstand, gutschein, anzahlung, abrechnung_tag)
+- [ ] All business logic from Java POS is ported to API (training mode and edge-case validation still missing)
+- [x] Per-user accounts with login auditing and transaction attribution
 - [ ] Comprehensive validation and error handling
-- [ ] 80%+ test coverage
+- [ ] 80%+ test coverage (currently 69%)
 - [ ] Complete API documentation
-- [ ] Working integration with existing database
-- [ ] Ready for frontend client development
+- [ ] Working integration with existing database (SQLite-only tests so far)
+- [ ] Ready for frontend client development (CORS/proxy and Bestellung date filter open)
 - [ ] All existing functionality preserved and enhanced
 
 ---
@@ -701,10 +705,11 @@ Note: There are deliberately **no** `routers/verkauf_mwst.py` and `routers/verka
 
 ## Next Steps
 
-1. **Review this plan** and provide feedback
-2. **Prioritize implementation** based on business needs
-3. **Start with Phase 1** - Complete existing endpoints
-4. **Proceed to Phase 2** - Add core business tables (Kassenstand first)
-5. **Continue through phases** in recommended order
-6. **Test thoroughly** at each phase
-7. **Document progress** and update this plan as needed
+1. **Real database validation**: smoke test the API against MariaDB with `../git/mysql/generateDB.sql` and the real grants; fix anything SQLite hides (FK enforcement, `AUTO_INCREMENT`/composite PK, `YEAR`/`UNSIGNED`, timezone, DECIMAL)
+2. **Frontend readiness**: decide CORS vs. SvelteKit dev proxy; add a date filter to `GET /bestellung`; keep the OpenAPI schema stable
+3. **Missing tests**: `test_abrechnung_monat.py`, `test_abrechnung_jahr.py`, `test_tse.py`, `test_sale_workflow.py`, `test_storno_logic.py`, `test_import_export.py` plus workflow integration tests
+4. **Coverage**: raise 69% → 80%+ (largest gaps: lieferant, produktgruppe, rabattaktion, users, sale_workflow, validation)
+5. **Validation**: apply the `ensure_*` helpers in the routers; `ge=0, le=1` on `MwstBase.mwst_satz`; kassenstand balance validation; exact `bar_brutto` aggregation
+6. **Training mode**: implement endpoints for the `training_*` tables or explicitly descope it
+7. **Import/Export**: `import_bestellung_from_csv` currently ignores positions; extend it if the feature is kept
+8. **Documentation**: migration guide (Java POS → API), database schema reference, consistent docstrings, deployment/HTTPS docs

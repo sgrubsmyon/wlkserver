@@ -2,8 +2,8 @@
 
 > **Sync note**: This document and `concepts/IMPLEMENTATION_PLAN.md` must be kept in sync. When implementation progress changes, update both files so new sessions without prior memory see a consistent status.
 
-> **Last Updated**: 2026-10-19  
-> **Status**: Phases 1-5 implemented at router level (TSE export still stubs); Phase 6/7 modules exist but much business logic is NOT wired into endpoints (see "Business Logic Wiring Gaps"); auth not enforced anywhere; test coverage low
+> **Last Updated**: 2026-10-22  
+> **Status**: Phases 1-5 implemented at router level (TSE export adapter untested without hardware); main Phase 6/7 flows wired (see "Business Logic Wiring Gaps" for what remains); auth enforced on transaction endpoints; parity audit of the remaining low-priority endpoints done and resolved (see "Parity Audit"), Bestellung positions implemented; test coverage 69%
 
 ---
 
@@ -63,7 +63,7 @@
 [x] AbrechnungMonat router - CRD (delete-and-recreate) + /offen
 [x] AbrechnungJahr router - CRD (delete-and-recreate) + /offen
 [x] Zaehlprotokoll router - CRU + /abrechnung/{id}
-[x] Bestellung router - CRUD
+[x] Bestellung router - CRUD incl. positions (`details` on create/update, returned by GET single)
 [x] TSE router - transaction CRUD + status/init + export endpoints (stub adapter)
 [x] Main API setup with all routers included
 [x] Database session management
@@ -132,7 +132,6 @@
 - [x] GET /anzahlung/offen
 - [x] GET /anzahlung/aufgeloest
 - [x] POST /anzahlung/details
-- [ ] GET /anzahlung/verkauf/{rechnungs_nr} (not implemented)
 
 ---
 
@@ -145,8 +144,6 @@
 - [x] GET /abrechnung/tag/{id}
 - [x] POST /abrechnung/tag (basic Tagesabschluss aggregation)
 - [x] GET /abrechnung/tag/offen
-- [ ] GET /abrechnung/tag/heute
-- [ ] GET /abrechnung/tag/{date}
 - [x] Automatic incremental TSE export (best-effort) wired into POST /abrechnung/tag - step 3
 - [x] Stornos/retouren handled in mwst + bar aggregation; entnahmen subtracted from closing balance (step 5)
 - [x] Full Java aggregation parity (storno/retouren reporting in abrechnung response) - items 5-8
@@ -157,14 +154,12 @@
 - [x] GET /abrechnung/monat/{id}
 - [x] POST /abrechnung/monat (delete-and-recreate)
 - [x] GET /abrechnung/monat/offen
-- [ ] GET /abrechnung/monat/{jahr}/{monat}
 
 [x] **Abrechnung Jahr** - models + router + smoke tests
 - [x] GET /abrechnung/jahr
 - [x] GET /abrechnung/jahr/{id}
 - [x] POST /abrechnung/jahr (delete-and-recreate)
 - [x] GET /abrechnung/jahr/offen
-- [ ] GET /abrechnung/jahr/{jahr}
 
 ---
 
@@ -178,7 +173,6 @@
 - [x] POST /zaehlprotokoll
 - [x] PATCH /zaehlprotokoll/{id}
 - [x] GET /zaehlprotokoll/abrechnung/{abrechnung_tag_id}
-- [ ] Balanced protocol validation
 
 [x] **Bestellung** - models + router + smoke tests
 - [x] GET /bestellung
@@ -186,8 +180,8 @@
 - [x] POST /bestellung
 - [x] PATCH /bestellung/{bestell_nr}
 - [x] DELETE /bestellung/{bestell_nr}
-- [ ] POST /bestellung/{bestell_nr}/Position
-- [ ] DELETE /bestellung/{bestell_nr}/Position/{position}
+- [x] Positions saved/read together with the order (`details` in POST/PATCH, returned by GET /bestellung/{bestell_nr}) - matches Java "Bestellung abschließen"
+- [x] No separate position endpoints needed (Java always saves the whole order, see parity audit)
 
 ---
 
@@ -218,12 +212,12 @@
 
 ## 🟡 MEDIUM PRIORITY - Business Logic Porting
 
-### Phase 6: Core Business Logic from Java (modules exist; wiring incomplete)
+### Phase 6: Core Business Logic from Java (main flows wired; gaps below)
 
-[⏳] VAT Calculation Module (python/business/vat_calculator.py) - module complete, but `get_all_current_mwst_values_by_id` unused
-[⏳] Sale Workflow Enhancements (python/business/sale_workflow.py) - `prepare_detail`/`calculate_mwst_summary` used in router; `validate_detail`, `determine_mwst_satz`, `determine_ges_preis` not fully exercised; voucher/discount handling (Java Kassieren articles 6/7) NOT integrated; `check_ec_payment_threshold` NOT invoked; `user_id` not populated from auth token
-[⏳] Storno Logic Enhancements (python/business/storno_logic.py) - basic storno works; `handle_storno_voucher` and `handle_storno_installment` are PLACEHOLDERS; no TSE handling for storno; no reversing kassenstand entry
-[⏳] Cash Register Operations (python/business/cash_register.py) - `update_kassenstand_for_sale` NOT wired into sale creation or storno; `process_payment`/`ec_payment_threshold_check` unused; `end_of_day_procedure` is a STUB; `is_training_mode` always returns False
+[⏳] VAT Calculation Module (python/business/vat_calculator.py) - complete; used by sale creation and the abrechnung response (`get_all_current_mwst_values_by_id`)
+[⏳] Sale Workflow Enhancements (python/business/sale_workflow.py) - `prepare_detail`/`calculate_mwst_summary` used in router; voucher creation and discount handling integrated; EC threshold warning surfaced; `user_id` populated from token. Remaining: `validate_detail`, `determine_mwst_satz`, `determine_ges_preis` are barely exercised by tests
+[⏳] Storno Logic Enhancements (python/business/storno_logic.py) - basic storno works; voucher/installment handlers and reversing kassenstand entry implemented; TSE handling best-effort
+[⏳] Cash Register Operations (python/business/cash_register.py) - `update_kassenstand_for_sale`, `process_payment` and `ec_payment_threshold_check` wired; `end_of_day_procedure` basic; `is_training_mode` reads `TRAINING_MODE` env var (no real training mode); balance validation still missing
 
 ---
 
@@ -264,7 +258,7 @@
 
 ### Phase 7: Data Import/Export, Validation, Auth
 
-[x] Import/Export Functionality - `import_bestellung_from_csv` implemented; `import_artikel` maps all Artikel fields; abrechnung CSV export includes VAT totals; session dependency fixed (step 7)
+[x] Import/Export Functionality - `import_bestellung_from_csv` implemented (header only, positions not imported); `import_artikel` maps all Artikel fields; abrechnung CSV export includes VAT totals; session dependency fixed (step 7)
 [⏳] Search and Filter Enhancements - minimal (only verkauf since/until/only_storno, mwst search_string); most routers have no filtering/sorting/pagination improvements
 [⏳] Validation Framework - model-level constraints added (MwstBase 0-1, Kassenstand, Gutschein, AnzahlungDetails, BestellungDetails); ensure_* helpers still rarely called in routers
 [⏳] Authentication and Authorization System (per-user accounts, login auditing, transaction attribution) - HIGH PRIORITY
@@ -281,11 +275,11 @@
 
 ## 📚 Documentation Tasks
 
-[ ] API Documentation Enhancement
-[ ] Code Documentation
-[ ] Migration Documentation
-[ ] Setup and Deployment
-[ ] Database Schema Documentation
+- [ ] API Documentation Enhancement - `docs/API.md` and auto-generated `/docs` exist; endpoint reference still incomplete
+- [ ] Code Documentation - docstrings are inconsistent across routers/business modules
+- [ ] Migration Documentation - guide for switching from the Java POS to the API is missing
+- [ ] Setup and Deployment - dev/prod start, auth and HTTPS are in `python/README.md`; a complete deployment guide (TLS, service unit, backup) is missing
+- [ ] Database Schema Documentation - schema reference is missing (`../git/mysql/generateDB.sql` is the only source)
 
 ---
 
@@ -299,18 +293,18 @@
 - [x] tests/test_phase3_smoke.py
 - [x] tests/test_phase4_smoke.py
 - [x] tests/test_phase5_smoke.py
-- [ ] tests/test_kassenstand.py
-- [ ] tests/test_gutschein.py
-- [ ] tests/test_anzahlung.py
-- [ ] tests/test_abrechnung_tag.py
+- [x] tests/test_kassenstand.py
+- [x] tests/test_gutschein.py
+- [x] tests/test_anzahlung.py
+- [x] tests/test_abrechnung_tag.py
 - [ ] tests/test_abrechnung_monat.py
 - [ ] tests/test_abrechnung_jahr.py
-- [ ] tests/test_zaehlprotokoll.py
-- [ ] tests/test_bestellung.py
+- [x] tests/test_zaehlprotokoll.py
+- [x] tests/test_bestellung.py (incl. positions/details)
 - [ ] tests/test_tse.py
-- [ ] tests/test_auth.py
-- [x] tests/test_vat_calculator.py (step 6)
-- [x] tests/test_auth.py (step 6)
+- [x] tests/test_auth.py
+- [x] tests/test_vat_calculator.py
+- [x] tests/test_verkauf_storno.py (storno flow)
 - [ ] tests/test_sale_workflow.py
 - [ ] tests/test_storno_logic.py
 - [ ] tests/test_import_export.py
@@ -323,7 +317,30 @@
 
 ### Test Coverage Target
 
-- [⏳] Achieve 80%+ coverage (currently ~75% with pytest-cov)
+- [⏳] Achieve 80%+ coverage (measured 69% on 2026-10-22, 67 tests passing)
+
+---
+
+## 🔎 Parity Audit 2026-10-22 (completed)
+
+The imported low-priority endpoint ideas were checked against the Java POS (`../git/src/org/weltladen_bonn/pos/`) and the open items were updated accordingly:
+
+- **Removed as not needed** (no Java equivalent, so no parity value):
+  - per-sale installments lookup (`GET /anzahlung/verkauf/{rechnungs_nr}`) - `AnzahlungAufloesDialog` starts from the open installments grouped by `anzahlung_in_rech_nr`; `/anzahlung/offen` + `/{id}/details` + `GET /verkauf/{rechnungs_nr}` already cover the flow.
+  - per-date/per-period settlement lookups (`/abrechnung/tag/heute`, `/abrechnung/tag/{date}`, `/abrechnung/monat/{jahr}/{monat}`, `/abrechnung/jahr/{jahr}`) - `Abrechnungen.java` only shows paginated lists of all settlements; the list endpoints already return the date/month/year.
+  - balanced-protocol validation for zaehlprotokoll - not a Java feature: `ZaehlprotokollDialog` shows the difference to the target balance and accepts any count after confirmation; the difference is explained via `kommentar`.
+- **Fixed real gap**: Bestellung positions - no API path wrote `bestellung_details`, so orders had no positions. Positions are now embedded in POST/PATCH (`details`) and returned by `GET /bestellung/{bestell_nr}`; separate position endpoints are not needed because the Java POS always saves the whole order at once.
+
+The remaining imported items are quality/production tasks, tracked below.
+
+---
+
+## 🏭 Production Readiness Findings (2026-10-22)
+
+- [ ] **Integration against a real MariaDB** - tests use in-memory SQLite only, which does not enforce foreign keys and ignores `UNSIGNED`/`YEAR`/`TIMESTAMP` semantics. Needs a smoke run against `../git/mysql/generateDB.sql` with both the `mitarbeiter` and `kassenadmin` grants (especially: `bestellung` composite PK/`AUTO_INCREMENT`, delete order of parent/child rows, timezone round-trips, DECIMAL rounding).
+- [ ] **Frontend readiness** - API surface and JWT auth are usable. Open: no CORS in `python/main.py` (use a SvelteKit dev proxy or add a restricted CORS config), and `GET /bestellung` has no date filter although the Java "Bestellungen" view filters by date. Keep the OpenAPI schema stable for the generated client.
+- [ ] **Training mode** - Java POS supports a training mode writing to `training_*` tables; only the models exist, no endpoints. Either implement or explicitly descope for the frontend.
+- [ ] **Deployment** - setup, HTTPS and auth are documented in `python/README.md`; a migration guide and a DB schema reference are still missing.
 
 ---
 
@@ -332,8 +349,8 @@
 ### Core Functionality
 
 - [x] Most database tables have corresponding models and endpoints (Phase 1-5)
-- [ ] All database tables have models (training tables missing)
-- [ ] All business logic from Java POS ported (Phase 6) - modules exist but wiring incomplete
+- [x] All database tables have models (training tables are table-only, no endpoints yet)
+- [ ] All business logic from Java POS ported (Phase 6) - main flows wired, see "Business Logic Wiring Gaps"
 - [ ] Comprehensive validation and error handling (Phase 7) - validation module exists but rarely applied
 - [x] Per-user accounts with login auditing (Phase 7.4) - models + endpoints + migration + enforcement complete
 - [x] Transaction attribution via user_id (all 8 transaction tables have the column; populated from token where present) (step 4 follow-up)
@@ -363,38 +380,36 @@
 
 ### Models Status
 - **Models Implemented**: 35+ table models (Phase 1-5 + User + Anmeldung + training tables)
-- **Models Missing**: (none major; endpoints for training tables not implemented)
+- **Models Missing**: none (training tables are model-only, endpoints not implemented)
 
 ### Endpoints Status
 - **Routers Implemented**: 19 routers (incl. auth, users, import_export)
-- **Phase 1-5 endpoints**: implemented (with minor optional endpoints remaining)
-- **Phase 6/7**: modules exist but wiring incomplete; auth not enforced
+- **Phase 1-5 endpoints**: implemented; the optional per-date/per-period lookup and balanced-protocol items were dropped as not needed for Java parity (see "Parity Audit")
+- **Phase 6/7**: main sale/storno/settlement flows wired; per-user auth enforced on transaction create/mutate endpoints (admin endpoints still also accept the shared `ADMIN_TOKEN` stopgap)
 
 ### Business Logic Status
-- **Business Logic Ported**: Basic CRUD + partial settlement aggregation + VAT/storno/sale-workflow/cash-register modules
-- **Business Logic NOT wired**: cash-register side-effects, TSE export, voucher/installment storno, training mode, full Abrechnung aggregation, EC threshold warning
-- **Business Logic to Port**: ~90% of Java business logic still needs porting/integration (Phase 6)
+- **Business Logic Ported**: CRUD + settlement aggregation + VAT/sale-workflow/storno/cash-register modules wired into the endpoints
+- **Business Logic NOT wired**: training mode (only `TRAINING_MODE` env flag), exact `bar_brutto` aggregation, kassenstand balance validation, TSE hardware (adapter untested)
+- **Remaining Java logic**: mainly validation/edge cases and training mode; no missing core workflow
 
 ### Testing Status
-- **Test Files**: 9 (2 original + 7 smoke) - no dedicated tests for kassenstand/gutschein/anzahlung/abrechnung/zaehlprotokoll/bestellung/tse/auth/business modules
-- **Test Coverage**: Low (unmeasured; no pytest-cov installed)
+- **Test Files**: 18 (incl. dedicated tests for kassenstand/gutschein/anzahlung/abrechnung_tag/zaehlprotokoll/bestellung/auth/business modules)
+- **Test Coverage**: 69% measured with pytest-cov (target 80%)
 - **Target Coverage**: 80%+
 
 ---
 
 ## 🚀 Recommended Next Steps
 
-1. Wire cash-register side-effects into sale creation + storno; surface EC threshold warning
-2. Wire TSE export endpoints to tse_client and perform automatic incremental export in daily settlement
-3. Implement voucher/installment reversal in storno
-4. Add SQL migration for user/anmeldung tables + user_id columns; enforce per-user auth on endpoints; populate user_id from token
-5. Port full Abrechnung aggregation (stornos, retouren, entnahmen) and end-of-day procedure
-6. Add training-table models (or explicitly descope)
-7. Apply validation utilities across all endpoints; add ge=0,le=1 to MwstBase.mwst_satz
-8. Implement import_bestellung_from_csv and full CSV import/export
-9. Write dedicated test files for each router + business module; add pytest-cov; reach 80%+
-10. Documentation + HTTPS setup on LAN
+1. **Real database validation**: run a smoke test against MariaDB with `../git/mysql/generateDB.sql` and the real grants; fix anything SQLite hides (FK enforcement, `AUTO_INCREMENT`/composite PK, `YEAR`/`UNSIGNED`, timezone, DECIMAL)
+2. **Frontend readiness**: decide CORS vs. SvelteKit dev proxy; add a date filter to `GET /bestellung`; keep the OpenAPI schema stable
+3. **Missing tests**: `test_abrechnung_monat.py`, `test_abrechnung_jahr.py`, `test_tse.py`, `test_sale_workflow.py`, `test_storno_logic.py`, `test_import_export.py`, plus integration tests for complete sales/storno/settlement workflows
+4. **Coverage**: raise 69% → 80%+ (largest gaps: lieferant, produktgruppe, rabattaktion, users, sale_workflow, validation)
+5. **Validation**: apply the `ensure_*` helpers in the routers; `ge=0, le=1` on `MwstBase.mwst_satz`; kassenstand balance validation; exact `bar_brutto` aggregation
+6. **Training mode**: implement endpoints for the `training_*` tables or explicitly descope it
+7. **Import/Export**: `import_bestellung_from_csv` currently ignores positions; extend it if the feature is kept
+8. **Documentation**: migration guide (Java POS → API), database schema reference, consistent docstrings, deployment/HTTPS docs
 
 ---
 
-*This TODO list reflects the current implementation state as of 2026-10-19 (completeness check against IMPLEMENTATION_PLAN.md).*
+*This TODO list reflects the current implementation state as of 2026-10-22 (completeness check against IMPLEMENTATION_PLAN.md).*

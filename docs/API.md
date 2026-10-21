@@ -31,7 +31,7 @@ endpoints (`/mwst`, `/pfand`, `/users`) also accept the shared `ADMIN_TOKEN`.
 - `/anzahlung` — installment payments
 - `/abrechnung/tag`, `/abrechnung/monat`, `/abrechnung/jahr` — settlements
 - `/zaehlprotokoll` — counting protocols
-- `/bestellung` — orders
+- `/bestellung` — orders incl. positions (details)
 - `/tse` — TSE transactions and exports
 - `/import`, `/export` — CSV import/export
 - `/users` — admin user management
