@@ -8,7 +8,7 @@ from typing import Any, Optional
 from fastapi import HTTPException
 from sqlmodel import Session, select
 
-from ..models import Artikel, Rabattaktion, Verkauf, VerkaufCreate, VerkaufDetails, VerkaufMwst
+from ..models import Artikel, Mwst, Rabattaktion, Verkauf, VerkaufCreate, VerkaufDetails, VerkaufDetailsCreate, VerkaufMwst
 from .vat_calculator import calculate_vat, _to_decimal
 
 EC_THRESHOLD = Decimal("10.00")
@@ -54,8 +54,12 @@ def determine_mwst_satz(*args, **kwargs):
         artikel_id = detail.get("artikel_id")
     if artikel_id is not None and session is not None:
         artikel = session.get(Artikel, artikel_id)
-        if artikel is not None and artikel.mwst_satz is not None:
-            return float(artikel.mwst_satz)
+        if artikel is not None:
+            pg = artikel.produktgruppe
+            if pg is not None and pg.mwst_id is not None:
+                mwst = session.get(Mwst, pg.mwst_id)
+                if mwst is not None and mwst.mwst_satz is not None:
+                    return float(mwst.mwst_satz)
     rabatt_id = getattr(detail, "rabatt_id", None)
     if rabatt_id is None and isinstance(detail, dict):
         rabatt_id = detail.get("rabatt_id")
@@ -122,21 +126,36 @@ def prepare_detail(*args, **kwargs):
             session, detail = _resolve(args[0], args[1])
         elif len(args) == 1:
             detail = args[0]
-    from sqlmodel import Session as S
-    vd = detail if isinstance(detail, VerkaufDetails) else VerkaufDetails.model_validate(detail)
-    if vd.vd_id is not None:
-        vd.vd_id = None
-    if vd.mwst_satz is None:
-        derived = determine_mwst_satz(session, vd) if session is not None else determine_mwst_satz(vd)
+    # Normalize to a dict so we can derive missing fields uniformly.
+    if isinstance(detail, dict):
+        data = detail
+    elif hasattr(detail, "model_dump"):
+        data = {k: v for k, v in detail.model_dump().items() if v is not None}
+    else:
+        data = {}
+
+    stueckzahl = data.get("stueckzahl", 1)
+    mwst_satz = data.get("mwst_satz")
+    ges_preis = data.get("ges_preis")
+
+    if mwst_satz is None:
+        derived = determine_mwst_satz(session, data) if session is not None else determine_mwst_satz(data)
         if derived is not None:
-            vd.mwst_satz = derived
-    if vd.ges_preis is None:
-        derived = determine_ges_preis(session, vd) if session is not None else determine_ges_preis(vd)
+            mwst_satz = derived
+    if ges_preis is None:
+        derived = determine_ges_preis(session, data) if session is not None else determine_ges_preis(data)
         if derived is not None:
-            vd.ges_preis = derived
-    if vd.stueckzahl is None:
-        vd.stueckzahl = 1
-    return vd
+            ges_preis = derived
+
+    return VerkaufDetails(
+        position=data.get("position"),
+        stueckzahl=stueckzahl,
+        ges_preis=ges_preis if ges_preis is not None else 0.0,
+        mwst_satz=mwst_satz if mwst_satz is not None else 0.0,
+        rechnungs_nr=data.get("rechnungs_nr", 0),
+        artikel_id=data.get("artikel_id"),
+        rabatt_id=data.get("rabatt_id"),
+    )
 
 
 def calculate_mwst_summary(details):

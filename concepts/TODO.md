@@ -3,7 +3,7 @@
 > **Sync note**: This document and `concepts/IMPLEMENTATION_PLAN.md` must be kept in sync. When implementation progress changes, update both files so new sessions without prior memory see a consistent status.
 
 > **Last Updated**: 2026-10-23  
-> **Status**: Phases 1-5 implemented at router level (TSE export adapter untested without hardware); main Phase 6/7 flows wired (see "Business Logic Wiring Gaps" for what remains); auth enforced on transaction endpoints; parity audit of the remaining low-priority endpoints done and resolved (see "Parity Audit"), Bestellung positions implemented; test coverage 75%
+> **Status**: Phases 1-5 implemented at router level (TSE export adapter untested without hardware); main Phase 6/7 flows wired (see "Business Logic Wiring Gaps" for what remains); auth enforced on transaction endpoints; parity audit of the remaining low-priority endpoints done and resolved (see "Parity Audit"), Bestellung positions + date filter implemented; bar_brutto aggregation matches Java; 6 missing test files added; test coverage 82%
 
 ---
 
@@ -182,7 +182,7 @@
 - [x] DELETE /bestellung/{bestell_nr}
 - [x] Positions saved/read together with the order (`details` in POST/PATCH, returned by GET /bestellung/{bestell_nr}) - matches Java "Bestellung abschließen"
 - [x] No separate position endpoints needed (Java always saves the whole order, see parity audit)
-- [ ] Date filter on `GET /bestellung` (Java "Bestellungen" view filters by date; see Production Readiness)
+- [x] Date filter on `GET /bestellung` (`since`/`until` params) - done
 
 ---
 
@@ -247,7 +247,7 @@
 ### Abrechnung Tag (`python/routers/abrechnung_tag.py`)
 - [x] Stornos/retouren handled via negative entries; entnahmen subtracted (step 5)
 - [x] Automatic incremental TSE export performed (best-effort) - step 3
-- [ ] `bar_brutto` aggregation is rough (sum of detail ges_preis for non-EC sales)
+- [x] `bar_brutto` aggregation matches Java: SUM(ges_preis) over non-EC sales per VAT rate, storno/retour included via negative values - done
 
 ### Auth / Transaction Attribution
 - [x] Per-user auth enforced on transaction create/mutate endpoints
@@ -298,17 +298,17 @@
 - [x] tests/test_gutschein.py
 - [x] tests/test_anzahlung.py
 - [x] tests/test_abrechnung_tag.py
-- [ ] tests/test_abrechnung_monat.py
-- [ ] tests/test_abrechnung_jahr.py
+- [x] tests/test_abrechnung_monat.py
+- [x] tests/test_abrechnung_jahr.py
 - [x] tests/test_zaehlprotokoll.py
 - [x] tests/test_bestellung.py (incl. positions/details)
-- [ ] tests/test_tse.py
+- [x] tests/test_tse.py
 - [x] tests/test_auth.py
 - [x] tests/test_vat_calculator.py
 - [x] tests/test_verkauf_storno.py (storno flow)
-- [ ] tests/test_sale_workflow.py
-- [ ] tests/test_storno_logic.py
-- [ ] tests/test_import_export.py
+- [x] tests/test_sale_workflow.py
+- [x] tests/test_storno_logic.py
+- [x] tests/test_import_export.py
 
 ### Integration Tests
 
@@ -318,7 +318,7 @@
 
 ### Test Coverage Target
 
-- [⏳] Achieve 80%+ coverage (measured 75% on 2026-10-23, 67 tests passing)
+- [x] Achieve 80%+ coverage (measured 82% on 2026-10-23, 112 tests passing)
 
 ---
 
@@ -359,7 +359,7 @@ The remaining imported items are quality/production tasks, tracked below.
 
 ### Quality Assurance
 
-- [ ] 80%+ test coverage
+- [x] 80%+ test coverage (82% achieved)
 - [ ] All endpoints documented
 - [ ] All code documented
 
@@ -394,9 +394,8 @@ The remaining imported items are quality/production tasks, tracked below.
 - **Remaining Java logic**: mainly validation/edge cases and training mode; no missing core workflow
 
 ### Testing Status
-- **Test Files**: 18 (incl. dedicated tests for kassenstand/gutschein/anzahlung/abrechnung_tag/zaehlprotokoll/bestellung/auth/business modules)
-- **Test Coverage**: 75% measured with pytest-cov (target 80%)
-- **Target Coverage**: 80%+
+- **Test Files**: 24 (incl. dedicated tests for abrechnung_monat/jahr, tse, sale_workflow, storno_logic, import_export)
+- **Test Coverage**: 82% measured with pytest-cov (target 80% achieved)
 
 ---
 
@@ -404,8 +403,8 @@ The remaining imported items are quality/production tasks, tracked below.
 
 1. **Real database validation**: run a smoke test against MariaDB with `../git/mysql/generateDB.sql` and the real grants; fix anything SQLite hides (FK enforcement, `AUTO_INCREMENT`/composite PK, `YEAR`/`UNSIGNED`, timezone, DECIMAL)
 2. **Frontend readiness**: decide CORS vs. SvelteKit dev proxy; add a date filter to `GET /bestellung`; keep the OpenAPI schema stable
-3. **Missing tests**: `test_abrechnung_monat.py`, `test_abrechnung_jahr.py`, `test_tse.py`, `test_sale_workflow.py`, `test_storno_logic.py`, `test_import_export.py`, plus integration tests for complete sales/storno/settlement workflows
-4. **Coverage**: raise 75% → 80%+ (largest gaps: utils/validation.py 0%, utils/csv_import.py 24%, produktgruppe 25%, lieferant 28%, utils/csv_export.py 31%, rabattaktion 33%, users 33%, tse_client 43%)
+3. **Integration tests**: complete sales/storno/settlement workflows, cross-entity relationships, concurrent operations
+4. **Coverage**: 82% achieved (target 80%+ met); remaining gaps: utils/validation.py 0%, tse_client.py 44%, users 33%, rabattaktion 33%
 5. **Validation**: apply the `ensure_*` helpers in the routers (0% coverage, never called); kassenstand balance validation; exact `bar_brutto` aggregation
 6. **Training mode**: implement endpoints for the `training_*` tables or explicitly descope it
 7. **Import/Export**: `import_bestellung_from_csv` currently ignores positions; extend it if the feature is kept

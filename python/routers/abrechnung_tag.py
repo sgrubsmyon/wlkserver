@@ -127,11 +127,13 @@ def create_abrechnung_tag(payload: Optional[AbrechnungTagCreate], session: Sessi
             entry = mwst_map.setdefault(m.mwst_satz, {"netto": 0.0, "betrag": 0.0, "bar": 0.0})
             entry["netto"] += m.mwst_netto
             entry["betrag"] += m.mwst_betrag
-    for v in sales:
-        if v.ec_zahlung:
-            continue
+    # bar_brutto per VAT rate: SUM(ges_preis) over cash (non-EC) receipts only.
+    # Storno/retour receipts have negative ges_preis and are included (nets out),
+    # matching the Java POS queryIncompleteAbrechnung_BarBruttoVATs().
+    cash_sales = [v for v in sales if not v.ec_zahlung]
+    for v in cash_sales:
         for d in v.verkauf_details or []:
-            if d.mwst_satz is None:
+            if d.mwst_satz is None or d.ges_preis is None:
                 continue
             entry = mwst_map.setdefault(d.mwst_satz, {"netto": 0.0, "betrag": 0.0, "bar": 0.0})
             entry["bar"] += d.ges_preis
