@@ -219,7 +219,7 @@
 [⏳] VAT Calculation Module (python/business/vat_calculator.py) - complete; used by sale creation and the abrechnung response (`get_all_current_mwst_values_by_id`)
 - [x] `validate_detail` now called by the sale endpoint (rejects `stueckzahl == 0` before writing); `determine_mwst_satz` derives the rate via `artikel.produktgruppe.mwst` (was broken); `determine_ges_preis` covers explicit price, article price, variable price and discounts - covered by tests/test_sale_workflow.py
 [⏳] Storno Logic Enhancements (python/business/storno_logic.py) - basic storno works; voucher/installment handlers and reversing kassenstand entry implemented; TSE handling best-effort
-[⏳] Cash Register Operations (python/business/cash_register.py) - `update_kassenstand_for_sale`, `process_payment`, `ec_payment_threshold_check` and `validate_balance_change` wired; `end_of_day_procedure` basic; `is_training_mode` reads `TRAINING_MODE` env var (no real training mode)
+[⏳] Cash Register Operations (python/business/cash_register.py) - `update_kassenstand_for_sale`, `process_payment`, `ec_payment_threshold_check` and `validate_balance_change` wired; `end_of_day_procedure` basic; `is_training_mode` reads `TRAINING_MODE` env var
 
 ---
 
@@ -230,7 +230,8 @@
 - [x] `ec_payment_threshold_check` invoked in sale creation → EC warning surfaced in response (`ec_warning` field on VerkaufPublic)
 - [x] `process_payment` wired into sale creation (change + EC warning) - items 5-8 (helper available)
 - [x] `end_of_day_procedure` implemented (basic summary) - step 5
-- [x] `is_training_mode` reads TRAINING_MODE env var - items 5-8 (no training mode)
+- [x] `is_training_mode` reads TRAINING_MODE env var - items 5-8
+- [x] Training sale endpoints under `/training` write to the `training_*` tables (see Production Readiness)
 
 ### Sale Workflow (`python/business/sale_workflow.py`)
 - [x] `check_ec_payment_threshold` invoked in sale endpoint (EC warning surfaced)
@@ -342,7 +343,7 @@ The remaining imported items are quality/production tasks, tracked below.
 
 - [ ] **Integration against a real MariaDB** - tests use in-memory SQLite only, which does not enforce foreign keys and ignores `UNSIGNED`/`YEAR`/`TIMESTAMP` semantics. Needs a smoke run against `../git/mysql/generateDB.sql` with both the `mitarbeiter` and `kassenadmin` grants (especially: `bestellung` composite PK/`AUTO_INCREMENT`, delete order of parent/child rows, timezone round-trips, DECIMAL rounding).
 - [ ] **Frontend readiness** - API surface and JWT auth are usable. Open: no CORS in `python/main.py` (use a SvelteKit dev proxy or add a restricted CORS config), and `GET /bestellung` has no date filter although the Java "Bestellungen" view filters by date. Keep the OpenAPI schema stable for the generated client.
-- [ ] **Training mode** - Java POS supports a training mode writing to `training_*` tables; only the models exist, no endpoints. Either implement or explicitly descope for the frontend.
+- [ ] **Training mode** - Java POS supports a training mode writing to `training_*` tables; core training sale flow implemented (`GET /training/status`, `GET/POST /training/verkauf`, `GET /training/verkauf/{rechnungs_nr}` writing `training_verkauf*` + `training_kassenstand`). Still missing: training storno, training Tagesabschluss/Monat/Jahr, training gutschein/anzahlung/zaehlprotokoll and clearing training data.
 - [ ] **Deployment** - setup, HTTPS and auth are documented in `python/README.md`; a migration guide and a DB schema reference are still missing.
 
 ---
@@ -352,7 +353,7 @@ The remaining imported items are quality/production tasks, tracked below.
 ### Core Functionality
 
 - [x] Most database tables have corresponding models and endpoints (Phase 1-5)
-- [x] All database tables have models (training tables are table-only, no endpoints yet)
+- [x] All database tables have models (training tables now have core sale endpoints)
 - [ ] All business logic from Java POS ported (Phase 6) - main flows wired, see "Business Logic Wiring Gaps"
 - [ ] Comprehensive validation and error handling (Phase 7) - validation module exists but rarely applied
 - [x] Per-user accounts with login auditing (Phase 7.4) - models + endpoints + migration + enforcement complete
@@ -383,7 +384,7 @@ The remaining imported items are quality/production tasks, tracked below.
 
 ### Models Status
 - **Models Implemented**: 35+ table models (Phase 1-5 + User + Anmeldung + training tables)
-- **Models Missing**: none (training tables are model-only, endpoints not implemented)
+- **Models Missing**: none (training tables have core sale endpoints, see `/training`)
 
 ### Endpoints Status
 - **Routers Implemented**: 19 routers (incl. auth, users, import_export)
@@ -392,7 +393,7 @@ The remaining imported items are quality/production tasks, tracked below.
 
 ### Business Logic Status
 - **Business Logic Ported**: CRUD + settlement aggregation + VAT/sale-workflow/storno/cash-register modules wired into the endpoints
-- **Business Logic NOT wired**: training mode (only `TRAINING_MODE` env flag), TSE hardware (adapter untested)
+- **Business Logic NOT wired**: TSE hardware (adapter untested); training mode covers sales only
 - **Remaining Java logic**: mainly validation/edge cases and training mode; no missing core workflow
 
 ### Testing Status
@@ -408,7 +409,7 @@ The remaining imported items are quality/production tasks, tracked below.
 3. **Integration tests**: complete sales/storno/settlement workflows, cross-entity relationships, concurrent operations
 4. **Coverage**: 82% achieved (target 80%+ met); remaining gaps: utils/validation.py 0%, tse_client.py 44%, users 33%, rabattaktion 33%
 5. **Validation**: apply the `ensure_*` helpers in the routers (0% coverage, never called)
-6. **Training mode**: implement endpoints for the `training_*` tables or explicitly descope it
+6. **Training mode**: extend the `/training` endpoints (storno, settlements, gutschein/anzahlung) if the frontend needs them
 7. **Import/Export**: CSV exports for Bestellung and Inventur exist; ODS export is deferred to a later phase (see "Phase 7" above)
 8. **Documentation**: migration guide (Java POS → API), database schema reference, consistent docstrings, deployment/HTTPS docs
 

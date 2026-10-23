@@ -11,9 +11,9 @@ This document outlines the comprehensive implementation plan to complete the Fas
 ## Current Status Summary
 
 ### ✅ Already Implemented
-- **Database Models**: All core tables have SQLModel definitions in `python/models.py` (training tables table-only; `user_id` columns on all 8 transaction tables)
+- **Database Models**: All core tables have SQLModel definitions in `python/models.py` (training tables with core `/training` sale endpoints; `user_id` columns on all 8 transaction tables)
 - **CRUD Operations**: All planned entities have CRUD functionality, including Bestellung positions (`details` embedded in the order payload) and the Java order types `LM`/`KHW`/`IVT` (default `LM`; `IVT` holds the inventory count)
-- **Business Logic**: Modules under `python/business/` are wired into the main flows (VAT, sale workflow incl. vouchers/discounts and detail validation, storno incl. voucher/installment reversal and kassenstand reversal, cash-register side-effects incl. balance validation, TSE export best-effort). Remaining gap: training mode.
+- **Business Logic**: Modules under `python/business/` are wired into the main flows (VAT, sale workflow incl. vouchers/discounts and detail validation, storno incl. voucher/installment reversal and kassenstand reversal, cash-register side-effects incl. balance validation, TSE export best-effort). Remaining gap: training mode covers sales only.
 - **API Structure**: Clean FastAPI structure with proper routing
 - **Auth**: Per-user accounts (bcrypt + JWT), login auditing, `user_id` attribution on transaction endpoints, SQL migration in `migrations/02_user_auth/`; `require_user` enforced on transaction create/mutate endpoints, admin endpoints accept the shared `ADMIN_TOKEN` stopgap
 
@@ -608,9 +608,9 @@ Still missing: integration tests for complete workflows (cross-entity, concurren
 
 ## Success Criteria
 
-- [x] All database tables have corresponding models and endpoints (training tables are model-only)
+- [x] All database tables have corresponding models and endpoints (training tables have core sale endpoints)
 - [x] Bookkeeping integrity: no update/delete endpoints for immutable tables (verkauf, kassenstand, gutschein, anzahlung, abrechnung_tag)
-- [ ] All business logic from Java POS is ported to API (training mode and edge-case validation still missing)
+- [ ] All business logic from Java POS is ported to API (training mode covers sales only; edge-case validation still missing)
 - [x] Per-user accounts with login auditing and transaction attribution
 - [ ] Comprehensive validation and error handling
 - [x] 80%+ test coverage (83%)
@@ -715,6 +715,6 @@ Note: There are deliberately **no** `routers/verkauf_mwst.py` and `routers/verka
 3. **Integration tests**: complete sales/storno/settlement workflows (the dedicated test files are in place)
 4. **Coverage**: 83% achieved; remaining gaps: utils/validation.py 0%, tse_client.py 44%, users 33%, rabattaktion 33%
 5. **Validation**: apply the `ensure_*` helpers in the routers (they are never called today)
-6. **Training mode**: implement endpoints for the `training_*` tables or explicitly descope it
+6. **Training mode**: extend the `/training` endpoints (storno, settlements, gutschein/anzahlung) if the frontend needs them
 7. **Import/Export**: CSV exports for Bestellung and Inventur exist; ODS export is deferred to a later phase (needs an ODS library and the Java templates)
 8. **Documentation**: migration guide (Java POS → API), database schema reference, consistent docstrings, deployment/HTTPS docs
