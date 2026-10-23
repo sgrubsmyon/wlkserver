@@ -577,12 +577,13 @@ Security pitfalls of using unencrypted HTTP within a local network:
 - Test complete workflows (e.g., sale creation with VAT calculation)
 - Test cross-entity relationships
 - Test database constraints
+- Implemented in `python/tests/test_integration.py` (sale → kassenstand → Abrechnung Tag/Monat/Jahr, storno with voucher/installment, parallel sales)
 
 ### Test Coverage Target
 - Minimum 80% code coverage
 - All critical paths tested
 - All business logic validated
-- Current: 83% (124 tests passing, measured 2026-10-24)
+- Current: 86% (150 tests passing, measured 2026-10-24)
 
 ### Real Database Tests
 - Tests run on in-memory SQLite, which does not enforce foreign keys and ignores `UNSIGNED`/`YEAR`/`TIMESTAMP` semantics
@@ -591,7 +592,7 @@ Security pitfalls of using unencrypted HTTP within a local network:
 ### Test Files
 Existing: `test_mwst.py`, `test_pfand.py`, `test_kassenstand.py`, `test_gutschein.py`, `test_anzahlung.py`, `test_abrechnung_tag.py`, `test_abrechnung_monat.py`, `test_abrechnung_jahr.py`, `test_zaehlprotokoll.py`, `test_bestellung.py` (incl. positions), `test_auth.py`, `test_vat_calculator.py`, `test_verkauf_storno.py`, `test_tse.py`, `test_sale_workflow.py`, `test_storno_logic.py`, `test_import_export.py`, smoke tests for Phases 2-5, `test_timestamps.py`.
 
-Still missing: integration tests for complete workflows (cross-entity, concurrent operations).
+Still missing: none for the planned workflows; new endpoints should keep adding integration coverage.
 
 ---
 
@@ -712,7 +713,7 @@ Note: There are deliberately **no** `routers/verkauf_mwst.py` and `routers/verka
 
 1. **Real database validation**: smoke test the API against MariaDB with `../git/mysql/generateDB.sql` and the real grants; fix anything SQLite hides (FK enforcement, `AUTO_INCREMENT`/composite PK, `YEAR`/`UNSIGNED`, timezone, DECIMAL)
 2. **Frontend readiness**: CORS is configured via `CORS_ORIGINS`; keep the OpenAPI schema stable
-3. **Integration tests**: complete sales/storno/settlement workflows (the dedicated test files are in place)
+3. **Integration tests**: done in `test_integration.py` (workflows, cross-entity effects, concurrent sales)
 4. **Coverage**: target reached; remaining gaps: tse_client.py 44%, users 33%, rabattaktion 33%
 5. **Validation**: apply the `ensure_*` helpers in the routers (they are tested but never called today)
 6. **Training mode**: extend the `/training` endpoints (storno, settlements, gutschein/anzahlung) if the frontend needs them

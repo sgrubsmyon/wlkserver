@@ -1,6 +1,7 @@
 """Cash register (Kasse/Kassenstand) business logic."""
 from __future__ import annotations
 
+import threading
 from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Any, Optional
@@ -12,6 +13,10 @@ from ..models import Kassenstand, Verkauf
 from .vat_calculator import _to_decimal
 
 EC_THRESHOLD = Decimal("10.00")
+
+# Balance updates are read-modify-write; serialize them in this process and lock
+# the balance row on databases that support SELECT ... FOR UPDATE (MariaDB).
+KASSENSTAND_LOCK = threading.Lock()
 
 def _resolve(a, b):
     from sqlmodel import Session as S
@@ -75,29 +80,36 @@ def update_kassenstand_for_sale(*args, **kwargs) -> Kassenstand:
     entnahme = kwargs.get('entnahme', False)
     kommentar = kwargs.get('kommentar', None)
     buchungsdatum = kwargs.get('buchungsdatum', None)
-    v = session.get(Verkauf, rechnungs_nr)
-    if v is None:
-        raise HTTPException(status_code=404, detail="Verkauf not found")
-    # total price = sum of detail ges_preis
-    total = Decimal("0")
-    for d in (v.verkauf_details or []):
-        if d.ges_preis is not None:
-            total += _to_decimal(d.ges_preis) or Decimal("0")
-    alter = get_current_balance(session)
-    neuer = (alter + total).quantize(Decimal("0.01"))
-    validate_balance_change(alter, neuer, entnahme)
-    new_ks = Kassenstand(
-        buchungsdatum=buchungsdatum if buchungsdatum is not None else (v.verkaufsdatum if v.verkaufsdatum is not None else datetime.now(timezone.utc)),
-        neuer_kassenstand=float(neuer),
-        manuell=manuell,
-        entnahme=entnahme,
-        rechnungs_nr=rechnungs_nr,
-        kommentar=kommentar,
-    )
-    new_ks.kassenstand_id = None
-    session.add(new_ks)
-    session.commit()
-    session.refresh(new_ks)
+    with KASSENSTAND_LOCK:
+        v = session.get(Verkauf, rechnungs_nr)
+        if v is None:
+            raise HTTPException(status_code=404, detail="Verkauf not found")
+        # total price = sum of detail ges_preis
+        total = Decimal("0")
+        for d in (v.verkauf_details or []):
+            if d.ges_preis is not None:
+                total += _to_decimal(d.ges_preis) or Decimal("0")
+        last = session.exec(
+            select(Kassenstand)
+            .order_by(Kassenstand.kassenstand_id.desc())
+            .with_for_update()
+        ).first()
+        alter = _to_decimal(last.neuer_kassenstand) if last is not None else Decimal("0")
+        alter = alter or Decimal("0")
+        neuer = (alter + total).quantize(Decimal("0.01"))
+        validate_balance_change(alter, neuer, entnahme)
+        new_ks = Kassenstand(
+            buchungsdatum=buchungsdatum if buchungsdatum is not None else (v.verkaufsdatum if v.verkaufsdatum is not None else datetime.now(timezone.utc)),
+            neuer_kassenstand=float(neuer),
+            manuell=manuell,
+            entnahme=entnahme,
+            rechnungs_nr=rechnungs_nr,
+            kommentar=kommentar,
+        )
+        new_ks.kassenstand_id = None
+        session.add(new_ks)
+        session.commit()
+        session.refresh(new_ks)
     return new_ks
 
 

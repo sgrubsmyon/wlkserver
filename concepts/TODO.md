@@ -3,7 +3,7 @@
 > **Sync note**: This document and `concepts/IMPLEMENTATION_PLAN.md` must be kept in sync. When implementation progress changes, update both files so new sessions without prior memory see a consistent status.
 
 > **Last Updated**: 2026-10-24  
-> **Status**: Phases 1-5 implemented at router level (TSE export adapter untested without hardware); main Phase 6/7 flows wired (see "Business Logic Wiring Gaps" for what remains); auth enforced on transaction endpoints; parity audit of the remaining low-priority endpoints done and resolved (see "Parity Audit"), Bestellung positions + date filter implemented; bar_brutto aggregation matches Java; sale/workflow validation and kassenstand balance validation wired; Bestellung CSV import supports positions; Bestellung/Inventur CSV export added (ODS deferred); test coverage 83%
+> **Status**: Phases 1-5 implemented at router level (TSE export adapter untested without hardware); main Phase 6/7 flows wired (see "Business Logic Wiring Gaps" for what remains); auth enforced on transaction endpoints; parity audit of the remaining low-priority endpoints done and resolved (see "Parity Audit"), Bestellung positions + date filter implemented; bar_brutto aggregation matches Java; sale/workflow validation and kassenstand balance validation wired; Bestellung CSV import supports positions; Bestellung/Inventur CSV export added (ODS deferred); CORS configured; core `/training` endpoints; integration tests incl. concurrency; test coverage 86%
 
 ---
 
@@ -315,13 +315,13 @@
 
 ### Integration Tests
 
-- [ ] Complete workflows
-- [ ] Cross-entity relationships
-- [ ] Concurrent operations
+- [x] Complete workflows (`test_integration.py`: sale → kassenstand → Tagesabschluss → Monat → Jahr; EC sale without cash)
+- [x] Cross-entity relationships (Gutschein sale + Anzahlung reversed by storno; Bestellung positions reference Artikel)
+- [x] Concurrent operations (4 parallel sales produce distinct receipts and a consistent running Kassenstand)
 
 ### Test Coverage Target
 
-- [x] Achieve 80%+ coverage (measured 83% on 2026-10-24, 124 tests passing)
+- [x] Achieve 80%+ coverage (measured 86% on 2026-10-24, 150 tests passing)
 
 ---
 
@@ -334,6 +334,7 @@ The imported low-priority endpoint ideas were checked against the Java POS (`../
   - per-date/per-period settlement lookups (`/abrechnung/tag/heute`, `/abrechnung/tag/{date}`, `/abrechnung/monat/{jahr}/{monat}`, `/abrechnung/jahr/{jahr}`) - `Abrechnungen.java` only shows paginated lists of all settlements; the list endpoints already return the date/month/year.
   - balanced-protocol validation for zaehlprotokoll - not a Java feature: `ZaehlprotokollDialog` shows the difference to the target balance and accepts any count after confirmation; the difference is explained via `kommentar`.
 - **Fixed real gap**: Bestellung positions - no API path wrote `bestellung_details`, so orders had no positions. Positions are now embedded in POST/PATCH (`details`) and returned by `GET /bestellung/{bestell_nr}`; separate position endpoints are not needed because the Java POS always saves the whole order at once.
+- **Fixed by integration tests (2026-10-24)**: `GET /anzahlung/offen` kept resolved installments because the table is append-only (now matches Java `HAVING COUNT(*) = 1`); concurrent sales could overwrite each other's Kassenstand balance (now serialized with a process lock + `SELECT ... FOR UPDATE`).
 
 The remaining imported items are quality/production tasks, tracked below.
 
@@ -376,7 +377,7 @@ The remaining imported items are quality/production tasks, tracked below.
 
 - [ ] Working integration with existing database
 - [ ] Ready for frontend client development
-- [ ] Ready for production deployment
+- [ ] Ready for production deployment (concurrent Kassenstand updates are serialized per process; multi-worker setups rely on `SELECT ... FOR UPDATE`)
 
 ---
 
@@ -398,7 +399,7 @@ The remaining imported items are quality/production tasks, tracked below.
 
 ### Testing Status
 - **Test Files**: 24 (incl. dedicated tests for abrechnung_monat/jahr, tse, sale_workflow, storno_logic, import_export)
-- **Test Coverage**: 83% measured with pytest-cov (target 80% achieved)
+- **Test Coverage**: 86% measured with pytest-cov (target 80% achieved)
 
 ---
 
@@ -406,7 +407,7 @@ The remaining imported items are quality/production tasks, tracked below.
 
 1. **Real database validation**: run a smoke test against MariaDB with `../git/mysql/generateDB.sql` and the real grants; fix anything SQLite hides (FK enforcement, `AUTO_INCREMENT`/composite PK, `YEAR`/`UNSIGNED`, timezone, DECIMAL)
 2. **Frontend readiness**: CORS is configured via `CORS_ORIGINS` (defaults to the SvelteKit dev server); keep the OpenAPI schema stable
-3. **Integration tests**: complete sales/storno/settlement workflows, cross-entity relationships, concurrent operations
+3. **Integration tests**: done in `test_integration.py` (workflows, cross-entity effects, concurrent sales)
 4. **Coverage**: target 80%+ reached; remaining gaps: tse_client.py 44%, users 33%, rabattaktion 33%
 5. **Validation**: apply the `ensure_*` helpers in the routers (helpers are tested, but still unused)
 6. **Training mode**: extend the `/training` endpoints (storno, settlements, gutschein/anzahlung) if the frontend needs them

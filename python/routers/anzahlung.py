@@ -41,8 +41,17 @@ def read_anzahlungen(
 
 @router.get("/offen")
 def read_offene_anzahlungen(session: SessionDep) -> list[AnzahlungPublic]:
+    # Append-only table: a resolution adds a second row for the same
+    # anzahlung_in_rech_nr, so an installment is open while it has no
+    # resolution entry (Java: GROUP BY anzahlung_in_rech_nr HAVING COUNT(*) = 1).
+    resolved = select(Anzahlung.anzahlung_in_rech_nr).where(
+        Anzahlung.aufloesung_in_rech_nr.is_not(None)
+    )
     rows = session.exec(
-        select(Anzahlung).where(Anzahlung.aufloesung_in_rech_nr.is_(None))
+        select(Anzahlung).where(
+            Anzahlung.aufloesung_in_rech_nr.is_(None),
+            ~Anzahlung.anzahlung_in_rech_nr.in_(resolved),
+        ).order_by(Anzahlung.anzahlung_id)
     ).all()
     return [AnzahlungPublic.model_validate(a) for a in rows]
 
