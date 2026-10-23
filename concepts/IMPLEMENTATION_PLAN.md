@@ -19,7 +19,7 @@ This document outlines the comprehensive implementation plan to complete the Fas
 
 ### 🎯 What Needs to be Done
 - Validate against a real MariaDB instance (tests are SQLite-only)
-- Prepare the last frontend blockers (CORS/proxy)
+- CORS configured in `python/main.py` via `CORS_ORIGINS` (defaults to the SvelteKit dev server); keep the OpenAPI schema stable
 - Add integration tests for complete sales/storno/settlement workflows (coverage target 80% reached)
 - Finish remaining validation/edge cases (training mode, unused `ensure_*` helpers)
 - Complete documentation (migration guide, DB schema reference, docstrings)
@@ -616,7 +616,7 @@ Still missing: integration tests for complete workflows (cross-entity, concurren
 - [x] 80%+ test coverage (83%)
 - [ ] Complete API documentation
 - [ ] Working integration with existing database (SQLite-only tests so far)
-- [ ] Ready for frontend client development (CORS/proxy open)
+- [ ] Ready for frontend client development (CORS/proxy configured, OpenAPI schema stability to keep)
 - [ ] All existing functionality preserved and enhanced
 
 ---
@@ -711,7 +711,7 @@ Note: There are deliberately **no** `routers/verkauf_mwst.py` and `routers/verka
 ## Next Steps
 
 1. **Real database validation**: smoke test the API against MariaDB with `../git/mysql/generateDB.sql` and the real grants; fix anything SQLite hides (FK enforcement, `AUTO_INCREMENT`/composite PK, `YEAR`/`UNSIGNED`, timezone, DECIMAL)
-2. **Frontend readiness**: decide CORS vs. SvelteKit dev proxy; keep the OpenAPI schema stable
+2. **Frontend readiness**: CORS is configured via `CORS_ORIGINS`; keep the OpenAPI schema stable
 3. **Integration tests**: complete sales/storno/settlement workflows (the dedicated test files are in place)
 4. **Coverage**: 83% achieved; remaining gaps: utils/validation.py 0%, tse_client.py 44%, users 33%, rabattaktion 33%
 5. **Validation**: apply the `ensure_*` helpers in the routers (they are never called today)

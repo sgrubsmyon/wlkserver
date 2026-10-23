@@ -342,7 +342,7 @@ The remaining imported items are quality/production tasks, tracked below.
 ## 🏭 Production Readiness Findings (2026-10-22)
 
 - [ ] **Integration against a real MariaDB** - tests use in-memory SQLite only, which does not enforce foreign keys and ignores `UNSIGNED`/`YEAR`/`TIMESTAMP` semantics. Needs a smoke run against `../git/mysql/generateDB.sql` with both the `mitarbeiter` and `kassenadmin` grants (especially: `bestellung` composite PK/`AUTO_INCREMENT`, delete order of parent/child rows, timezone round-trips, DECIMAL rounding).
-- [ ] **Frontend readiness** - API surface and JWT auth are usable. Open: no CORS in `python/main.py` (use a SvelteKit dev proxy or add a restricted CORS config), and `GET /bestellung` has no date filter although the Java "Bestellungen" view filters by date. Keep the OpenAPI schema stable for the generated client.
+- [x] **Frontend readiness** - CORS is configured in `python/main.py` (`CORS_ORIGINS` env var, defaults to the SvelteKit dev server on port 5173); `GET /bestellung` has a date filter. Keep the OpenAPI schema stable for the generated client.
 - [ ] **Training mode** - Java POS supports a training mode writing to `training_*` tables; core training sale flow implemented (`GET /training/status`, `GET/POST /training/verkauf`, `GET /training/verkauf/{rechnungs_nr}` writing `training_verkauf*` + `training_kassenstand`). Still missing: training storno, training Tagesabschluss/Monat/Jahr, training gutschein/anzahlung/zaehlprotokoll and clearing training data.
 - [ ] **Deployment** - setup, HTTPS and auth are documented in `python/README.md`; a migration guide and a DB schema reference are still missing.
 
@@ -405,7 +405,7 @@ The remaining imported items are quality/production tasks, tracked below.
 ## 🚀 Recommended Next Steps
 
 1. **Real database validation**: run a smoke test against MariaDB with `../git/mysql/generateDB.sql` and the real grants; fix anything SQLite hides (FK enforcement, `AUTO_INCREMENT`/composite PK, `YEAR`/`UNSIGNED`, timezone, DECIMAL)
-2. **Frontend readiness**: decide CORS vs. SvelteKit dev proxy; add a date filter to `GET /bestellung`; keep the OpenAPI schema stable
+2. **Frontend readiness**: CORS is configured via `CORS_ORIGINS` (defaults to the SvelteKit dev server); keep the OpenAPI schema stable
 3. **Integration tests**: complete sales/storno/settlement workflows, cross-entity relationships, concurrent operations
 4. **Coverage**: 82% achieved (target 80%+ met); remaining gaps: utils/validation.py 0%, tse_client.py 44%, users 33%, rabattaktion 33%
 5. **Validation**: apply the `ensure_*` helpers in the routers (0% coverage, never called)

@@ -1,4 +1,7 @@
+import os
+
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 
 # from .dependencies import get_query_token, get_token_header
@@ -18,6 +21,21 @@ from .routers import (
 # app = FastAPI(dependencies=[Depends(get_query_token)])
 app = FastAPI()
 favicon_path = 'assets/favicon.gif'
+
+# Restrict CORS to the configured frontend origins (comma separated, defaults to
+# the SvelteKit dev server). Set CORS_ORIGINS in production.
+cors_origins = [
+    origin.strip()
+    for origin in os.getenv("CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173").split(",")
+    if origin.strip()
+]
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=cors_origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 @app.get("/favicon.ico", include_in_schema=False)
 async def favicon():
