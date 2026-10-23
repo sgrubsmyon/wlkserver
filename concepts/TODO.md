@@ -3,7 +3,7 @@
 > **Sync note**: This document and `concepts/IMPLEMENTATION_PLAN.md` must be kept in sync. When implementation progress changes, update both files so new sessions without prior memory see a consistent status.
 
 > **Last Updated**: 2026-10-24  
-> **Status**: Phases 1-5 implemented at router level (TSE export adapter untested without hardware); main Phase 6/7 flows wired (see "Business Logic Wiring Gaps" for what remains); auth enforced on transaction endpoints; parity audit of the remaining low-priority endpoints done and resolved (see "Parity Audit"), Bestellung positions + date filter implemented; bar_brutto aggregation matches Java; sale/workflow validation and kassenstand balance validation wired; Bestellung CSV import supports positions; Bestellung/Inventur CSV export added (ODS deferred); CORS configured; core `/training` endpoints; integration tests incl. concurrency; test coverage 86%
+> **Status**: Phases 1-5 implemented at router level (TSE export adapter untested without hardware); main Phase 6/7 flows wired (see "Business Logic Wiring Gaps" for what remains); auth enforced on transaction endpoints; parity audit of the remaining low-priority endpoints done and resolved (see "Parity Audit"), Bestellung positions + date filter implemented; bar_brutto aggregation matches Java; sale/workflow validation and kassenstand balance validation wired; Bestellung CSV import supports positions; Bestellung/Inventur CSV export added (ODS deferred); CORS configured; core `/training` endpoints; integration tests incl. concurrency; same-origin nginx deployment and script automation documented as planned; test coverage 86%
 
 ---
 
@@ -282,7 +282,7 @@
 - [ ] API Documentation Enhancement - `docs/API.md` and auto-generated `/docs` exist; endpoint reference still incomplete
 - [ ] Code Documentation - docstrings are inconsistent across routers/business modules
 - [ ] Migration Documentation - guide for switching from the Java POS to the API is missing
-- [ ] Setup and Deployment - dev/prod start, auth and HTTPS are in `python/README.md`; a complete deployment guide (TLS, service unit, backup) is missing
+- [ ] Setup and Deployment - dev/prod start, auth and HTTPS are in `python/README.md`; a complete deployment guide (TLS, service unit, backup) is missing. The planned same-origin nginx topology and the script-automation rules are documented in `concepts/IMPLEMENTATION_PLAN.md` (Phase 7.4) and in the Production Readiness section here; the nginx/systemd artifacts are not written yet.
 - [ ] Database Schema Documentation - schema reference is missing (`../git/mysql/generateDB.sql` is the only source)
 
 ---
@@ -346,6 +346,8 @@ The remaining imported items are quality/production tasks, tracked below.
 - [x] **Frontend readiness** - CORS is configured in `python/main.py` (`CORS_ORIGINS` env var, defaults to the SvelteKit dev server on port 5173); `GET /bestellung` has a date filter. Keep the OpenAPI schema stable for the generated client.
 - [ ] **Training mode** - Java POS supports a training mode writing to `training_*` tables; core training sale flow implemented (`GET /training/status`, `GET/POST /training/verkauf`, `GET /training/verkauf/{rechnungs_nr}` writing `training_verkauf*` + `training_kassenstand`). Still missing: training storno, training Tagesabschluss/Monat/Jahr, training gutschein/anzahlung/zaehlprotokoll and clearing training data.
 - [ ] **Deployment** - setup, HTTPS and auth are documented in `python/README.md`; a migration guide and a DB schema reference are still missing.
+- [ ] **Same-origin deployment behind nginx (planned, deferred)** - frontend and API served from one origin: nginx serves the SvelteKit build at `/`, proxies `/api/` to FastAPI on `127.0.0.1:8000` (Uvicorn `--root-path /api`), terminates TLS with the internal CA and blocks plain HTTP. CORS then only matters for the Vite dev server via `CORS_ORIGINS`. Still to be written: nginx site config, systemd units, backup procedure.
+- [ ] **Script automation (planned)** - future cron/scripts (price changes, supplier article imports, settlement creation) call the API over the same-origin nginx URL; CORS is irrelevant for them. They authenticate via `POST /auth/login` with a dedicated service account (visible in the `anmeldung` audit), verify the internal CA, re-login on `401`, and check state (`GET /abrechnung/monat/offen`, `GET /abrechnung/jahr/offen`) before creating because `POST`s are not idempotent. Kassenstand writes require a single API worker (process lock) or rely on `SELECT ... FOR UPDATE` in MariaDB.
 
 ---
 

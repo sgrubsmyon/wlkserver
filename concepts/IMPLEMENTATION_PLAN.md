@@ -503,6 +503,30 @@ Security pitfalls of using unencrypted HTTP within a local network:
 
 **Recommendation**: Use HTTPS with an internal CA certificate (Option 1) - the setup cost is small (one-time) and it removes the clear-text pitfalls entirely. Plain HTTP (Option 2) is only acceptable if the LAN is a managed, isolated segment without guest access.
 
+**Planned production topology: same-origin behind nginx (deferred, not implemented yet)**
+
+Once the frontend exists, the API and the SvelteKit client are planned to be served from **one origin** behind nginx:
+
+- nginx serves the built frontend (adapter-node or static build) at `/`.
+- nginx proxies the API under a path prefix: `location /api/ { proxy_pass http://127.0.0.1:8000/; }`.
+- FastAPI/Uvicorn listens on `127.0.0.1:8000` only, so the API is reachable exclusively through nginx.
+- Run Uvicorn with `--root-path /api` so the generated OpenAPI schema and `/docs` produce correct URLs behind the prefix.
+- nginx terminates TLS with the internal CA certificate (Option 1 above) and redirects/blocks plain HTTP.
+- Because frontend and API share an origin, **CORS is not exercised in production**. The `CORS_ORIGINS` allowlist stays for the Vite dev server (`:5173`) and for any deployment where the client is served from a different host; it remains irrelevant for scripts.
+- This is a deployment-time arrangement, not an API change. Caddy or Uvicorn with a certificate directly are equivalent alternatives; the nginx variant is the one documented here.
+- Still to be written: the nginx site config, systemd units and the backup procedure (tracked in `concepts/TODO.md`).
+
+**Calling the API from automation scripts (planned use case)**
+
+Scripts (cron jobs for price changes, supplier article imports, settlement creation) are not browsers, so **CORS never applies** to them - a same-origin deployment behind nginx changes nothing on the script side.
+
+- **Authentication**: scripts call `POST /auth/login` and send `Authorization: Bearer <access_token>`. Use a dedicated service account (not a person's account) so the `anmeldung` audit shows what automation did. Admin-only endpoints currently accept either an admin JWT or the shared `ADMIN_TOKEN` stopgap; prefer an admin service-account JWT and retire `ADMIN_TOKEN` once it is no longer needed.
+- **Token lifetime**: tokens expire, so a scheduled job should log in at the start of every run and re-authenticate on `401`. A long-lived machine token could be added later if per-run logins prove impractical.
+- **TLS**: scripts must verify the internal CA (e.g. `REQUESTS_CA_BUNDLE=/path/ca.pem` or `verify=...`), never disable verification. Use the public origin (`https://<host>/api/...`); `http://127.0.0.1:8000` still works on the server itself but bypasses TLS.
+- **Idempotency**: `POST` creates new rows, so a blind retry of a sale or settlement creates duplicates. Jobs should check state first (e.g. `GET /abrechnung/monat/offen`, `GET /abrechnung/jahr/offen` mirror the Java POS startup check) instead of retrying blindly; price updates use `PUT/PATCH` and are safe to repeat.
+- **Concurrency with the POS**: Kassenstand updates are read-modify-write and serialized by a process lock plus `SELECT ... FOR UPDATE` (MariaDB). Keep the API at a single worker process while the POS is in use; with multiple workers correctness then relies on the DB row lock.
+- **Monthly/yearly settlements** are designed to be created by a scheduled job rather than a user: the `/offen` endpoints list the due periods.
+
 **Java reference**: The existing (basic) authentication in the Java POS is in `../git/src/org/weltladen_bonn/pos/DBConnection.java` (password dialog) - to be replaced by the API-level user accounts described above.
 
 ---
@@ -718,4 +742,4 @@ Note: There are deliberately **no** `routers/verkauf_mwst.py` and `routers/verka
 5. **Validation**: apply the `ensure_*` helpers in the routers (they are tested but never called today)
 6. **Training mode**: extend the `/training` endpoints (storno, settlements, gutschein/anzahlung) if the frontend needs them
 7. **Import/Export**: CSV exports for Bestellung and Inventur exist; ODS export is deferred to a later phase (needs an ODS library and the Java templates)
-8. **Documentation**: migration guide (Java POS → API), database schema reference, consistent docstrings, deployment/HTTPS docs
+8. **Documentation**: migration guide (Java POS → API), database schema reference, consistent docstrings, deployment/HTTPS docs (same-origin nginx topology and script automation are documented in Phase 7.4; nginx/systemd artifacts still missing)
