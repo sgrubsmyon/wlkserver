@@ -264,7 +264,7 @@
 [x] Import/Export Functionality - `import_bestellung_from_csv` imports positions (`artikel_id`/`stueckzahl`/`position`, rows grouped by order header) with validation; `import_artikel` maps all Artikel fields; CSV exports for artikel, abrechnung, bestellung (VK order list) and inventur (EK valuation, mirrors Java `writeInventur`); session dependency fixed (step 7)
 [ ] ODS/Spreadsheet export (later phase) - Java POS writes `Bestellvorlage_<typ>.ods` / `Inventur.ods` and fills cells (date/KW for orders, "Inventur 31.12.<jahr>" headline for inventory); needs an ODS library and the `../git/vorlagen/` templates. Also relevant for `abrechnung_tag`/`abrechnung_monat`/`abrechnung_jahr` (Tages-/Monats-/Jahresabrechnung.ods)
 [⏳] Search and Filter Enhancements - minimal (only verkauf since/until/only_storno, mwst search_string); most routers have no filtering/sorting/pagination improvements
-[⏳] Validation Framework - model-level constraints added (MwstBase 0-1, Kassenstand, Gutschein, AnzahlungDetails, BestellungDetails); `ensure_*` helpers in `utils/validation.py` exist but are **never called** by any router and have 0% test coverage
+[⏳] Validation Framework - model-level constraints added (MwstBase 0-1, Kassenstand, Gutschein, AnzahlungDetails, BestellungDetails); `ensure_*` helpers in `utils/validation.py` are fully unit-tested (100% coverage) but still not called by any router
 [⏳] Authentication and Authorization System (per-user accounts, login auditing, transaction attribution) - HIGH PRIORITY
   - Models + login/logout/me + user CRUD exist
   - `require_user` enforced on all transaction create/mutate endpoints (step 4 enforcement follow-up)
@@ -407,8 +407,8 @@ The remaining imported items are quality/production tasks, tracked below.
 1. **Real database validation**: run a smoke test against MariaDB with `../git/mysql/generateDB.sql` and the real grants; fix anything SQLite hides (FK enforcement, `AUTO_INCREMENT`/composite PK, `YEAR`/`UNSIGNED`, timezone, DECIMAL)
 2. **Frontend readiness**: CORS is configured via `CORS_ORIGINS` (defaults to the SvelteKit dev server); keep the OpenAPI schema stable
 3. **Integration tests**: complete sales/storno/settlement workflows, cross-entity relationships, concurrent operations
-4. **Coverage**: 82% achieved (target 80%+ met); remaining gaps: utils/validation.py 0%, tse_client.py 44%, users 33%, rabattaktion 33%
-5. **Validation**: apply the `ensure_*` helpers in the routers (0% coverage, never called)
+4. **Coverage**: target 80%+ reached; remaining gaps: tse_client.py 44%, users 33%, rabattaktion 33%
+5. **Validation**: apply the `ensure_*` helpers in the routers (helpers are tested, but still unused)
 6. **Training mode**: extend the `/training` endpoints (storno, settlements, gutschein/anzahlung) if the frontend needs them
 7. **Import/Export**: CSV exports for Bestellung and Inventur exist; ODS export is deferred to a later phase (see "Phase 7" above)
 8. **Documentation**: migration guide (Java POS → API), database schema reference, consistent docstrings, deployment/HTTPS docs

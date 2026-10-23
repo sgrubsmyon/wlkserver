@@ -11,20 +11,22 @@ def ensure_non_negative(value: Any, field: str = "value"):
     if value is None:
         return
     try:
-        if Decimal(str(value)) < 0:
-            raise HTTPException(status_code=400, detail=f"{field} must not be negative")
+        number = Decimal(str(value))
     except Exception:
         raise HTTPException(status_code=400, detail=f"Invalid {field}")
+    if number < 0:
+        raise HTTPException(status_code=400, detail=f"{field} must not be negative")
 
 
 def ensure_positive(value: Any, field: str = "value"):
     if value is None:
         return
     try:
-        if Decimal(str(value)) <= 0:
-            raise HTTPException(status_code=400, detail=f"{field} must be positive")
+        number = Decimal(str(value))
     except Exception:
         raise HTTPException(status_code=400, detail=f"Invalid {field}")
+    if number <= 0:
+        raise HTTPException(status_code=400, detail=f"{field} must be positive")
 
 
 def ensure_range(value: Any, lo: Any, hi: Any, field: str = "value"):

@@ -21,7 +21,7 @@ This document outlines the comprehensive implementation plan to complete the Fas
 - Validate against a real MariaDB instance (tests are SQLite-only)
 - CORS configured in `python/main.py` via `CORS_ORIGINS` (defaults to the SvelteKit dev server); keep the OpenAPI schema stable
 - Add integration tests for complete sales/storno/settlement workflows (coverage target 80% reached)
-- Finish remaining validation/edge cases (training mode, unused `ensure_*` helpers)
+- Finish remaining validation/edge cases (training mode coverage, wiring the tested `ensure_*` helpers)
 - Complete documentation (migration guide, DB schema reference, docstrings)
 
 > **Note**: The Phase sections below contain the original plan text (some "Current" states are outdated). The authoritative per-endpoint status is in `concepts/TODO.md`; the priority matrix and success criteria below are kept up to date.
@@ -713,8 +713,8 @@ Note: There are deliberately **no** `routers/verkauf_mwst.py` and `routers/verka
 1. **Real database validation**: smoke test the API against MariaDB with `../git/mysql/generateDB.sql` and the real grants; fix anything SQLite hides (FK enforcement, `AUTO_INCREMENT`/composite PK, `YEAR`/`UNSIGNED`, timezone, DECIMAL)
 2. **Frontend readiness**: CORS is configured via `CORS_ORIGINS`; keep the OpenAPI schema stable
 3. **Integration tests**: complete sales/storno/settlement workflows (the dedicated test files are in place)
-4. **Coverage**: 83% achieved; remaining gaps: utils/validation.py 0%, tse_client.py 44%, users 33%, rabattaktion 33%
-5. **Validation**: apply the `ensure_*` helpers in the routers (they are never called today)
+4. **Coverage**: target reached; remaining gaps: tse_client.py 44%, users 33%, rabattaktion 33%
+5. **Validation**: apply the `ensure_*` helpers in the routers (they are tested but never called today)
 6. **Training mode**: extend the `/training` endpoints (storno, settlements, gutschein/anzahlung) if the frontend needs them
 7. **Import/Export**: CSV exports for Bestellung and Inventur exist; ODS export is deferred to a later phase (needs an ODS library and the Java templates)
 8. **Documentation**: migration guide (Java POS → API), database schema reference, consistent docstrings, deployment/HTTPS docs
