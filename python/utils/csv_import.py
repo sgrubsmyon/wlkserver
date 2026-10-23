@@ -6,9 +6,10 @@ import io
 from datetime import datetime, timezone
 from typing import Any, List
 
+from fastapi import HTTPException
 from sqlmodel import Session
 
-from ..models import Artikel, Bestellung
+from ..models import BESTELLUNG_TYPEN, Artikel, Bestellung, BestellungDetails
 
 
 def _float(v):
@@ -64,7 +65,15 @@ def import_artikel_from_csv(content: str, session: Session) -> List[Artikel]:
 
 
 def import_bestellung_from_csv(content: str, session: Session) -> List[Bestellung]:
+    """Import orders from CSV.
+
+    Rows sharing the same typ/bestell_datum/jahr/kw belong to one order. Each
+    row may add a position via artikel_id, stueckzahl and (optional) position;
+    rows without artikel_id only import the order header.
+    """
     reader = csv.DictReader(io.StringIO(content))
+    orders: dict[tuple, Bestellung] = {}
+    used_positions: dict[tuple, set[int]] = {}
     created = []
     for row in reader:
         now = datetime.now(timezone.utc)
@@ -75,14 +84,45 @@ def import_bestellung_from_csv(content: str, session: Session) -> List[Bestellun
                 bestell_datum = bestell_datum.replace(tzinfo=timezone.utc)
         except Exception:
             bestell_datum = now
-        b = Bestellung(
-            typ=row.get("typ") or "",
-            bestell_datum=bestell_datum,
-            jahr=_int(row.get("jahr")) or now.year,
-            kw=_int(row.get("kw")) or 1,
-        )
-        session.add(b)
-        created.append(b)
+        typ = row.get("typ") or "LM"
+        if typ not in BESTELLUNG_TYPEN:
+            raise HTTPException(
+                status_code=400,
+                detail=f"typ must be one of {', '.join(BESTELLUNG_TYPEN)}",
+            )
+        jahr = _int(row.get("jahr")) or now.year
+        kw = _int(row.get("kw")) or 1
+        key = (typ, bestell_datum, jahr, kw)
+
+        b = orders.get(key)
+        if b is None:
+            b = Bestellung(typ=typ, bestell_datum=bestell_datum, jahr=jahr, kw=kw)
+            session.add(b)
+            session.commit()
+            session.refresh(b)
+            orders[key] = b
+            used_positions[key] = set()
+            created.append(b)
+
+        artikel_id = _int(row.get("artikel_id"))
+        if artikel_id is None:
+            continue
+        if not session.get(Artikel, artikel_id):
+            raise HTTPException(status_code=400, detail=f"Artikel {artikel_id} not found")
+        stueckzahl = _int(row.get("stueckzahl"))
+        if stueckzahl is None or stueckzahl < 1:
+            raise HTTPException(status_code=400, detail="stueckzahl must be at least 1")
+        position = _int(row.get("position")) or len(used_positions[key]) + 1
+        if position in used_positions[key]:
+            raise HTTPException(status_code=400, detail=f"Duplicate position {position}")
+        used_positions[key].add(position)
+        session.add(BestellungDetails(
+            bestell_nr=b.bestell_nr,
+            typ=b.typ,
+            position=position,
+            artikel_id=artikel_id,
+            stueckzahl=stueckzahl,
+        ))
     session.commit()
     for b in created:
         session.refresh(b)

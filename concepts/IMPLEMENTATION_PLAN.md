@@ -12,7 +12,7 @@ This document outlines the comprehensive implementation plan to complete the Fas
 
 ### ✅ Already Implemented
 - **Database Models**: All core tables have SQLModel definitions in `python/models.py` (training tables table-only; `user_id` columns on all 8 transaction tables)
-- **CRUD Operations**: All planned entities have CRUD functionality, including Bestellung positions (`details` embedded in the order payload)
+- **CRUD Operations**: All planned entities have CRUD functionality, including Bestellung positions (`details` embedded in the order payload) and the Java order types `LM`/`KHW`/`IVT` (default `LM`; `IVT` holds the inventory count)
 - **Business Logic**: Modules under `python/business/` are wired into the main flows (VAT, sale workflow incl. vouchers/discounts and detail validation, storno incl. voucher/installment reversal and kassenstand reversal, cash-register side-effects incl. balance validation, TSE export best-effort). Remaining gap: training mode.
 - **API Structure**: Clean FastAPI structure with proper routing
 - **Auth**: Per-user accounts (bcrypt + JWT), login auditing, `user_id` attribution on transaction endpoints, SQL migration in `migrations/02_user_auth/`; `require_user` enforced on transaction create/mutate endpoints, admin endpoints accept the shared `ADMIN_TOKEN` stopgap

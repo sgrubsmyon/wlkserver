@@ -19,7 +19,7 @@ def client(session):
 
 
 def test_crud(client, session):
-    r = client.post("/bestellung/", json={"typ": "L", "jahr": 2026, "kw": 1})
+    r = client.post("/bestellung/", json={"typ": "LM", "jahr": 2026, "kw": 1})
     assert r.status_code == 200
     bid = r.json()["bestell_nr"]
     r = client.get(f"/bestellung/{bid}")
@@ -40,7 +40,7 @@ def test_positions_roundtrip(client, session):
     session.refresh(a)
 
     r = client.post("/bestellung/", json={
-        "typ": "L", "jahr": 2026, "kw": 1,
+        "typ": "LM", "jahr": 2026, "kw": 1,
         "details": [{"position": 1, "artikel_id": a.artikel_id, "stueckzahl": 3}],
     })
     assert r.status_code == 200
@@ -57,13 +57,22 @@ def test_positions_roundtrip(client, session):
     assert [(d["position"], d["stueckzahl"]) for d in r.json()["details"]] == [(1, 2)]
 
     # changing typ keeps the positions consistent
-    r = client.patch(f"/bestellung/{bid}", json={"typ": "K"})
+    r = client.patch(f"/bestellung/{bid}", json={"typ": "KHW"})
     assert r.status_code == 200
-    assert session.exec(select(BestellungDetails).where(BestellungDetails.bestell_nr == bid)).one().typ == "K"
+    assert session.exec(select(BestellungDetails).where(BestellungDetails.bestell_nr == bid)).one().typ == "KHW"
 
     r = client.delete(f"/bestellung/{bid}")
     assert r.status_code == 200
     assert session.exec(select(BestellungDetails).where(BestellungDetails.bestell_nr == bid)).all() == []
+
+
+def test_invalid_typ_rejected(client):
+    r = client.post("/bestellung/", json={"typ": "EINKAUF", "jahr": 2026, "kw": 1})
+    assert r.status_code == 422
+    r = client.post("/bestellung/", json={"typ": "IVT", "jahr": 2026, "kw": 1})
+    assert r.status_code == 200
+    r = client.patch(f"/bestellung/{r.json()['bestell_nr']}", json={"typ": "EINKAUF"})
+    assert r.status_code == 422
 
 
 def test_positions_validation(client, session):

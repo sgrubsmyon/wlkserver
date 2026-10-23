@@ -183,6 +183,7 @@
 - [x] Positions saved/read together with the order (`details` in POST/PATCH, returned by GET /bestellung/{bestell_nr}) - matches Java "Bestellung abschließen"
 - [x] No separate position endpoints needed (Java always saves the whole order, see parity audit)
 - [x] Date filter on `GET /bestellung` (`since`/`until` params) - done
+- [x] `typ` restricted to the Java POS values `LM` (Lebensmittel), `KHW` (Kunsthandwerk) and `IVT` (Inventur); defaults to `LM` like the Java order form; invalid values are rejected by API (422) and CSV import (400)
 
 ---
 

@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Literal, Optional
 
 from sqlmodel import Field, SQLModel, Relationship
 from sqlalchemy import DECIMAL, Column, TIMESTAMP, event, DATE
@@ -837,8 +837,13 @@ class BestellungPublic(SQLModel):
     kw: int
 
 
+# Bestell-Typen like the Java POS: LM = Lebensmittel (order), KHW =
+# Kunsthandwerk (order), IVT = Inventur (the order tables hold a stock count).
+BESTELLUNG_TYPEN = ("LM", "KHW", "IVT")
+
+
 class BestellungCreate(SQLModel):
-    typ: str | None = None
+    typ: Literal["LM", "KHW", "IVT"] | None = None
     bestell_datum: datetime | None = None
     jahr: int | None = None
     kw: int | None = None
@@ -846,7 +851,7 @@ class BestellungCreate(SQLModel):
 
 
 class BestellungUpdate(SQLModel):
-    typ: str | None = None
+    typ: Literal["LM", "KHW", "IVT"] | None = None
     bestell_datum: datetime | None = None
     jahr: int | None = None
     kw: int | None = None

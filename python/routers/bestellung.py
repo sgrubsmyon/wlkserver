@@ -108,7 +108,7 @@ def create_bestellung(bestellung: BestellungCreate, session: SessionDep, credent
         _validated_details(session, bestellung.details)
     now = datetime.now(timezone.utc)
     new_b = Bestellung(
-        typ=bestellung.typ if bestellung.typ is not None else "",
+        typ=bestellung.typ if bestellung.typ is not None else "LM",
         bestell_datum=bestellung.bestell_datum if bestellung.bestell_datum is not None else now,
         jahr=bestellung.jahr if bestellung.jahr is not None else now.year,
         kw=bestellung.kw if bestellung.kw is not None else 1,

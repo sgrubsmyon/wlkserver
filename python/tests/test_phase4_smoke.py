@@ -35,7 +35,7 @@ def test_zaehlprotokoll_crud(client):
 
 
 def test_bestellung_crud(client):
-    r = client.post("/bestellung/", json={"typ": "L", "jahr": 2026, "kw": 1})
+    r = client.post("/bestellung/", json={"typ": "LM", "jahr": 2026, "kw": 1})
     assert r.status_code == 200
     bid = r.json()["bestell_nr"]
     r = client.get(f"/bestellung/{bid}")
