@@ -409,8 +409,13 @@ The export endpoints return the generated `.tar` file as a file download (in Jav
 **Required endpoints:**
 - POST /import/artikel - Import articles from CSV/Excel
 - GET /export/artikel - Export articles to CSV/Excel
-- POST /import/bestellung - Import orders
+- POST /import/bestellung - Import orders (incl. positions)
 - GET /export/abrechnung - Export accounting data
+- GET /export/bestellung - Export orders (VK list, mirrors Java `writeBestellung`)
+- GET /export/inventur - Export inventory counts (`typ = IVT`, EK valuation, mirrors Java `writeInventur`)
+
+**Deferred to a later phase (ODS):**
+- ODS/spreadsheet export using the Java templates (`Bestellvorlage_LM.ods`, `Bestellvorlage_KHW.ods`, `Inventur.ods`, `Tagesabrechnung.ods`, `Monatsabrechnung.ods`, `Jahresabrechnung.ods` from `../git/vorlagen/`); requires an ODS library. Most valuable for `abrechnung_tag`, but needed for orders/inventory too.
 
 **Business logic from Java:**
 - `../git/src/org/weltladen_bonn/pos/ArtikelImport.java` - Article import functionality
@@ -514,7 +519,7 @@ Security pitfalls of using unencrypted HTTP within a local network:
 | 🟡 MEDIUM | Business Logic | VAT calculation, sale creation | 2-3 days | ⏳ Wired, edge cases/tests missing |
 | 🟡 MEDIUM | TSE | TSE transaction support + export endpoints | 2-3 days | ⏳ Adapter untested without hardware |
 | 🟡 MEDIUM | Supporting | Zaehlprotokoll (CRU), Bestellung (CRUD incl. positions) | 2-3 days | ✅ Done |
-| 🟢 LOW | Utilities | Import/Export, Search | 1-2 days | ⏳ Partial |
+| 🟢 LOW | Utilities | Import/Export, Search | 1-2 days | ⏳ Partial (CSV done, ODS deferred) |
 
 ---
 
@@ -577,16 +582,16 @@ Security pitfalls of using unencrypted HTTP within a local network:
 - Minimum 80% code coverage
 - All critical paths tested
 - All business logic validated
-- Current: 83% (119 tests passing, measured 2026-10-23)
+- Current: 83% (124 tests passing, measured 2026-10-24)
 
 ### Real Database Tests
 - Tests run on in-memory SQLite, which does not enforce foreign keys and ignores `UNSIGNED`/`YEAR`/`TIMESTAMP` semantics
 - A smoke run against the real MariaDB schema (`../git/mysql/generateDB.sql`) with the real `mitarbeiter`/`kassenadmin` grants is still missing; it must cover `bestellung` composite PK/`AUTO_INCREMENT`, delete order of parent/child rows, timezone round-trips and DECIMAL rounding
 
 ### Test Files
-Existing: `test_mwst.py`, `test_pfand.py`, `test_kassenstand.py`, `test_gutschein.py`, `test_anzahlung.py`, `test_abrechnung_tag.py`, `test_zaehlprotokoll.py`, `test_bestellung.py` (incl. positions), `test_auth.py`, `test_vat_calculator.py`, `test_verkauf_storno.py`, smoke tests for Phases 2-5, `test_timestamps.py`.
+Existing: `test_mwst.py`, `test_pfand.py`, `test_kassenstand.py`, `test_gutschein.py`, `test_anzahlung.py`, `test_abrechnung_tag.py`, `test_abrechnung_monat.py`, `test_abrechnung_jahr.py`, `test_zaehlprotokoll.py`, `test_bestellung.py` (incl. positions), `test_auth.py`, `test_vat_calculator.py`, `test_verkauf_storno.py`, `test_tse.py`, `test_sale_workflow.py`, `test_storno_logic.py`, `test_import_export.py`, smoke tests for Phases 2-5, `test_timestamps.py`.
 
-Still missing: `test_abrechnung_monat.py`, `test_abrechnung_jahr.py`, `test_tse.py`, `test_sale_workflow.py`, `test_storno_logic.py`, `test_import_export.py`, plus integration tests for complete workflows.
+Still missing: integration tests for complete workflows (cross-entity, concurrent operations).
 
 ---
 
@@ -711,5 +716,5 @@ Note: There are deliberately **no** `routers/verkauf_mwst.py` and `routers/verka
 4. **Coverage**: 83% achieved; remaining gaps: utils/validation.py 0%, tse_client.py 44%, users 33%, rabattaktion 33%
 5. **Validation**: apply the `ensure_*` helpers in the routers (they are never called today)
 6. **Training mode**: implement endpoints for the `training_*` tables or explicitly descope it
-7. **Import/Export**: extend CSV export for Bestellungen (positions are imported, but there is no order export yet)
+7. **Import/Export**: CSV exports for Bestellung and Inventur exist; ODS export is deferred to a later phase (needs an ODS library and the Java templates)
 8. **Documentation**: migration guide (Java POS → API), database schema reference, consistent docstrings, deployment/HTTPS docs
