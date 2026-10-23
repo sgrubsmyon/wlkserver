@@ -2,8 +2,8 @@
 
 > **Sync note**: This document and `concepts/IMPLEMENTATION_PLAN.md` must be kept in sync. When implementation progress changes, update both files so new sessions without prior memory see a consistent status.
 
-> **Last Updated**: 2026-10-22  
-> **Status**: Phases 1-5 implemented at router level (TSE export adapter untested without hardware); main Phase 6/7 flows wired (see "Business Logic Wiring Gaps" for what remains); auth enforced on transaction endpoints; parity audit of the remaining low-priority endpoints done and resolved (see "Parity Audit"), Bestellung positions implemented; test coverage 69%
+> **Last Updated**: 2026-10-23  
+> **Status**: Phases 1-5 implemented at router level (TSE export adapter untested without hardware); main Phase 6/7 flows wired (see "Business Logic Wiring Gaps" for what remains); auth enforced on transaction endpoints; parity audit of the remaining low-priority endpoints done and resolved (see "Parity Audit"), Bestellung positions implemented; test coverage 75%
 
 ---
 
@@ -81,7 +81,7 @@
 - [x] PATCH /mwst/{mwst_id} - Update VAT rate - **ADMIN ONLY**
 - [x] DELETE /mwst/{mwst_id} - Delete VAT rate (with constraints check) - **ADMIN ONLY**
 - [x] Add authentication/authorization dependency (stopgap: shared ADMIN_TOKEN)
-- [ ] `MwstBase.mwst_satz` has no `ge=0, le=1` constraint (only `MwstCreate`/`MwstUpdate` enforce it) - validation gap
+- [x] `MwstBase.mwst_satz` has `ge=0, le=1` constraint (models.py line 48) - done
 
 [x] **Pfand Admin-Only CRUD Completion** - `python/routers/pfand.py`
 - [x] POST /pfand - Create new deposit item - **ADMIN ONLY**
@@ -111,7 +111,7 @@
 (no /kassenstand/letzte endpoint needed; /kassenstand/aktuell covers it)
 - [x] `update_kassenstand_for_sale` wired into sale creation + storno (cash only) - Phase 6 (step 1)
 - [ ] Advanced business logic (balance validation) - Phase 6
-- [ ] Non-negative validation on `neuer_kassenstand` not enforced
+- [x] Non-negative validation on `neuer_kassenstand` enforced via `ge=0` model constraint (models.py line 472)
 
 [x] **Gutschein** - models + router + smoke tests
 - [x] GET /gutschein
@@ -121,7 +121,7 @@
 - [x] GET /gutschein/ausstehend
 - [x] GET /gutschein/eingeloest
 - [x] /gutschein/ausstehend now returns restbetrag_anfang (initial amount) for partial-redemption detection - done
-- [ ] GET /gutschein/verkauf/{rechnungs_nr} (not implemented) (optional)
+- [x] GET /gutschein/verkauf/{rechnungs_nr} - not needed for Java parity (see Parity Audit)
 - [ ] Advanced redemption calculation - Phase 6
 
 [x] **Anzahlung** - models + router + smoke tests
@@ -182,6 +182,7 @@
 - [x] DELETE /bestellung/{bestell_nr}
 - [x] Positions saved/read together with the order (`details` in POST/PATCH, returned by GET /bestellung/{bestell_nr}) - matches Java "Bestellung abschließen"
 - [x] No separate position endpoints needed (Java always saves the whole order, see parity audit)
+- [ ] Date filter on `GET /bestellung` (Java "Bestellungen" view filters by date; see Production Readiness)
 
 ---
 
@@ -260,7 +261,7 @@
 
 [x] Import/Export Functionality - `import_bestellung_from_csv` implemented (header only, positions not imported); `import_artikel` maps all Artikel fields; abrechnung CSV export includes VAT totals; session dependency fixed (step 7)
 [⏳] Search and Filter Enhancements - minimal (only verkauf since/until/only_storno, mwst search_string); most routers have no filtering/sorting/pagination improvements
-[⏳] Validation Framework - model-level constraints added (MwstBase 0-1, Kassenstand, Gutschein, AnzahlungDetails, BestellungDetails); ensure_* helpers still rarely called in routers
+[⏳] Validation Framework - model-level constraints added (MwstBase 0-1, Kassenstand, Gutschein, AnzahlungDetails, BestellungDetails); `ensure_*` helpers in `utils/validation.py` exist but are **never called** by any router and have 0% test coverage
 [⏳] Authentication and Authorization System (per-user accounts, login auditing, transaction attribution) - HIGH PRIORITY
   - Models + login/logout/me + user CRUD exist
   - `require_user` enforced on all transaction create/mutate endpoints (step 4 enforcement follow-up)
@@ -317,7 +318,7 @@
 
 ### Test Coverage Target
 
-- [⏳] Achieve 80%+ coverage (measured 69% on 2026-10-22, 67 tests passing)
+- [⏳] Achieve 80%+ coverage (measured 75% on 2026-10-23, 67 tests passing)
 
 ---
 
@@ -394,7 +395,7 @@ The remaining imported items are quality/production tasks, tracked below.
 
 ### Testing Status
 - **Test Files**: 18 (incl. dedicated tests for kassenstand/gutschein/anzahlung/abrechnung_tag/zaehlprotokoll/bestellung/auth/business modules)
-- **Test Coverage**: 69% measured with pytest-cov (target 80%)
+- **Test Coverage**: 75% measured with pytest-cov (target 80%)
 - **Target Coverage**: 80%+
 
 ---
@@ -404,12 +405,12 @@ The remaining imported items are quality/production tasks, tracked below.
 1. **Real database validation**: run a smoke test against MariaDB with `../git/mysql/generateDB.sql` and the real grants; fix anything SQLite hides (FK enforcement, `AUTO_INCREMENT`/composite PK, `YEAR`/`UNSIGNED`, timezone, DECIMAL)
 2. **Frontend readiness**: decide CORS vs. SvelteKit dev proxy; add a date filter to `GET /bestellung`; keep the OpenAPI schema stable
 3. **Missing tests**: `test_abrechnung_monat.py`, `test_abrechnung_jahr.py`, `test_tse.py`, `test_sale_workflow.py`, `test_storno_logic.py`, `test_import_export.py`, plus integration tests for complete sales/storno/settlement workflows
-4. **Coverage**: raise 69% → 80%+ (largest gaps: lieferant, produktgruppe, rabattaktion, users, sale_workflow, validation)
-5. **Validation**: apply the `ensure_*` helpers in the routers; `ge=0, le=1` on `MwstBase.mwst_satz`; kassenstand balance validation; exact `bar_brutto` aggregation
+4. **Coverage**: raise 75% → 80%+ (largest gaps: utils/validation.py 0%, utils/csv_import.py 24%, produktgruppe 25%, lieferant 28%, utils/csv_export.py 31%, rabattaktion 33%, users 33%, tse_client 43%)
+5. **Validation**: apply the `ensure_*` helpers in the routers (0% coverage, never called); kassenstand balance validation; exact `bar_brutto` aggregation
 6. **Training mode**: implement endpoints for the `training_*` tables or explicitly descope it
 7. **Import/Export**: `import_bestellung_from_csv` currently ignores positions; extend it if the feature is kept
 8. **Documentation**: migration guide (Java POS → API), database schema reference, consistent docstrings, deployment/HTTPS docs
 
 ---
 
-*This TODO list reflects the current implementation state as of 2026-10-22 (completeness check against IMPLEMENTATION_PLAN.md).*
+*This TODO list reflects the current implementation state as of 2026-10-23 (completeness check against IMPLEMENTATION_PLAN.md).*
