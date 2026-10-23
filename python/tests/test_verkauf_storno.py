@@ -52,6 +52,17 @@ def test_storno_creates_inverted_entries(session):
     assert mwsts[0]["mwst_betrag"] == -3.2
 
 
+def test_create_verkauf_rejects_zero_stueckzahl(session):
+    from python.routers.verkauf import create_verkauf
+    from python.models import VerkaufCreate
+    payload = VerkaufCreate(verkauf_details=[{"artikel_id": 1, "stueckzahl": 0}])
+    with pytest.raises(HTTPException) as exc:
+        create_verkauf(payload, session, None, None)
+    assert exc.value.status_code == 400
+    # no empty sale row must be left behind
+    assert session.exec(select(Verkauf)).all() == []
+
+
 def test_duplicate_storno_is_prevented(session):
     original = Verkauf(verkaufsdatum=datetime.now(timezone.utc), ec_zahlung=False)
     session.add(original)

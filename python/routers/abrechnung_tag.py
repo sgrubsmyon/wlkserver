@@ -140,6 +140,8 @@ def create_abrechnung_tag(payload: Optional[AbrechnungTagCreate], session: Sessi
 
     # Create kassenstand (Tagesabschluss entry) if not provided
     ks_id = p.kassenstand_id
+    if ks_id is not None and not session.get(Kassenstand, ks_id):
+        raise HTTPException(status_code=400, detail="Kassenstand not found")
     if ks_id is None:
         current_balance = 0.0
         last_ks = session.exec(select(Kassenstand).order_by(Kassenstand.kassenstand_id.desc())).first()

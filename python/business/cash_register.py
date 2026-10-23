@@ -46,6 +46,23 @@ def ec_payment_threshold_check(total: Any, ec_zahlung: bool) -> Optional[str]:
     return None
 
 
+def validate_balance_change(alter, neuer, entnahme: bool = False) -> Decimal:
+    """Validate a new cash balance against the previous one.
+
+    An Entnahme (cash withdrawal) must lower the balance and must not exceed
+    the cash in the drawer. Regular sales/storno entries may go negative, which
+    mirrors the Java POS (a refund can exceed the current balance).
+    """
+    previous = _to_decimal(alter) or Decimal("0")
+    new = _to_decimal(neuer) or Decimal("0")
+    if entnahme:
+        if new > previous:
+            raise HTTPException(status_code=400, detail="Entnahme must not increase the Kassenstand")
+        if new < 0:
+            raise HTTPException(status_code=400, detail="Entnahme exceeds the current Kassenstand")
+    return new
+
+
 def update_kassenstand_for_sale(*args, **kwargs) -> Kassenstand:
     session = kwargs.get('session')
     rechnungs_nr = kwargs.get('rechnungs_nr')
@@ -68,6 +85,7 @@ def update_kassenstand_for_sale(*args, **kwargs) -> Kassenstand:
             total += _to_decimal(d.ges_preis) or Decimal("0")
     alter = get_current_balance(session)
     neuer = (alter + total).quantize(Decimal("0.01"))
+    validate_balance_change(alter, neuer, entnahme)
     new_ks = Kassenstand(
         buchungsdatum=buchungsdatum if buchungsdatum is not None else (v.verkaufsdatum if v.verkaufsdatum is not None else datetime.now(timezone.utc)),
         neuer_kassenstand=float(neuer),
@@ -133,6 +151,7 @@ __all__ = [
     "calculate_change",
     "ec_payment_threshold_check",
     "update_kassenstand_for_sale",
+    "validate_balance_change",
     "is_training_mode",
     "end_of_day_procedure",
     "EC_THRESHOLD",

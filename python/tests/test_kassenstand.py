@@ -39,3 +39,29 @@ def test_rechnungen_filter(client):
 def test_negative_rejected(client):
     r = client.post("/kassenstand/", json={"neuer_kassenstand": -1.0, "manuell": True})
     assert r.status_code == 422
+
+
+def test_entnahme_must_not_increase_balance(client):
+    client.post("/kassenstand/", json={"neuer_kassenstand": 100.0, "manuell": True})
+    r = client.post("/kassenstand/", json={"neuer_kassenstand": 150.0, "manuell": True, "entnahme": True})
+    assert r.status_code == 400
+
+
+def test_entnahme_below_zero_rejected(client):
+    client.post("/kassenstand/", json={"neuer_kassenstand": 20.0, "manuell": True})
+    r = client.post("/kassenstand/", json={"neuer_kassenstand": -5.0, "manuell": True, "entnahme": True})
+    assert r.status_code == 422
+
+
+def test_validate_balance_change_entnahme_exceeds_balance(session):
+    from fastapi import HTTPException
+    from python.business.cash_register import validate_balance_change
+    with pytest.raises(HTTPException):
+        validate_balance_change(10.0, -5.0, entnahme=True)
+
+
+def test_valid_entnahme_accepted(client):
+    client.post("/kassenstand/", json={"neuer_kassenstand": 100.0, "manuell": True})
+    r = client.post("/kassenstand/", json={"neuer_kassenstand": 40.0, "manuell": True, "entnahme": True})
+    assert r.status_code == 200
+    assert r.json()["neuer_kassenstand"] == 40.0

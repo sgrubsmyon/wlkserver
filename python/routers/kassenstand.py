@@ -63,6 +63,12 @@ def create_kassenstand(kassenstand: KassenstandCreate, session: SessionDep, cred
         v = session.get(Verkauf, kassenstand.rechnungs_nr)
         if not v:
             raise HTTPException(status_code=400, detail="Verkauf not found")
+    from ..business.cash_register import get_current_balance, validate_balance_change
+    validate_balance_change(
+        get_current_balance(session),
+        kassenstand.neuer_kassenstand,
+        kassenstand.entnahme,
+    )
     new_ks = Kassenstand(
         buchungsdatum=kassenstand.buchungsdatum if kassenstand.buchungsdatum is not None else datetime.now(timezone.utc),
         neuer_kassenstand=kassenstand.neuer_kassenstand,

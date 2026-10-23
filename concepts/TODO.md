@@ -3,7 +3,7 @@
 > **Sync note**: This document and `concepts/IMPLEMENTATION_PLAN.md` must be kept in sync. When implementation progress changes, update both files so new sessions without prior memory see a consistent status.
 
 > **Last Updated**: 2026-10-23  
-> **Status**: Phases 1-5 implemented at router level (TSE export adapter untested without hardware); main Phase 6/7 flows wired (see "Business Logic Wiring Gaps" for what remains); auth enforced on transaction endpoints; parity audit of the remaining low-priority endpoints done and resolved (see "Parity Audit"), Bestellung positions + date filter implemented; bar_brutto aggregation matches Java; 6 missing test files added; test coverage 82%
+> **Status**: Phases 1-5 implemented at router level (TSE export adapter untested without hardware); main Phase 6/7 flows wired (see "Business Logic Wiring Gaps" for what remains); auth enforced on transaction endpoints; parity audit of the remaining low-priority endpoints done and resolved (see "Parity Audit"), Bestellung positions + date filter implemented; bar_brutto aggregation matches Java; sale/workflow validation and kassenstand balance validation wired; Bestellung CSV import supports positions; 6 missing test files added; test coverage 83%
 
 ---
 
@@ -110,7 +110,7 @@
 - [x] GET /kassenstand/aktuell
 (no /kassenstand/letzte endpoint needed; /kassenstand/aktuell covers it)
 - [x] `update_kassenstand_for_sale` wired into sale creation + storno (cash only) - Phase 6 (step 1)
-- [ ] Advanced business logic (balance validation) - Phase 6
+- [x] Advanced business logic (balance validation) - `validate_balance_change` rejects Entnahmen that increase the balance or exceed it; wired into POST /kassenstand
 - [x] Non-negative validation on `neuer_kassenstand` enforced via `ge=0` model constraint (models.py line 472)
 
 [x] **Gutschein** - models + router + smoke tests
@@ -147,7 +147,7 @@
 - [x] Automatic incremental TSE export (best-effort) wired into POST /abrechnung/tag - step 3
 - [x] Stornos/retouren handled in mwst + bar aggregation; entnahmen subtracted from closing balance (step 5)
 - [x] Full Java aggregation parity (storno/retouren reporting in abrechnung response) - items 5-8
-- [ ] kassenstand entry validation during Tagesabschluss
+- [x] kassenstand entry validation during Tagesabschluss (provided `kassenstand_id` must exist)
 
 [x] **Abrechnung Monat** - models + router + smoke tests
 - [x] GET /abrechnung/monat
@@ -216,9 +216,9 @@
 ### Phase 6: Core Business Logic from Java (main flows wired; gaps below)
 
 [⏳] VAT Calculation Module (python/business/vat_calculator.py) - complete; used by sale creation and the abrechnung response (`get_all_current_mwst_values_by_id`)
-[⏳] Sale Workflow Enhancements (python/business/sale_workflow.py) - `prepare_detail`/`calculate_mwst_summary` used in router; voucher creation and discount handling integrated; EC threshold warning surfaced; `user_id` populated from token. Remaining: `validate_detail`, `determine_mwst_satz`, `determine_ges_preis` are barely exercised by tests
+- [x] `validate_detail` now called by the sale endpoint (rejects `stueckzahl == 0` before writing); `determine_mwst_satz` derives the rate via `artikel.produktgruppe.mwst` (was broken); `determine_ges_preis` covers explicit price, article price, variable price and discounts - covered by tests/test_sale_workflow.py
 [⏳] Storno Logic Enhancements (python/business/storno_logic.py) - basic storno works; voucher/installment handlers and reversing kassenstand entry implemented; TSE handling best-effort
-[⏳] Cash Register Operations (python/business/cash_register.py) - `update_kassenstand_for_sale`, `process_payment` and `ec_payment_threshold_check` wired; `end_of_day_procedure` basic; `is_training_mode` reads `TRAINING_MODE` env var (no real training mode); balance validation still missing
+[⏳] Cash Register Operations (python/business/cash_register.py) - `update_kassenstand_for_sale`, `process_payment`, `ec_payment_threshold_check` and `validate_balance_change` wired; `end_of_day_procedure` basic; `is_training_mode` reads `TRAINING_MODE` env var (no real training mode)
 
 ---
 
@@ -259,7 +259,7 @@
 
 ### Phase 7: Data Import/Export, Validation, Auth
 
-[x] Import/Export Functionality - `import_bestellung_from_csv` implemented (header only, positions not imported); `import_artikel` maps all Artikel fields; abrechnung CSV export includes VAT totals; session dependency fixed (step 7)
+[x] Import/Export Functionality - `import_bestellung_from_csv` imports positions (`artikel_id`/`stueckzahl`/`position`, rows grouped by order header) with validation; `import_artikel` maps all Artikel fields; abrechnung CSV export includes VAT totals; session dependency fixed (step 7)
 [⏳] Search and Filter Enhancements - minimal (only verkauf since/until/only_storno, mwst search_string); most routers have no filtering/sorting/pagination improvements
 [⏳] Validation Framework - model-level constraints added (MwstBase 0-1, Kassenstand, Gutschein, AnzahlungDetails, BestellungDetails); `ensure_*` helpers in `utils/validation.py` exist but are **never called** by any router and have 0% test coverage
 [⏳] Authentication and Authorization System (per-user accounts, login auditing, transaction attribution) - HIGH PRIORITY
@@ -318,7 +318,7 @@
 
 ### Test Coverage Target
 
-- [x] Achieve 80%+ coverage (measured 82% on 2026-10-23, 112 tests passing)
+- [x] Achieve 80%+ coverage (measured 83% on 2026-10-23, 119 tests passing)
 
 ---
 
@@ -390,12 +390,12 @@ The remaining imported items are quality/production tasks, tracked below.
 
 ### Business Logic Status
 - **Business Logic Ported**: CRUD + settlement aggregation + VAT/sale-workflow/storno/cash-register modules wired into the endpoints
-- **Business Logic NOT wired**: training mode (only `TRAINING_MODE` env flag), exact `bar_brutto` aggregation, kassenstand balance validation, TSE hardware (adapter untested)
+- **Business Logic NOT wired**: training mode (only `TRAINING_MODE` env flag), TSE hardware (adapter untested)
 - **Remaining Java logic**: mainly validation/edge cases and training mode; no missing core workflow
 
 ### Testing Status
 - **Test Files**: 24 (incl. dedicated tests for abrechnung_monat/jahr, tse, sale_workflow, storno_logic, import_export)
-- **Test Coverage**: 82% measured with pytest-cov (target 80% achieved)
+- **Test Coverage**: 83% measured with pytest-cov (target 80% achieved)
 
 ---
 
@@ -405,9 +405,9 @@ The remaining imported items are quality/production tasks, tracked below.
 2. **Frontend readiness**: decide CORS vs. SvelteKit dev proxy; add a date filter to `GET /bestellung`; keep the OpenAPI schema stable
 3. **Integration tests**: complete sales/storno/settlement workflows, cross-entity relationships, concurrent operations
 4. **Coverage**: 82% achieved (target 80%+ met); remaining gaps: utils/validation.py 0%, tse_client.py 44%, users 33%, rabattaktion 33%
-5. **Validation**: apply the `ensure_*` helpers in the routers (0% coverage, never called); kassenstand balance validation; exact `bar_brutto` aggregation
+5. **Validation**: apply the `ensure_*` helpers in the routers (0% coverage, never called)
 6. **Training mode**: implement endpoints for the `training_*` tables or explicitly descope it
-7. **Import/Export**: `import_bestellung_from_csv` currently ignores positions; extend it if the feature is kept
+7. **Import/Export**: extend CSV export for Bestellungen (positions are imported, but there is no order export yet)
 8. **Documentation**: migration guide (Java POS → API), database schema reference, consistent docstrings, deployment/HTTPS docs
 
 ---

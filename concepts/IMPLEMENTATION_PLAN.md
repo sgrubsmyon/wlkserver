@@ -13,15 +13,15 @@ This document outlines the comprehensive implementation plan to complete the Fas
 ### ✅ Already Implemented
 - **Database Models**: All core tables have SQLModel definitions in `python/models.py` (training tables table-only; `user_id` columns on all 8 transaction tables)
 - **CRUD Operations**: All planned entities have CRUD functionality, including Bestellung positions (`details` embedded in the order payload)
-- **Business Logic**: Modules under `python/business/` are wired into the main flows (VAT, sale workflow incl. vouchers/discounts, storno incl. voucher/installment reversal and kassenstand reversal, cash-register side-effects, TSE export best-effort). Remaining gaps: training mode, exact `bar_brutto`, kassenstand balance validation.
+- **Business Logic**: Modules under `python/business/` are wired into the main flows (VAT, sale workflow incl. vouchers/discounts and detail validation, storno incl. voucher/installment reversal and kassenstand reversal, cash-register side-effects incl. balance validation, TSE export best-effort). Remaining gap: training mode.
 - **API Structure**: Clean FastAPI structure with proper routing
 - **Auth**: Per-user accounts (bcrypt + JWT), login auditing, `user_id` attribution on transaction endpoints, SQL migration in `migrations/02_user_auth/`; `require_user` enforced on transaction create/mutate endpoints, admin endpoints accept the shared `ADMIN_TOKEN` stopgap
 
 ### 🎯 What Needs to be Done
 - Validate against a real MariaDB instance (tests are SQLite-only)
-- Prepare the last frontend blockers (CORS/proxy, Bestellung date filter)
-- Fill the missing dedicated/integration tests and raise coverage to 80%+
-- Finish validation/edge cases (training mode, exact `bar_brutto`, kassenstand balance)
+- Prepare the last frontend blockers (CORS/proxy)
+- Add integration tests for complete sales/storno/settlement workflows (coverage target 80% reached)
+- Finish remaining validation/edge cases (training mode, unused `ensure_*` helpers)
 - Complete documentation (migration guide, DB schema reference, docstrings)
 
 > **Note**: The Phase sections below contain the original plan text (some "Current" states are outdated). The authoritative per-endpoint status is in `concepts/TODO.md`; the priority matrix and success criteria below are kept up to date.
@@ -577,7 +577,7 @@ Security pitfalls of using unencrypted HTTP within a local network:
 - Minimum 80% code coverage
 - All critical paths tested
 - All business logic validated
-- Current: 69% (67 tests passing, measured 2026-10-22)
+- Current: 83% (119 tests passing, measured 2026-10-23)
 
 ### Real Database Tests
 - Tests run on in-memory SQLite, which does not enforce foreign keys and ignores `UNSIGNED`/`YEAR`/`TIMESTAMP` semantics
@@ -608,10 +608,10 @@ Still missing: `test_abrechnung_monat.py`, `test_abrechnung_jahr.py`, `test_tse.
 - [ ] All business logic from Java POS is ported to API (training mode and edge-case validation still missing)
 - [x] Per-user accounts with login auditing and transaction attribution
 - [ ] Comprehensive validation and error handling
-- [ ] 80%+ test coverage (currently 69%)
+- [x] 80%+ test coverage (83%)
 - [ ] Complete API documentation
 - [ ] Working integration with existing database (SQLite-only tests so far)
-- [ ] Ready for frontend client development (CORS/proxy and Bestellung date filter open)
+- [ ] Ready for frontend client development (CORS/proxy open)
 - [ ] All existing functionality preserved and enhanced
 
 ---
@@ -706,10 +706,10 @@ Note: There are deliberately **no** `routers/verkauf_mwst.py` and `routers/verka
 ## Next Steps
 
 1. **Real database validation**: smoke test the API against MariaDB with `../git/mysql/generateDB.sql` and the real grants; fix anything SQLite hides (FK enforcement, `AUTO_INCREMENT`/composite PK, `YEAR`/`UNSIGNED`, timezone, DECIMAL)
-2. **Frontend readiness**: decide CORS vs. SvelteKit dev proxy; add a date filter to `GET /bestellung`; keep the OpenAPI schema stable
-3. **Missing tests**: `test_abrechnung_monat.py`, `test_abrechnung_jahr.py`, `test_tse.py`, `test_sale_workflow.py`, `test_storno_logic.py`, `test_import_export.py` plus workflow integration tests
-4. **Coverage**: raise 69% → 80%+ (largest gaps: lieferant, produktgruppe, rabattaktion, users, sale_workflow, validation)
-5. **Validation**: apply the `ensure_*` helpers in the routers; `ge=0, le=1` on `MwstBase.mwst_satz`; kassenstand balance validation; exact `bar_brutto` aggregation
+2. **Frontend readiness**: decide CORS vs. SvelteKit dev proxy; keep the OpenAPI schema stable
+3. **Integration tests**: complete sales/storno/settlement workflows (the dedicated test files are in place)
+4. **Coverage**: 83% achieved; remaining gaps: utils/validation.py 0%, tse_client.py 44%, users 33%, rabattaktion 33%
+5. **Validation**: apply the `ensure_*` helpers in the routers (they are never called today)
 6. **Training mode**: implement endpoints for the `training_*` tables or explicitly descope it
-7. **Import/Export**: `import_bestellung_from_csv` currently ignores positions; extend it if the feature is kept
+7. **Import/Export**: extend CSV export for Bestellungen (positions are imported, but there is no order export yet)
 8. **Documentation**: migration guide (Java POS → API), database schema reference, consistent docstrings, deployment/HTTPS docs

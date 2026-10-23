@@ -22,7 +22,7 @@ from ..session import SessionDep
 from ..dependencies import bearer_scheme, require_user
 from ..models import User
 from ..business.vat_calculator import calculate_vat
-from ..business.sale_workflow import prepare_detail, calculate_mwst_summary
+from ..business.sale_workflow import prepare_detail, calculate_mwst_summary, validate_detail
 
 router = APIRouter(
     prefix="/verkauf",
@@ -114,6 +114,9 @@ def create_verkauf(verkauf: VerkaufCreate, session: SessionDep, credentials: HTT
         payload = decode_token(credentials.credentials)
         if payload:
             user_id = payload.get("user_id")
+    # Validate before writing anything so a bad position leaves no empty sale
+    for d in (verkauf.verkauf_details or []):
+        validate_detail(session, d)
     # base = VerkaufCreate.model_validate(verkauf)
     new_v = Verkauf(
         verkaufsdatum=datetime.now(timezone.utc),
