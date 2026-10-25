@@ -1,4 +1,5 @@
 """VAT (MwSt) calculation and aggregation helpers."""
+import os
 from decimal import Decimal, ROUND_HALF_UP
 from collections import OrderedDict
 from typing import Any, Iterable, Mapping, Optional
@@ -7,6 +8,23 @@ from typing import Any, Iterable, Mapping, Optional
 CENT = Decimal("0.01")
 ONE = Decimal("1")
 TEN_PLACES = Decimal("0.0000000001")
+
+# Rounding method for receipts (see docs/VAT_ROUNDING.md):
+#   horizontal - round VAT per position, then sum (Java POS default)
+#   vertical   - sum gross per VAT rate, then compute VAT once (EN 16931 BR-CO-17)
+HORIZONTAL = "horizontal"
+VERTICAL = "vertical"
+VAT_ROUNDING_METHODS = (HORIZONTAL, VERTICAL)
+
+
+def vat_rounding_method() -> str:
+    """Configured rounding method for receipts (`VAT_ROUNDING_METHOD`)."""
+    method = os.getenv("VAT_ROUNDING_METHOD", HORIZONTAL).strip().lower()
+    if method not in VAT_ROUNDING_METHODS:
+        raise ValueError(
+            f"Invalid VAT_ROUNDING_METHOD {method!r}; expected one of {VAT_ROUNDING_METHODS}"
+        )
+    return method
 
 
 def _to_decimal(value):
@@ -109,29 +127,43 @@ def calculate_total(items):
     return total.quantize(CENT, rounding=ROUND_HALF_UP)
 
 
-def calculate_mwst_values_in_rechnung(items=None):
+def calculate_mwst_values_in_rechnung(items=None, method=None):
     """Aggregate netto/VAT/gross per VAT rate for one receipt.
 
-    Mirrors Java `RechnungsGrundlage.calculateMwStValuesInRechnung`: rates are
-    returned sorted ascending (Java uses a TreeMap) and items without a VAT
-    rate are booked at 0 %. Rounding is done per position (horizontal method);
-    EN 16931 e-invoices need the vertical per-category figure instead, see
-    `docs/VAT_ROUNDING.md`.
+    Mirrors Java `RechnungsGrundlage.calculateMwStValuesInRechnung`, but the
+    rounding method is configurable (`VAT_ROUNDING_METHOD`, default horizontal):
+
+    - horizontal: VAT is rounded per position and then summed (Java POS).
+    - vertical: the gross amounts are summed per rate and VAT is calculated once
+      from that total (EN 16931 rule BR-CO-17; required for e-invoices).
+
+    Rates are returned sorted ascending (Java uses a TreeMap) and items without
+    a VAT rate are booked at 0 %.
     """
-    sums = {}
+    method = method or vat_rounding_method()
+    positions = []
     for item in (items or []):
         brutto, steuersatz = _normalize_item(item)
         if brutto is None:
             continue
-        if steuersatz is None:
-            steuersatz = Decimal("0")
-        steuer = calculate_vat(brutto, steuersatz)
-        netto = brutto - steuer
-        if steuersatz not in sums:
-            sums[steuersatz] = [Decimal("0"), Decimal("0"), Decimal("0")]
-        sums[steuersatz][0] += netto
-        sums[steuersatz][1] += steuer
-        sums[steuersatz][2] += brutto
+        positions.append((brutto, steuersatz if steuersatz is not None else Decimal("0")))
+
+    sums = {}
+    if method == VERTICAL:
+        gross = {}
+        for brutto, steuersatz in positions:
+            gross[steuersatz] = gross.get(steuersatz, Decimal("0")) + brutto
+        for steuersatz, total in gross.items():
+            steuer = calculate_vat(total, steuersatz)
+            sums[steuersatz] = [total - steuer, steuer, total]
+    else:
+        for brutto, steuersatz in positions:
+            steuer = calculate_vat(brutto, steuersatz)
+            if steuersatz not in sums:
+                sums[steuersatz] = [Decimal("0"), Decimal("0"), Decimal("0")]
+            sums[steuersatz][0] += brutto - steuer
+            sums[steuersatz][1] += steuer
+            sums[steuersatz][2] += brutto
 
     result = OrderedDict()
     for steuersatz in sorted(sums):
@@ -146,14 +178,15 @@ calculate_mwst_values = calculate_mwst_values_in_rechnung
 calculateMwstValuesInRechnung = calculate_mwst_values_in_rechnung
 
 
-def get_all_current_mwst_values_by_id(mwst_rates, mwst_values=None, items=None):
+def get_all_current_mwst_values_by_id(mwst_rates, mwst_values=None, items=None, method=None):
     """Map MwSt IDs to [rate, netto, betrag, brutto] for the current receipt.
 
     Mirrors Java `getAllCurrentMwstValuesByID()`. Rates are matched
-    numerically, so a DB rate like `0.19000` also matches `0.19`.
+    numerically, so a DB rate like `0.19000` also matches `0.19`. `method`
+    is passed through to `calculate_mwst_values_in_rechnung`.
     """
     if mwst_values is None:
-        mwst_values = calculate_mwst_values_in_rechnung(items or [])
+        mwst_values = calculate_mwst_values_in_rechnung(items or [], method=method)
     by_rate = {}
     for rate, values in (mwst_values or {}).items():
         rate_decimal = _to_decimal(rate)
@@ -178,13 +211,15 @@ class VATCalculator:
     calculateVAT = calculate_vat
 
     @staticmethod
-    def calculate_mwst_values_in_rechnung(items=None):
-        return calculate_mwst_values_in_rechnung(items)
+    def calculate_mwst_values_in_rechnung(items=None, method=None):
+        return calculate_mwst_values_in_rechnung(items, method=method)
     calculateMwStValuesInRechnung = calculate_mwst_values_in_rechnung
 
     @staticmethod
-    def get_all_current_mwst_values_by_id(mwst_rates, mwst_values=None, items=None):
-        return get_all_current_mwst_values_by_id(mwst_rates, mwst_values=mwst_values, items=items)
+    def get_all_current_mwst_values_by_id(mwst_rates, mwst_values=None, items=None, method=None):
+        return get_all_current_mwst_values_by_id(
+            mwst_rates, mwst_values=mwst_values, items=items, method=method
+        )
     getAllCurrentMwstValuesByID = get_all_current_mwst_values_by_id
 
 
@@ -193,5 +228,6 @@ __all__ = [
     "calculate_mwst_values_in_rechnung", "calculateMwStValuesInRechnung",
     "calculate_mwst_values", "calculateMwstValuesInRechnung",
     "get_all_current_mwst_values_by_id", "getAllCurrentMwstValuesByID",
-    "VATCalculator", "_to_decimal",
+    "VATCalculator", "vat_rounding_method", "VAT_ROUNDING_METHODS",
+    "HORIZONTAL", "VERTICAL", "_to_decimal",
 ]

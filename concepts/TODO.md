@@ -222,7 +222,8 @@
 - [x] `calculate_mwst_values_in_rechnung` aggregates per rate and returns rates sorted ascending like the Java `TreeMap`; missing rates are booked at 0 %
 - [x] `get_all_current_mwst_values_by_id` maps MwSt IDs to `[rate, netto, betrag, brutto]`; rates are matched numerically so DB values like `0.19000` match `0.19` (previous string comparison silently dropped them)
 - [x] Used by sale creation (`calculate_mwst_summary`) and the Abrechnung Tag response (`mwst_nach_id`); `tests/test_vat_calculator.py` covers the module at 100 %
-- [x] Rounding mode researched (2026-10-25): no German statutory rounding rule for VAT on invoices (§ 14 UStG / § 33 UStDV); EuGH C-484/06 leaves the method to the Member States; commercial rounding to cents (`ROUND_HALF_UP`) is the practice and matches the Java POS' explicit `RoundingMode.HALF_UP`; per-position (horizontal) rounding is kept for receipts. For future EN 16931 e-invoices, VAT must be computed per category from the category total (BR-CO-17). Details/sources: `docs/VAT_ROUNDING.md`
+- [x] Rounding mode researched (2026-10-25): no German statutory rounding rule for VAT on invoices (§ 14 UStG / § 33 UStDV); EuGH C-484/06 leaves the method to the Member States; commercial rounding to cents (`ROUND_HALF_UP`) is the practice and matches the Java POS' explicit `RoundingMode.HALF_UP`. Details/sources: `docs/VAT_ROUNDING.md`
+- [x] Rounding method configurable for receipts via `VAT_ROUNDING_METHOD` (`horizontal` = per position, Java POS default; `vertical` = per VAT rate, EN 16931 BR-CO-17). Read per request from the environment, invalid values abort startup; stored in `verkauf_mwst` for new sales. Invoices must always pass `method="vertical"` explicitly
 [⏳] Sale Workflow Enhancements (python/business/sale_workflow.py) - `prepare_detail`/`calculate_mwst_summary` used in router; voucher creation and discount handling integrated; EC threshold warning surfaced; `user_id` populated from token
 - [x] `validate_detail` now called by the sale endpoint (rejects `stueckzahl == 0` before writing); `determine_mwst_satz` derives the rate via `artikel.produktgruppe.mwst` (was broken); `determine_ges_preis` covers explicit price, article price, variable price and discounts - covered by tests/test_sale_workflow.py
 [⏳] Storno Logic Enhancements (python/business/storno_logic.py) - basic storno works; voucher/installment handlers and reversing kassenstand entry implemented; TSE handling best-effort
@@ -328,7 +329,7 @@
 
 ### Test Coverage Target
 
-- [x] Achieve 80%+ coverage (measured 87% on 2026-10-25, 172 tests passing)
+- [x] Achieve 80%+ coverage (measured 87% on 2026-10-25, 179 tests passing)
 
 ---
 

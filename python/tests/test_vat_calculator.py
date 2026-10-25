@@ -10,6 +10,7 @@ from python.business.vat_calculator import (
     calculate_total,
     calculate_vat,
     get_all_current_mwst_values_by_id,
+    vat_rounding_method,
 )
 
 
@@ -154,6 +155,54 @@ def test_calculate_mwst_values_with_storno_items():
     ]
     res = calculate_mwst_values_in_rechnung(items)
     assert res[Decimal("0.19")] == [Decimal("0.00"), Decimal("0.00"), Decimal("0.00")]
+
+
+# ---------------------------------------------------- rounding method (config)
+
+def test_rounding_method_defaults_to_horizontal(monkeypatch):
+    monkeypatch.delenv("VAT_ROUNDING_METHOD", raising=False)
+    assert vat_rounding_method() == "horizontal"
+
+
+def test_rounding_method_is_case_insensitive(monkeypatch):
+    monkeypatch.setenv("VAT_ROUNDING_METHOD", " Vertical ")
+    assert vat_rounding_method() == "vertical"
+
+
+def test_rounding_method_rejects_unknown_value(monkeypatch):
+    monkeypatch.setenv("VAT_ROUNDING_METHOD", "diagonal")
+    with pytest.raises(ValueError):
+        vat_rounding_method()
+
+
+def test_vertical_rounding_uses_rate_total():
+    # two positions of 0.03 at 20 %: horizontal -> 0.01 + 0.01 = 0.02 VAT,
+    # vertical -> 0.06 gross -> 0.01 VAT
+    items = [
+        {"ges_preis": "0.03", "mwst_satz": 0.20},
+        {"ges_preis": "0.03", "mwst_satz": 0.20},
+    ]
+    horizontal = calculate_mwst_values_in_rechnung(items, method="horizontal")
+    vertical = calculate_mwst_values_in_rechnung(items, method="vertical")
+    assert horizontal[Decimal("0.20")] == [Decimal("0.04"), Decimal("0.02"), Decimal("0.06")]
+    assert vertical[Decimal("0.20")] == [Decimal("0.05"), Decimal("0.01"), Decimal("0.06")]
+
+
+def test_rounding_method_from_env_is_used(monkeypatch):
+    monkeypatch.setenv("VAT_ROUNDING_METHOD", "vertical")
+    items = [{"ges_preis": "0.03", "mwst_satz": 0.20}, {"ges_preis": "0.03", "mwst_satz": 0.20}]
+    res = calculate_mwst_values_in_rechnung(items)
+    assert res[Decimal("0.20")][1] == Decimal("0.01")
+
+    by_id = get_all_current_mwst_values_by_id({1: Decimal("0.20")}, items=items)
+    assert by_id[1] == [Decimal("0.20"), Decimal("0.05"), Decimal("0.01"), Decimal("0.06")]
+
+
+def test_explicit_method_overrides_env(monkeypatch):
+    monkeypatch.setenv("VAT_ROUNDING_METHOD", "vertical")
+    items = [{"ges_preis": "0.03", "mwst_satz": 0.20}, {"ges_preis": "0.03", "mwst_satz": 0.20}]
+    res = calculate_mwst_values_in_rechnung(items, method="horizontal")
+    assert res[Decimal("0.20")][1] == Decimal("0.02")
 
 
 # ------------------------------------------------- current values by MwSt ID

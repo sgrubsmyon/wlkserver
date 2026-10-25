@@ -9,7 +9,7 @@ from fastapi import HTTPException
 from sqlmodel import Session, select
 
 from ..models import Artikel, Mwst, Rabattaktion, Verkauf, VerkaufCreate, VerkaufDetails, VerkaufDetailsCreate, VerkaufMwst
-from .vat_calculator import calculate_vat, _to_decimal
+from .vat_calculator import calculate_mwst_values_in_rechnung, _to_decimal
 
 EC_THRESHOLD = Decimal("10.00")
 
@@ -159,24 +159,20 @@ def prepare_detail(*args, **kwargs):
 
 
 def calculate_mwst_summary(details):
-    summary = {}
-    for d in details:
-        if getattr(d, "mwst_satz", None) is None or getattr(d, "ges_preis", None) is None:
-            continue
-        rate = Decimal(str(d.mwst_satz))
-        brutto = Decimal(str(d.ges_preis))
-        steuer = calculate_vat(brutto, rate)
-        netto = brutto - steuer
-        if rate not in summary:
-            summary[rate] = {"mwst_netto": Decimal("0"), "mwst_betrag": Decimal("0"), "brutto": Decimal("0")}
-        summary[rate]["mwst_netto"] += netto
-        summary[rate]["mwst_betrag"] += steuer
-        summary[rate]["brutto"] += brutto
-    for rate in summary:
-        summary[rate]["mwst_netto"] = summary[rate]["mwst_netto"].quantize(Decimal("0.01"))
-        summary[rate]["mwst_betrag"] = summary[rate]["mwst_betrag"].quantize(Decimal("0.01"))
-        summary[rate]["brutto"] = summary[rate]["brutto"].quantize(Decimal("0.01"))
-    return summary
+    """VAT summary per rate for the given positions.
+
+    Delegates to `calculate_mwst_values_in_rechnung`, so the receipt rounding
+    method configured via `VAT_ROUNDING_METHOD` (horizontal/vertical) applies.
+    """
+    items = [
+        {"ges_preis": d.ges_preis, "mwst_satz": d.mwst_satz}
+        for d in details
+        if getattr(d, "mwst_satz", None) is not None and getattr(d, "ges_preis", None) is not None
+    ]
+    return {
+        rate: {"mwst_netto": values[0], "mwst_betrag": values[1], "brutto": values[2]}
+        for rate, values in calculate_mwst_values_in_rechnung(items).items()
+    }
 
 
 def check_ec_payment_threshold(total, ec_zahlung=None):

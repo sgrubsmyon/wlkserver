@@ -15,6 +15,29 @@ pip install -r requirements.txt
 pytest -q
 ```
 
+## Configuration
+
+Unlike the Java POS (`config.properties`), the Python API is configured through
+**environment variables**. `python-dotenv` loads an optional `python/.env` file
+at import time (`session.py`, `dependencies.py`); real environment variables take
+precedence over `.env`. `.env` is git-ignored — never commit secrets.
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `DBHOST`, `DBNAME`, `DBUSER`, `DBPASS` | — | MariaDB connection used by `session.py` |
+| `ADMIN_TOKEN` | unset | Shared stopgap token for admin-only endpoints (503 if unset) |
+| `AUTH_SECRET` | dev placeholder | JWT signing secret — **must** be set in production |
+| `AUTH_TOKEN_TTL` | `3600` | JWT lifetime in seconds |
+| `CORS_ORIGINS` | SvelteKit dev server (`localhost:5173`, `127.0.0.1:5173`) | Comma-separated allowed browser origins |
+| `TRAINING_MODE` | off | `1`/`true`/`yes`/`on` marks the instance as training mode |
+| `TSE_DEVICE_PATH`, `TSE_LIB_PATH`, `TSE_CLIENT_ID` | unset / `WeltladenKasse` | TSE (cryptovision SE-API) adapter settings |
+| `VAT_ROUNDING_METHOD` | `horizontal` | Receipt VAT rounding: `horizontal` (per position, Java POS) or `vertical` (per VAT rate, e-invoice compatible). Invalid values abort startup |
+
+`VAT_ROUNDING_METHOD` affects only receipts/sales created from now on (the value
+is stored in `verkauf_mwst`); existing sales keep their stored amounts. Invoices
+must always use the vertical method (EN 16931 BR-CO-17) — see
+`docs/VAT_ROUNDING.md` for the legal background.
+
 ## Admin token
 
 Admin-only endpoints (POST/PATCH/DELETE on `/mwst` and `/pfand`) require

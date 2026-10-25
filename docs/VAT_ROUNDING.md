@@ -60,13 +60,20 @@ what the Java POS happened to do?
   (`RoundingMode.HALF_UP` in `BaseClass.priceFormatterIntern` and
   `WindowContent.calculateVAT`), and is not contradicted by any German rule. The Java
   rounding mode was an explicit choice, not an accident of formatting.
-- Keep the **horizontal per-position** rounding for sales receipts, because the Java
-  POS does it and the receipt shows per-item prices. Do not mix methods within one
-  document.
-- If B2B e-invoices (EN 16931/XRechnung) are added later, compute the VAT amount per
-  VAT category from the summed category gross/taxable amount (BR-CO-17) instead of
-  adding per-line VAT. The difference is at most a few cents and must be documented on
-  the document.
+- The rounding **method** for receipts is configurable:
+
+  | `VAT_ROUNDING_METHOD` | Behaviour |
+  |---|---|
+  | `horizontal` (default) | VAT is rounded per position, then summed — Java POS behaviour, matches per-item receipt lines |
+  | `vertical` | Gross amounts are summed per VAT rate, VAT is computed once from that total — matches EN 16931 BR-CO-17 and avoids cent deviations between the receipt's line VAT and the rate total |
+
+  The setting is read per request from the environment (`python/.env` or the real
+  environment); an invalid value aborts startup. It only affects receipts created from
+  then on, because the result is stored in `verkauf_mwst`.
+- **Invoices are always vertical by law** (BR-CO-17). When an invoice generator is
+  added, it must call `calculate_mwst_values_in_rechnung(..., method="vertical")`
+  explicitly instead of relying on the receipt setting.
+- Do not mix methods within one document.
 - Cash rounding to 5 cents is **not** required in Germany (1- and 2-cent coins are
   legal tender) and is not implemented.
 

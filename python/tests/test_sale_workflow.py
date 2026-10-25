@@ -134,6 +134,20 @@ def test_calculate_mwst_summary(session):
     assert summary[rate]["mwst_netto"] == Decimal("200.00")
 
 
+def test_calculate_mwst_summary_horizontal_vs_vertical(session, monkeypatch):
+    # two positions of 0.03 at 20 %: horizontal rounds each line (0.01 + 0.01),
+    # vertical rounds the rate total (0.06 -> 0.01)
+    details = [
+        VerkaufDetails(ges_preis=0.03, mwst_satz=0.20, rechnungs_nr=1, position=1, stueckzahl=1),
+        VerkaufDetails(ges_preis=0.03, mwst_satz=0.20, rechnungs_nr=1, position=2, stueckzahl=1),
+    ]
+    monkeypatch.setenv("VAT_ROUNDING_METHOD", "horizontal")
+    assert calculate_mwst_summary(details)[Decimal("0.20")]["mwst_betrag"] == Decimal("0.02")
+
+    monkeypatch.setenv("VAT_ROUNDING_METHOD", "vertical")
+    assert calculate_mwst_summary(details)[Decimal("0.20")]["mwst_betrag"] == Decimal("0.01")
+
+
 def test_check_ec_threshold_below(session):
     warning = check_ec_payment_threshold(Decimal("5.00"), True)
     assert warning is not None

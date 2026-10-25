@@ -4,6 +4,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 
+from .business.vat_calculator import vat_rounding_method
+
 # from .dependencies import get_query_token, get_token_header
 # from .internal import admin
 from .routers import (
@@ -36,6 +38,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Fail fast at startup on a misconfigured rounding method instead of erroring per request.
+vat_rounding_method()
 
 @app.get("/favicon.ico", include_in_schema=False)
 async def favicon():

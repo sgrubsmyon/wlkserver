@@ -368,10 +368,12 @@ The export endpoints return the generated `.tar` file as a file download (in Jav
 mode for VAT amounts on invoices (§ 14 UStG only requires the rate and the tax amount;
 § 33 UStDV has no rule). EuGH C-484/06 leaves the method to the Member States subject
 to neutrality/proportionality, and German practice rounds commercially to cents. The
-Java POS chose `RoundingMode.HALF_UP` explicitly, so the Python module keeps HALF_UP
-and the per-position (horizontal) method for receipts. If B2B e-invoices
-(EN 16931/XRechnung) are added later, the VAT per VAT category must be computed from
-the category total (rule BR-CO-17, vertical method), which can differ by a few cents.
+Java POS chose `RoundingMode.HALF_UP` explicitly, so the Python module keeps HALF_UP.
+The per-document method is configurable for receipts via `VAT_ROUNDING_METHOD`
+(`horizontal` = per position, Java POS default; `vertical` = per VAT rate, EN 16931
+BR-CO-17); the setting is read per request and invalid values abort startup. Sales
+created under a method store its result in `verkauf_mwst`. Invoices must always use
+the vertical method (`method="vertical"`), independent of the receipt setting.
 Details and sources: `docs/VAT_ROUNDING.md`.
 
 ### 6.2 Sale Creation with Proper VAT Handling
@@ -623,7 +625,7 @@ Scripts (cron jobs for price changes, supplier article imports, settlement creat
 - Minimum 80% code coverage
 - All critical paths tested
 - All business logic validated
-- Current: 87% (172 tests passing, measured 2026-10-25)
+- Current: 87% (179 tests passing, measured 2026-10-25)
 
 ### Real Database Tests
 - Tests run on in-memory SQLite, which does not enforce foreign keys and ignores `UNSIGNED`/`YEAR`/`TIMESTAMP` semantics
