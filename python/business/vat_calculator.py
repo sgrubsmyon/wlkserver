@@ -6,6 +6,7 @@ from typing import Any, Iterable, Mapping, Optional
 
 CENT = Decimal("0.01")
 ONE = Decimal("1")
+TEN_PLACES = Decimal("0.0000000001")
 
 
 def _to_decimal(value):
@@ -69,13 +70,20 @@ def _normalize_item(item):
 
 
 def calculate_vat(brutto, steuersatz):
+    """VAT contained in a gross amount.
+
+    Mirrors the Java POS (`WindowContent.calculateVAT`): divide by `1 + rate`
+    to 10 decimal places (HALF_UP), multiply by the rate, then round the result
+    to cents (HALF_UP, like `BaseClass.priceFormatterIntern`).
+    """
     b = _to_decimal(brutto)
     s = _to_decimal(steuersatz)
     if b is None:
         b = Decimal("0")
     if s is None:
         s = Decimal("0")
-    vat = (b / (ONE + s)) * s
+    quotient = (b / (ONE + s)).quantize(TEN_PLACES, rounding=ROUND_HALF_UP)
+    vat = quotient * s
     return vat.quantize(CENT, rounding=ROUND_HALF_UP)
 
 
@@ -97,7 +105,13 @@ def calculate_total(items):
 
 
 def calculate_mwst_values_in_rechnung(items=None):
-    result = OrderedDict()
+    """Aggregate netto/VAT/gross per VAT rate for one receipt.
+
+    Mirrors Java `RechnungsGrundlage.calculateMwStValuesInRechnung`: rates are
+    returned sorted ascending (Java uses a TreeMap) and items without a VAT
+    rate are booked at 0 %.
+    """
+    sums = {}
     for item in (items or []):
         brutto, steuersatz = _normalize_item(item)
         if brutto is None:
@@ -105,13 +119,18 @@ def calculate_mwst_values_in_rechnung(items=None):
         if steuersatz is None:
             steuersatz = Decimal("0")
         steuer = calculate_vat(brutto, steuersatz)
-        netto = (brutto - steuer).quantize(CENT, rounding=ROUND_HALF_UP)
-        brutto_q = brutto.quantize(CENT, rounding=ROUND_HALF_UP)
-        if steuersatz not in result:
-            result[steuersatz] = [Decimal("0"), Decimal("0"), Decimal("0")]
-        result[steuersatz][0] = (result[steuersatz][0] + netto).quantize(CENT, rounding=ROUND_HALF_UP)
-        result[steuersatz][1] = (result[steuersatz][1] + steuer).quantize(CENT, rounding=ROUND_HALF_UP)
-        result[steuersatz][2] = (result[steuersatz][2] + brutto_q).quantize(CENT, rounding=ROUND_HALF_UP)
+        netto = brutto - steuer
+        if steuersatz not in sums:
+            sums[steuersatz] = [Decimal("0"), Decimal("0"), Decimal("0")]
+        sums[steuersatz][0] += netto
+        sums[steuersatz][1] += steuer
+        sums[steuersatz][2] += brutto
+
+    result = OrderedDict()
+    for steuersatz in sorted(sums):
+        result[steuersatz] = [
+            value.quantize(CENT, rounding=ROUND_HALF_UP) for value in sums[steuersatz]
+        ]
     return result
 
 
@@ -121,20 +140,24 @@ calculateMwstValuesInRechnung = calculate_mwst_values_in_rechnung
 
 
 def get_all_current_mwst_values_by_id(mwst_rates, mwst_values=None, items=None):
+    """Map MwSt IDs to [rate, netto, betrag, brutto] for the current receipt.
+
+    Mirrors Java `getAllCurrentMwstValuesByID()`. Rates are matched
+    numerically, so a DB rate like `0.19000` also matches `0.19`.
+    """
     if mwst_values is None:
         mwst_values = calculate_mwst_values_in_rechnung(items or [])
-    normalised = {}
-    for k, v in (mwst_values or {}).items():
-        kd = _to_decimal(k)
-        key = format(kd, "f") if kd is not None else str(k)
-        normalised[key] = list(v)
+    by_rate = {}
+    for rate, values in (mwst_values or {}).items():
+        rate_decimal = _to_decimal(rate)
+        if rate_decimal is not None:
+            by_rate[rate_decimal] = list(values)
     result = OrderedDict()
     for mwst_id, rate in (mwst_rates or {}).items():
-        rd = _to_decimal(rate)
-        key = format(rd, "f") if rd is not None else str(rate)
-        if key in normalised:
-            vals = normalised[key]
-            result[mwst_id] = [rd] + [Decimal(x) for x in vals[:3]]
+        rate_decimal = _to_decimal(rate)
+        if rate_decimal is not None and rate_decimal in by_rate:
+            values = by_rate[rate_decimal]
+            result[mwst_id] = [rate_decimal] + [Decimal(str(x)) for x in values[:3]]
     return result
 
 

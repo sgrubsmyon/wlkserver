@@ -2,8 +2,8 @@
 
 > **Sync note**: This document and `concepts/IMPLEMENTATION_PLAN.md` must be kept in sync. When implementation progress changes, update both files so new sessions without prior memory see a consistent status.
 
-> **Last Updated**: 2026-10-24  
-> **Status**: Phases 1-5 implemented at router level (TSE export adapter untested without hardware); main Phase 6/7 flows wired (see "Business Logic Wiring Gaps" for what remains); auth enforced on transaction endpoints; parity audit of the remaining low-priority endpoints done and resolved (see "Parity Audit"), Bestellung positions + date filter implemented; bar_brutto aggregation matches Java; sale/workflow validation and kassenstand balance validation wired; Bestellung CSV import supports positions; Bestellung/Inventur CSV export added (ODS deferred); CORS configured; core `/training` endpoints; integration tests incl. concurrency; same-origin nginx deployment and script automation documented as planned; test coverage 86%
+> **Last Updated**: 2026-10-25  
+> **Status**: Phases 1-5 implemented at router level (TSE export adapter untested without hardware); main Phase 6/7 flows wired (see "Business Logic Wiring Gaps" for what remains); auth enforced on transaction endpoints; parity audit of the remaining low-priority endpoints done and resolved (see "Parity Audit"), Bestellung positions + date filter implemented; bar_brutto aggregation matches Java; sale/workflow validation and kassenstand balance validation wired; Bestellung CSV import supports positions; Bestellung/Inventur CSV export added (ODS deferred); CORS configured; core `/training` endpoints; integration tests incl. concurrency; same-origin nginx deployment and script automation documented as planned; VAT module Java-parity checked and 100% tested; test coverage 87%
 
 ---
 
@@ -216,7 +216,13 @@
 
 ### Phase 6: Core Business Logic from Java (main flows wired; gaps below)
 
-[⏳] VAT Calculation Module (python/business/vat_calculator.py) - complete; used by sale creation and the abrechnung response (`get_all_current_mwst_values_by_id`)
+[x] VAT Calculation Module (python/business/vat_calculator.py) - complete and Java-parity checked
+- [x] `calculate_vat` mirrors `WindowContent.calculateVAT` (divide to 10 places HALF_UP, multiply, round to cents HALF_UP); handles negative storno amounts, 0 % rates and string/percent inputs
+- [x] `calculate_netto` / `calculate_total` (dicts, tuples, objects; skips missing prices)
+- [x] `calculate_mwst_values_in_rechnung` aggregates per rate and returns rates sorted ascending like the Java `TreeMap`; missing rates are booked at 0 %
+- [x] `get_all_current_mwst_values_by_id` maps MwSt IDs to `[rate, netto, betrag, brutto]`; rates are matched numerically so DB values like `0.19000` match `0.19` (previous string comparison silently dropped them)
+- [x] Used by sale creation (`calculate_mwst_summary`) and the Abrechnung Tag response (`mwst_nach_id`); `tests/test_vat_calculator.py` covers the module at 100 %
+[⏳] Sale Workflow Enhancements (python/business/sale_workflow.py) - `prepare_detail`/`calculate_mwst_summary` used in router; voucher creation and discount handling integrated; EC threshold warning surfaced; `user_id` populated from token
 - [x] `validate_detail` now called by the sale endpoint (rejects `stueckzahl == 0` before writing); `determine_mwst_satz` derives the rate via `artikel.produktgruppe.mwst` (was broken); `determine_ges_preis` covers explicit price, article price, variable price and discounts - covered by tests/test_sale_workflow.py
 [⏳] Storno Logic Enhancements (python/business/storno_logic.py) - basic storno works; voucher/installment handlers and reversing kassenstand entry implemented; TSE handling best-effort
 [⏳] Cash Register Operations (python/business/cash_register.py) - `update_kassenstand_for_sale`, `process_payment`, `ec_payment_threshold_check` and `validate_balance_change` wired; `end_of_day_procedure` basic; `is_training_mode` reads `TRAINING_MODE` env var
@@ -321,7 +327,7 @@
 
 ### Test Coverage Target
 
-- [x] Achieve 80%+ coverage (measured 86% on 2026-10-24, 150 tests passing)
+- [x] Achieve 80%+ coverage (measured 87% on 2026-10-25, 172 tests passing)
 
 ---
 
@@ -365,7 +371,7 @@ The remaining imported items are quality/production tasks, tracked below.
 
 ### Quality Assurance
 
-- [x] 80%+ test coverage (82% achieved)
+- [x] 80%+ test coverage (87% achieved)
 - [ ] All endpoints documented
 - [ ] All code documented
 
@@ -395,13 +401,13 @@ The remaining imported items are quality/production tasks, tracked below.
 - **Phase 6/7**: main sale/storno/settlement flows wired; per-user auth enforced on transaction create/mutate endpoints (admin endpoints still also accept the shared `ADMIN_TOKEN` stopgap)
 
 ### Business Logic Status
-- **Business Logic Ported**: CRUD + settlement aggregation + VAT/sale-workflow/storno/cash-register modules wired into the endpoints
+- **Business Logic Ported**: CRUD + settlement aggregation + VAT/sale-workflow/storno/cash-register modules wired into the endpoints; VAT module is Java-parity checked and fully tested
 - **Business Logic NOT wired**: TSE hardware (adapter untested); training mode covers sales only
 - **Remaining Java logic**: mainly validation/edge cases and training mode; no missing core workflow
 
 ### Testing Status
 - **Test Files**: 24 (incl. dedicated tests for abrechnung_monat/jahr, tse, sale_workflow, storno_logic, import_export)
-- **Test Coverage**: 86% measured with pytest-cov (target 80% achieved)
+- **Test Coverage**: 87% measured with pytest-cov (target 80% achieved)
 
 ---
 
