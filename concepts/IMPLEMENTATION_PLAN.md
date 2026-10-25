@@ -13,7 +13,7 @@ This document outlines the comprehensive implementation plan to complete the Fas
 ### ✅ Already Implemented
 - **Database Models**: All core tables have SQLModel definitions in `python/models.py` (training tables with core `/training` sale endpoints; `user_id` columns on all 8 transaction tables)
 - **CRUD Operations**: All planned entities have CRUD functionality, including Bestellung positions (`details` embedded in the order payload) and the Java order types `LM`/`KHW`/`IVT` (default `LM`; `IVT` holds the inventory count)
-- **Business Logic**: Modules under `python/business/` are wired into the main flows (VAT, sale workflow incl. vouchers/discounts and detail validation, storno incl. voucher/installment reversal and kassenstand reversal, cash-register side-effects incl. balance validation, TSE export best-effort). The VAT module is Java-parity checked and fully tested. Remaining gap: training mode covers sales only.
+- **Business Logic**: Modules under `python/business/` are wired into the main flows (VAT, sale workflow incl. vouchers/discounts and detail validation, storno incl. voucher/installment reversal and kassenstand reversal, cash-register side-effects incl. balance validation, TSE export best-effort). VAT module and sale workflow are Java-parity checked and fully tested. Remaining gap: training mode covers sales only.
 - **API Structure**: Clean FastAPI structure with proper routing
 - **Auth**: Per-user accounts (bcrypt + JWT), login auditing, `user_id` attribution on transaction endpoints, SQL migration in `migrations/02_user_auth/`; `require_user` enforced on transaction create/mutate endpoints, admin endpoints accept the shared `ADMIN_TOKEN` stopgap
 
@@ -392,6 +392,15 @@ Details and sources: `docs/VAT_ROUNDING.md`.
 - Add validation for financial calculations
 - Add business logic module for sale workflow
 
+**Status: ✅ Done (2026-10-25).**
+- VAT rate comes from the article's product group (`artikel.produktgruppe.mwst`); mixed-rate receipts are aggregated via `calculate_mwst_summary` using the configured rounding method (see 6.1)
+- Validation runs before anything is written: `stueckzahl != 0`, the article and (if passed) the discount must exist; a discount that exceeds the line price is rejected
+- Discounts mirror Java `Kassieren.checkForRabatt`: currently active actions are selected automatically (article-specific or a product group with `NULL` sub/subsub as wildcard, inside the `von..bis` window); an explicit `rabatt_id` overrides the automatic selection and is validated for existence, validity and applicability. All four modes are applied in Java order: absolute → relative → buy-X-get-Y-free → quantity-relative. Auto-applied discounts are stored in `verkauf_details.rabatt_id` when exactly one action applies
+- Voucher creation on GUTSCHEIN articles and `user_id` attribution remain in `python/routers/verkauf.py`
+- Customer-display integration is not applicable (there is no customer display in the web client; the Java code only pushes strings to a separate device)
+- Covered by `python/tests/test_sale_workflow.py`; the dead duplicate sale-creation helper in the business module was removed, the router is the single sale implementation
+- **Remaining (not planned):** the Java POS also auto-inserts a Pfand line (`Kassieren.checkForPfand`) and a separate RABATT line per discount. The API folds discounts into the line price and does not auto-add Pfand; both can be added later if the frontend needs them.
+
 ### 6.3 Advanced Storno Logic
 **Source**: Various Java files in `../git/src/org/weltladen_bonn/pos/kasse/`  
 **Target**: Enhance existing storno functionality
@@ -558,7 +567,7 @@ Scripts (cron jobs for price changes, supplier article imports, settlement creat
 | 🔴 HIGH | Validation | Comprehensive input validation | 1-2 days | ⏳ Partial |
 | 🔴 HIGH | Security | User accounts, authentication and authorization | 2-3 days | ✅ Done (ADMIN_TOKEN stopgap remains) |
 | 🟡 MEDIUM | Accounting | Abrechnung Tag (CR), Monat (CRD), Jahr (CRD) | 3-5 days | ✅ Done |
-| 🟡 MEDIUM | Business Logic | VAT calculation, sale creation | 2-3 days | ⏳ VAT done + Java-parity checked; sale-creation edge cases still open |
+| 🟡 MEDIUM | Business Logic | VAT calculation, sale creation | 2-3 days | ✅ Done (VAT + sale workflow incl. discounts; storno/cash-register still partial) |
 | 🟡 MEDIUM | TSE | TSE transaction support + export endpoints | 2-3 days | ⏳ Adapter untested without hardware |
 | 🟡 MEDIUM | Supporting | Zaehlprotokoll (CRU), Bestellung (CRUD incl. positions) | 2-3 days | ✅ Done |
 | 🟢 LOW | Utilities | Import/Export, Search | 1-2 days | ⏳ Partial (CSV done, ODS deferred) |
@@ -625,7 +634,7 @@ Scripts (cron jobs for price changes, supplier article imports, settlement creat
 - Minimum 80% code coverage
 - All critical paths tested
 - All business logic validated
-- Current: 87% (179 tests passing, measured 2026-10-25)
+- Current: 88% (200 tests passing, measured 2026-10-25)
 
 ### Real Database Tests
 - Tests run on in-memory SQLite, which does not enforce foreign keys and ignores `UNSIGNED`/`YEAR`/`TIMESTAMP` semantics

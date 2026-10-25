@@ -3,7 +3,7 @@
 > **Sync note**: This document and `concepts/IMPLEMENTATION_PLAN.md` must be kept in sync. When implementation progress changes, update both files so new sessions without prior memory see a consistent status.
 
 > **Last Updated**: 2026-10-25  
-> **Status**: Phases 1-5 implemented at router level (TSE export adapter untested without hardware); main Phase 6/7 flows wired (see "Business Logic Wiring Gaps" for what remains); auth enforced on transaction endpoints; parity audit of the remaining low-priority endpoints done and resolved (see "Parity Audit"), Bestellung positions + date filter implemented; bar_brutto aggregation matches Java; sale/workflow validation and kassenstand balance validation wired; Bestellung CSV import supports positions; Bestellung/Inventur CSV export added (ODS deferred); CORS configured; core `/training` endpoints; integration tests incl. concurrency; same-origin nginx deployment and script automation documented as planned; VAT module Java-parity checked and 100% tested; test coverage 87%
+> **Status**: Phases 1-5 implemented at router level (TSE export adapter untested without hardware); main Phase 6/7 flows wired (see "Business Logic Wiring Gaps" for what remains); auth enforced on transaction endpoints; parity audit of the remaining low-priority endpoints done and resolved (see "Parity Audit"), Bestellung positions + date filter implemented; bar_brutto aggregation matches Java; sale workflow (validation, automatic discounts, all four modes) and kassenstand balance validation complete; Bestellung CSV import supports positions; Bestellung/Inventur CSV export added (ODS deferred); CORS configured; core `/training` endpoints; integration tests incl. concurrency; same-origin nginx deployment and script automation documented as planned; VAT module Java-parity checked, 100% tested, rounding method configurable; test coverage 88%
 
 ---
 
@@ -224,8 +224,15 @@
 - [x] Used by sale creation (`calculate_mwst_summary`) and the Abrechnung Tag response (`mwst_nach_id`); `tests/test_vat_calculator.py` covers the module at 100 %
 - [x] Rounding mode researched (2026-10-25): no German statutory rounding rule for VAT on invoices (§ 14 UStG / § 33 UStDV); EuGH C-484/06 leaves the method to the Member States; commercial rounding to cents (`ROUND_HALF_UP`) is the practice and matches the Java POS' explicit `RoundingMode.HALF_UP`. Details/sources: `docs/VAT_ROUNDING.md`
 - [x] Rounding method configurable for receipts via `VAT_ROUNDING_METHOD` (`horizontal` = per position, Java POS default; `vertical` = per VAT rate, EN 16931 BR-CO-17). Read per request from the environment, invalid values abort startup; stored in `verkauf_mwst` for new sales. Invoices must always pass `method="vertical"` explicitly
-[⏳] Sale Workflow Enhancements (python/business/sale_workflow.py) - `prepare_detail`/`calculate_mwst_summary` used in router; voucher creation and discount handling integrated; EC threshold warning surfaced; `user_id` populated from token
-- [x] `validate_detail` now called by the sale endpoint (rejects `stueckzahl == 0` before writing); `determine_mwst_satz` derives the rate via `artikel.produktgruppe.mwst` (was broken); `determine_ges_preis` covers explicit price, article price, variable price and discounts - covered by tests/test_sale_workflow.py
+[x] Sale Workflow Enhancements (python/business/sale_workflow.py) - complete
+- [x] `validate_detail` runs before any write (rejects `stueckzahl == 0`, unknown `artikel_id`, unknown `rabatt_id`)
+- [x] `determine_mwst_satz` derives the rate via `artikel.produktgruppe.mwst`; VAT for discounts always comes from the article
+- [x] `determine_ges_preis` covers explicit price, article price and `variabler_preis` articles (no derived price)
+- [x] Discount handling now mirrors Java `Kassieren.checkForRabatt`: currently active actions are selected **automatically** (article-specific or via matching product group with `NULL` as wildcard, within the `von..bis` window); an explicitly passed `rabatt_id` overrides automatic selection and is validated (exists, active, applies to the article); all four modes are supported in Java order: absolute, relative, buy-X-get-Y-free, quantity-relative; a discount exceeding the line price is rejected; negative quantities (storno) get no discount
+- [x] Automatically applied discounts are recorded in `verkauf_details.rabatt_id` when exactly one action applies (bookkeeping attribution)
+- [x] EC threshold helper delegates to `cash_register.ec_payment_threshold_check` (no duplicate implementation)
+- [x] Dead duplicate sale-creation path (`create_verkauf`/`create_sale` in the module, unused by the API) removed - the router remains the single sale implementation
+- [x] Covered by tests/test_sale_workflow.py (auto/explicit discounts, group wildcards, date windows, all four modes, rejections, router-level attribution)
 [⏳] Storno Logic Enhancements (python/business/storno_logic.py) - basic storno works; voucher/installment handlers and reversing kassenstand entry implemented; TSE handling best-effort
 [⏳] Cash Register Operations (python/business/cash_register.py) - `update_kassenstand_for_sale`, `process_payment`, `ec_payment_threshold_check` and `validate_balance_change` wired; `end_of_day_procedure` basic; `is_training_mode` reads `TRAINING_MODE` env var
 
@@ -244,7 +251,7 @@
 ### Sale Workflow (`python/business/sale_workflow.py`)
 - [x] `check_ec_payment_threshold` invoked in sale endpoint (EC warning surfaced)
 - [x] Voucher creation integrated into sale creation (GUTSCHEIN article creates Gutschein) - items 1-4
-- [x] Discount handling integrated in determine_ges_preis (rabatt_relativ/absolut/mengenrabatt) - items 1-4
+- [x] Discount handling integrated in determine_ges_preis: all four Java modes (absolute, relative, buy-X-get-Y-free, quantity-relative), automatic selection of active actions incl. product-group wildcards, explicit `rabatt_id` override with date/match validation, negative-result rejection - items 1-4
 - [x] `require_user` enforced on all transaction create/mutate endpoints (step 4 enforcement follow-up)
 
 ### Storno (`python/business/storno_logic.py`)
@@ -329,7 +336,7 @@
 
 ### Test Coverage Target
 
-- [x] Achieve 80%+ coverage (measured 87% on 2026-10-25, 179 tests passing)
+- [x] Achieve 80%+ coverage (measured 88% on 2026-10-25, 200 tests passing)
 
 ---
 
@@ -373,7 +380,7 @@ The remaining imported items are quality/production tasks, tracked below.
 
 ### Quality Assurance
 
-- [x] 80%+ test coverage (87% achieved)
+- [x] 80%+ test coverage (88% achieved)
 - [ ] All endpoints documented
 - [ ] All code documented
 
@@ -409,7 +416,7 @@ The remaining imported items are quality/production tasks, tracked below.
 
 ### Testing Status
 - **Test Files**: 24 (incl. dedicated tests for abrechnung_monat/jahr, tse, sale_workflow, storno_logic, import_export)
-- **Test Coverage**: 87% measured with pytest-cov (target 80% achieved)
+- **Test Coverage**: 88% measured with pytest-cov (target 80% achieved)
 
 ---
 

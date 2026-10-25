@@ -2,16 +2,14 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from decimal import Decimal
-from typing import Any, Optional
+from decimal import Decimal, ROUND_HALF_UP
 
 from fastapi import HTTPException
 from sqlmodel import Session, select
 
-from ..models import Artikel, Mwst, Rabattaktion, Verkauf, VerkaufCreate, VerkaufDetails, VerkaufDetailsCreate, VerkaufMwst
-from .vat_calculator import calculate_mwst_values_in_rechnung, _to_decimal
-
-EC_THRESHOLD = Decimal("10.00")
+from ..models import Artikel, Mwst, Rabattaktion, VerkaufDetails, VerkaufDetailsCreate
+from .cash_register import EC_THRESHOLD, ec_payment_threshold_check
+from .vat_calculator import calculate_mwst_values_in_rechnung
 
 
 def _resolve(a, b):
@@ -20,6 +18,14 @@ def _resolve(a, b):
     if isinstance(b, Session) and not isinstance(a, Session):
         return b, a
     return a, b
+
+
+def _field(detail, name, default=None):
+    """Read a detail field from a model instance or a plain dict."""
+    value = getattr(detail, name, None)
+    if value is None and isinstance(detail, dict):
+        value = detail.get(name)
+    return default if value is None else value
 
 
 def validate_detail(*args, **kwargs):
@@ -32,13 +38,17 @@ def validate_detail(*args, **kwargs):
         else:
             detail = args[0]
             session = args[1] if len(args) > 1 else session
-    stueckzahl = getattr(detail, "stueckzahl", None)
-    if stueckzahl is None and isinstance(detail, dict):
-        stueckzahl = detail.get("stueckzahl", 1)
-    if stueckzahl is None:
-        stueckzahl = 1
+    stueckzahl = _field(detail, "stueckzahl", 1)
     if stueckzahl == 0:
         raise HTTPException(status_code=400, detail="stueckzahl must not be zero")
+    if session is None:
+        return
+    artikel_id = _field(detail, "artikel_id")
+    if artikel_id is not None and session.get(Artikel, artikel_id) is None:
+        raise HTTPException(status_code=400, detail=f"Artikel {artikel_id} not found")
+    rabatt_id = _field(detail, "rabatt_id")
+    if rabatt_id is not None and session.get(Rabattaktion, rabatt_id) is None:
+        raise HTTPException(status_code=400, detail=f"Rabattaktion {rabatt_id} not found")
 
 
 def determine_mwst_satz(*args, **kwargs):
@@ -60,17 +70,99 @@ def determine_mwst_satz(*args, **kwargs):
                 mwst = session.get(Mwst, pg.mwst_id)
                 if mwst is not None and mwst.mwst_satz is not None:
                     return float(mwst.mwst_satz)
-    rabatt_id = getattr(detail, "rabatt_id", None)
-    if rabatt_id is None and isinstance(detail, dict):
-        rabatt_id = detail.get("rabatt_id")
-    if rabatt_id is not None and session is not None:
-        rabatt = session.get(Rabattaktion, rabatt_id)
-        if rabatt is not None and getattr(rabatt, "mwst_satz", None) is not None:
-            return float(rabatt.mwst_satz)
     mwst_satz = getattr(detail, "mwst_satz", None)
     if mwst_satz is None and isinstance(detail, dict):
         mwst_satz = detail.get("mwst_satz")
     return mwst_satz
+
+
+def _rabatt_matches(rabatt: Rabattaktion, artikel: Artikel) -> bool:
+    """True if the action targets the article directly or its product group.
+
+    Mirrors the Java POS group matching: a NULL sub/subsub id acts as a wildcard
+    so an action can be attached to a higher-level group.
+    """
+    if rabatt.artikel_id is not None:
+        return rabatt.artikel_id == artikel.artikel_id
+    if rabatt.produktgruppen_id is None:
+        return False
+    pg = artikel.produktgruppe
+    action_pg = rabatt.produktgruppe
+    if pg is None or action_pg is None:
+        return False
+    if action_pg.toplevel_id != pg.toplevel_id:
+        return False
+    if action_pg.sub_id is not None and action_pg.sub_id != pg.sub_id:
+        return False
+    if action_pg.subsub_id is not None and action_pg.subsub_id != pg.subsub_id:
+        return False
+    return True
+
+
+def _active_rabattaktionen(session: Session, artikel: Artikel, rabatt_id=None):
+    """Discount actions to apply: an explicit one, or all currently active ones.
+
+    Automatic selection mirrors the Java POS (`Kassieren.checkForRabatt`): the
+    action must be within its `von..bis` window and target the article or its
+    product group.
+    """
+    now = datetime.now(timezone.utc)
+    if rabatt_id is not None:
+        rabatt = session.get(Rabattaktion, rabatt_id)
+        if rabatt is None:
+            raise HTTPException(status_code=400, detail=f"Rabattaktion {rabatt_id} not found")
+        if rabatt.von is not None and rabatt.von > now:
+            raise HTTPException(status_code=400, detail="Rabattaktion is not active yet")
+        if rabatt.bis is not None and rabatt.bis < now:
+            raise HTTPException(status_code=400, detail="Rabattaktion has expired")
+        if not _rabatt_matches(rabatt, artikel):
+            raise HTTPException(status_code=400, detail="Rabattaktion does not apply to this article")
+        return [rabatt]
+
+    rows = session.exec(
+        select(Rabattaktion)
+        .where(
+            Rabattaktion.von <= now,
+            (Rabattaktion.bis.is_(None)) | (Rabattaktion.bis >= now),
+        )
+        .order_by(Rabattaktion.rabatt_id)
+    ).all()
+    return [r for r in rows if _rabatt_matches(r, artikel)]
+
+
+def _apply_rabattaktionen(base_unit, stueckzahl, aktionen):
+    """Final line price with the given discounts.
+
+    Java order (`Kassieren.checkForRabatt`): absolute, relative, free items,
+    quantity-relative. Each stage works on the unit price left by the previous one.
+    """
+    qty = Decimal(str(stueckzahl))
+    unit = Decimal(str(base_unit))
+    reduction = Decimal("0")
+
+    for r in aktionen:
+        if r.rabatt_absolut is not None:
+            reduction += qty * Decimal(str(r.rabatt_absolut))
+            unit -= Decimal(str(r.rabatt_absolut))
+    for r in aktionen:
+        if r.rabatt_relativ is not None:
+            reduction += qty * Decimal(str(r.rabatt_relativ)) * unit
+            unit -= Decimal(str(r.rabatt_relativ)) * unit
+    for r in aktionen:
+        if (r.mengenrabatt_schwelle and r.mengenrabatt_anzahl_kostenlos
+                and stueckzahl >= r.mengenrabatt_schwelle):
+            free = (stueckzahl // r.mengenrabatt_schwelle) * r.mengenrabatt_anzahl_kostenlos
+            reduction += free * unit
+    for r in aktionen:
+        if (r.mengenrabatt_relativ is not None and r.mengenrabatt_schwelle
+                and stueckzahl >= r.mengenrabatt_schwelle):
+            reduction += qty * Decimal(str(r.mengenrabatt_relativ)) * unit
+            unit -= Decimal(str(r.mengenrabatt_relativ)) * unit
+
+    total = qty * Decimal(str(base_unit)) - reduction
+    if total < 0:
+        raise HTTPException(status_code=400, detail="Rabattaktion exceeds the line price")
+    return total.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
 
 def determine_ges_preis(*args, **kwargs):
@@ -81,40 +173,22 @@ def determine_ges_preis(*args, **kwargs):
             session, detail = _resolve(args[0], args[1])
         elif len(args) == 1:
             detail = args[0]
-    artikel_id = getattr(detail, "artikel_id", None)
-    if artikel_id is None and isinstance(detail, dict):
-        artikel_id = detail.get("artikel_id")
-    stueckzahl = getattr(detail, "stueckzahl", None)
-    if stueckzahl is None and isinstance(detail, dict):
-        stueckzahl = detail.get("stueckzahl", 1)
-    if stueckzahl is None:
-        stueckzahl = 1
-    ges_preis = getattr(detail, "ges_preis", None)
-    if ges_preis is None and isinstance(detail, dict):
-        ges_preis = detail.get("ges_preis")
+    artikel_id = _field(detail, "artikel_id")
+    stueckzahl = _field(detail, "stueckzahl", 1)
+    ges_preis = _field(detail, "ges_preis")
     if ges_preis is not None:
         return float(ges_preis)
     if artikel_id is not None and session is not None:
         artikel = session.get(Artikel, artikel_id)
         if artikel is not None and not getattr(artikel, "variabler_preis", False) and artikel.vk_preis is not None:
-            base = float(stueckzahl * artikel.vk_preis)
-            # Apply discount from Rabattaktion if present (item 4)
-            rabatt_id = getattr(detail, "rabatt_id", None)
-            if rabatt_id is None and isinstance(detail, dict):
-                rabatt_id = detail.get("rabatt_id")
-            if rabatt_id is not None:
-                rabatt = session.get(Rabattaktion, rabatt_id)
-                if rabatt is not None:
-                    if getattr(rabatt, "rabatt_relativ", None) is not None:
-                        base = base * (1.0 - float(rabatt.rabatt_relativ))
-                    elif getattr(rabatt, "rabatt_absolut", None) is not None:
-                        base = base - float(rabatt.rabatt_absolut) * stueckzahl
-                    if getattr(rabatt, "mengenrabatt_anzahl_kostenlos", None) and stueckzahl >= (rabatt.mengenrabatt_schwelle or 0):
-                        # buy X get Y free: reduce by free items
-                        free = (stueckzahl // (rabatt.mengenrabatt_schwelle or 1)) * (rabatt.mengenrabatt_anzahl_kostenlos or 0)
-                        if artikel.vk_preis is not None:
-                            base -= free * float(artikel.vk_preis)
-            return round(base, 2)
+            if stueckzahl <= 0:
+                return float((Decimal(str(artikel.vk_preis)) * Decimal(str(stueckzahl))).quantize(
+                    Decimal("0.01"), rounding=ROUND_HALF_UP))
+            aktionen = _active_rabattaktionen(session, artikel, _field(detail, "rabatt_id"))
+            if aktionen:
+                return float(_apply_rabattaktionen(artikel.vk_preis, stueckzahl, aktionen))
+            return float((Decimal(str(artikel.vk_preis)) * Decimal(str(stueckzahl))).quantize(
+                Decimal("0.01"), rounding=ROUND_HALF_UP))
     return None
 
 
@@ -137,6 +211,7 @@ def prepare_detail(*args, **kwargs):
     stueckzahl = data.get("stueckzahl", 1)
     mwst_satz = data.get("mwst_satz")
     ges_preis = data.get("ges_preis")
+    explicit_price = ges_preis is not None
 
     if mwst_satz is None:
         derived = determine_mwst_satz(session, data) if session is not None else determine_mwst_satz(data)
@@ -147,6 +222,15 @@ def prepare_detail(*args, **kwargs):
         if derived is not None:
             ges_preis = derived
 
+    rabatt_id = data.get("rabatt_id")
+    if (rabatt_id is None and not explicit_price and session is not None
+            and data.get("artikel_id") is not None):
+        artikel = session.get(Artikel, data["artikel_id"])
+        if artikel is not None and not getattr(artikel, "variabler_preis", False):
+            aktionen = _active_rabattaktionen(session, artikel)
+            if len(aktionen) == 1:
+                rabatt_id = aktionen[0].rabatt_id
+
     return VerkaufDetails(
         position=data.get("position"),
         stueckzahl=stueckzahl,
@@ -154,7 +238,7 @@ def prepare_detail(*args, **kwargs):
         mwst_satz=mwst_satz if mwst_satz is not None else 0.0,
         rechnungs_nr=data.get("rechnungs_nr", 0),
         artikel_id=data.get("artikel_id"),
-        rabatt_id=data.get("rabatt_id"),
+        rabatt_id=rabatt_id,
     )
 
 
@@ -176,95 +260,10 @@ def calculate_mwst_summary(details):
 
 
 def check_ec_payment_threshold(total, ec_zahlung=None):
-    # support (total, ec) or (ec, total)? detect bool
+    """EC card warning below the 10 EUR threshold (delegates to cash_register)."""
     if isinstance(total, bool):
         total, ec_zahlung = ec_zahlung, total
-    t = _to_decimal(total) or Decimal("0")
-    if ec_zahlung and t < EC_THRESHOLD:
-        return "Gesamtbetrag liegt unter 10,00 EUR bei EC-Zahlung"
-    return None
-
-
-def create_verkauf(*args, **kwargs):
-    session = kwargs.get("session")
-    verkauf = kwargs.get("verkauf") or kwargs.get("verkauf_create") or kwargs.get("data")
-    if session is None or verkauf is None:
-        if len(args) >= 2:
-            session, verkauf = _resolve(args[0], args[1])
-        elif len(args) == 1:
-            verkauf = args[0]
-    # if only one passed and it's not session, cannot create without session
-    from sqlmodel import Session as S
-    if not isinstance(session, S):
-        # maybe session is second
-        pass
-    ec_zahlung = getattr(verkauf, "ec_zahlung", None)
-    if ec_zahlung is None and isinstance(verkauf, dict):
-        ec_zahlung = verkauf.get("ec_zahlung", False)
-    if ec_zahlung is None:
-        ec_zahlung = False
-    kunde_gibt = getattr(verkauf, "kunde_gibt", None)
-    if kunde_gibt is None and isinstance(verkauf, dict):
-        kunde_gibt = verkauf.get("kunde_gibt", None)
-    storno_von = getattr(verkauf, "storno_von", None)
-    if storno_von is None and isinstance(verkauf, dict):
-        storno_von = verkauf.get("storno_von", None)
-    user_id = getattr(verkauf, "user_id", None)
-    if user_id is None and isinstance(verkauf, dict):
-        user_id = verkauf.get("user_id", None)
-    details_in = getattr(verkauf, "verkauf_details", None)
-    if details_in is None and isinstance(verkauf, dict):
-        details_in = verkauf.get("verkauf_details", []) or []
-    if details_in is None:
-        details_in = []
-
-    new_v = Verkauf(
-        verkaufsdatum=datetime.now(timezone.utc),
-        ec_zahlung=ec_zahlung,
-        kunde_gibt=kunde_gibt,
-        storno_von=storno_von,
-        user_id=user_id,
-    )
-    new_v.rechnungs_nr = None
-    session.add(new_v)
-    session.commit()
-    session.refresh(new_v)
-
-    prepared = []
-    for d in details_in:
-        vd = prepare_detail(session, d)
-        vd.vd_id = None
-        vd.rechnungs_nr = new_v.rechnungs_nr
-        session.add(vd)
-        prepared.append(vd)
-    session.commit()
-    for vd in prepared:
-        session.refresh(vd)
-
-    summary = calculate_mwst_summary(prepared)
-    for rate, vals in summary.items():
-        m_obj = VerkaufMwst(
-            rechnungs_nr=new_v.rechnungs_nr,
-            mwst_satz=float(rate),
-            mwst_netto=float(vals["mwst_netto"]),
-            mwst_betrag=float(vals["mwst_betrag"]),
-        )
-        session.add(m_obj)
-    session.commit()
-    session.refresh(new_v)
-
-    # Cash register side-effect for cash (non-EC) sales, mirroring the router.
-    if not ec_zahlung:
-        try:
-            from .cash_register import update_kassenstand_for_sale
-            update_kassenstand_for_sale(session=session, rechnungs_nr=new_v.rechnungs_nr)
-        except Exception:
-            pass
-    return new_v
-
-
-create_sale = create_verkauf
-createVerkauf = create_verkauf
+    return ec_payment_threshold_check(total, bool(ec_zahlung))
 
 
 __all__ = [
@@ -275,7 +274,4 @@ __all__ = [
     "prepare_detail",
     "calculate_mwst_summary",
     "check_ec_payment_threshold",
-    "create_verkauf",
-    "create_sale",
-    "createVerkauf",
 ]

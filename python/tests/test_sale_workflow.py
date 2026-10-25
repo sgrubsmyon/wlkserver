@@ -1,9 +1,10 @@
 import pytest
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from sqlmodel import select
 
 from python.models import (
-    Artikel, Produktgruppe, Lieferant, Mwst,
+    Artikel, Produktgruppe, Lieferant, Mwst, Rabattaktion,
     Verkauf, VerkaufDetails, VerkaufDetailsCreate, VerkaufMwst,
 )
 from python.business.sale_workflow import (
@@ -13,7 +14,6 @@ from python.business.sale_workflow import (
     prepare_detail,
     calculate_mwst_summary,
     check_ec_payment_threshold,
-    create_verkauf,
 )
 
 
@@ -45,11 +45,11 @@ def _seed_lieferant(session):
     return l
 
 
-def _seed_artikel(session, mwst_satz=0.19, vk_preis=10.0, variabler_preis=False):
+def _seed_artikel(session, mwst_satz=0.19, vk_preis=10.0, variabler_preis=False, artikel_nr="001"):
     pg = _seed_pg(session, mwst_satz=mwst_satz)
     l = _seed_lieferant(session)
     a = Artikel(
-        artikel_nr="001",
+        artikel_nr=artikel_nr,
         artikel_name="Test Artikel",
         produktgruppen_id=pg.produktgruppen_id,
         lieferant_id=l.lieferant_id,
@@ -164,16 +164,253 @@ def test_check_ec_threshold_cash(session):
     assert warning is None
 
 
-def test_create_verkauf_with_details(session):
-    artikel = _seed_artikel(session, mwst_satz=0.19, vk_preis=10.0)
-    v = create_verkauf(session, {
-        "ec_zahlung": False,
-        "verkauf_details": [
-            {"artikel_id": artikel.artikel_id, "stueckzahl": 2},
-        ],
+# ------------------------------------------------------------ discounts
+
+def _seed_rabatt(session, **kwargs):
+    now = datetime.now(timezone.utc)
+    values = {"aktionsname": "Aktion", "von": now - timedelta(days=1), "bis": None}
+    values.update(kwargs)
+    r = Rabattaktion(**values)
+    r.rabatt_id = None
+    session.add(r)
+    session.commit()
+    session.refresh(r)
+    return r
+
+
+def test_determine_ges_preis_applies_active_article_rabatt(session):
+    artikel = _seed_artikel(session, vk_preis=10.0)
+    _seed_rabatt(session, artikel_id=artikel.artikel_id, rabatt_relativ=0.10)
+    assert determine_ges_preis(session, {"artikel_id": artikel.artikel_id, "stueckzahl": 2}) == 18.0
+
+
+def test_determine_ges_preis_ignores_expired_rabatt(session):
+    artikel = _seed_artikel(session, vk_preis=10.0)
+    _seed_rabatt(
+        session, artikel_id=artikel.artikel_id, rabatt_relativ=0.10,
+        von=datetime.now(timezone.utc) - timedelta(days=10),
+        bis=datetime.now(timezone.utc) - timedelta(days=5),
+    )
+    assert determine_ges_preis(session, {"artikel_id": artikel.artikel_id, "stueckzahl": 2}) == 20.0
+
+
+def test_determine_ges_preis_ignores_future_rabatt(session):
+    artikel = _seed_artikel(session, vk_preis=10.0)
+    _seed_rabatt(
+        session, artikel_id=artikel.artikel_id, rabatt_relativ=0.10,
+        von=datetime.now(timezone.utc) + timedelta(days=5), bis=None,
+    )
+    assert determine_ges_preis(session, {"artikel_id": artikel.artikel_id, "stueckzahl": 1}) == 10.0
+
+
+def test_determine_ges_preis_applies_group_rabatt_with_wildcards(session):
+    # action on the top-level group (sub/subsub NULL) applies to a nested article group
+    top = _seed_pg(session, mwst_satz=0.19)
+    nested = Produktgruppe(produktgruppen_name="Nested", toplevel_id=top.toplevel_id,
+                          sub_id=5, subsub_id=7, mwst_id=top.mwst_id)
+    session.add(nested)
+    session.commit()
+    session.refresh(nested)
+    l = _seed_lieferant(session)
+    a = Artikel(artikel_nr="G1", artikel_name="Gruppenartikel",
+                produktgruppen_id=nested.produktgruppen_id, lieferant_id=l.lieferant_id,
+                vk_preis=10.0)
+    session.add(a)
+    session.commit()
+    session.refresh(a)
+
+    _seed_rabatt(session, produktgruppen_id=top.produktgruppen_id, rabatt_absolut=2.0)
+    assert determine_ges_preis(session, {"artikel_id": a.artikel_id, "stueckzahl": 3}) == 24.0
+
+
+def test_determine_ges_preis_ignores_group_rabatt_for_other_group(session):
+    pg = _seed_pg(session)
+    other = Produktgruppe(produktgruppen_name="Other", toplevel_id=99, mwst_id=pg.mwst_id)
+    session.add(other)
+    session.commit()
+    session.refresh(other)
+    artikel = _seed_artikel(session, vk_preis=10.0)
+    _seed_rabatt(session, produktgruppen_id=other.produktgruppen_id, rabatt_absolut=5.0)
+    assert determine_ges_preis(session, {"artikel_id": artikel.artikel_id, "stueckzahl": 1}) == 10.0
+
+
+def test_explicit_rabatt_id_overrides_automatic_ones(session):
+    artikel = _seed_artikel(session, vk_preis=10.0)
+    _seed_rabatt(session, artikel_id=artikel.artikel_id, rabatt_relativ=0.10)
+    explicit = _seed_rabatt(session, artikel_id=artikel.artikel_id, rabatt_relativ=0.30)
+    price = determine_ges_preis(session, {
+        "artikel_id": artikel.artikel_id, "stueckzahl": 1, "rabatt_id": explicit.rabatt_id,
     })
-    assert v.rechnungs_nr is not None
-    assert len(v.verkauf_details) == 1
-    assert v.verkauf_details[0].ges_preis == 20.0
-    assert len(v.verkauf_mwst) == 1
-    assert v.verkauf_mwst[0].mwst_satz == 0.19
+    assert price == 7.0
+
+
+def test_explicit_rabatt_id_must_match_article(session):
+    artikel = _seed_artikel(session, vk_preis=10.0)
+    other = _seed_artikel(session, artikel_nr="A2", vk_preis=10.0)
+    foreign = _seed_rabatt(session, artikel_id=other.artikel_id, rabatt_relativ=0.10)
+    with pytest.raises(Exception) as exc:
+        determine_ges_preis(session, {
+            "artikel_id": artikel.artikel_id, "stueckzahl": 1, "rabatt_id": foreign.rabatt_id,
+        })
+    assert "does not apply" in str(exc.value)
+
+
+def test_explicit_expired_rabatt_id_is_rejected(session):
+    artikel = _seed_artikel(session, vk_preis=10.0)
+    expired = _seed_rabatt(
+        session, artikel_id=artikel.artikel_id, rabatt_relativ=0.10,
+        von=datetime.now(timezone.utc) - timedelta(days=10),
+        bis=datetime.now(timezone.utc) - timedelta(days=1),
+    )
+    with pytest.raises(Exception) as exc:
+        determine_ges_preis(session, {
+            "artikel_id": artikel.artikel_id, "stueckzahl": 1, "rabatt_id": expired.rabatt_id,
+        })
+    assert "expired" in str(exc.value)
+
+
+def test_determine_ges_preis_stacks_absolute_then_relative(session):
+    # Java order: absolute first, then relative on the reduced unit price
+    artikel = _seed_artikel(session, vk_preis=10.0)
+    _seed_rabatt(session, artikel_id=artikel.artikel_id, rabatt_absolut=1.0, rabatt_relativ=0.10)
+    assert determine_ges_preis(session, {"artikel_id": artikel.artikel_id, "stueckzahl": 1}) == 8.1
+
+
+def test_determine_ges_preis_quantity_relative(session):
+    artikel = _seed_artikel(session, vk_preis=10.0)
+    _seed_rabatt(session, artikel_id=artikel.artikel_id,
+                 mengenrabatt_schwelle=3, mengenrabatt_relativ=0.10)
+    assert determine_ges_preis(session, {"artikel_id": artikel.artikel_id, "stueckzahl": 2}) == 20.0
+    assert determine_ges_preis(session, {"artikel_id": artikel.artikel_id, "stueckzahl": 3}) == 27.0
+
+
+def test_determine_ges_preis_free_items(session):
+    artikel = _seed_artikel(session, vk_preis=10.0)
+    _seed_rabatt(session, artikel_id=artikel.artikel_id,
+                 mengenrabatt_schwelle=2, mengenrabatt_anzahl_kostenlos=1)
+    # 4 pieces, every 2nd free -> 2 paid
+    assert determine_ges_preis(session, {"artikel_id": artikel.artikel_id, "stueckzahl": 4}) == 20.0
+
+
+def test_determine_ges_preis_rejects_discount_above_price(session):
+    artikel = _seed_artikel(session, vk_preis=10.0)
+    _seed_rabatt(session, artikel_id=artikel.artikel_id, rabatt_absolut=20.0)
+    with pytest.raises(Exception) as exc:
+        determine_ges_preis(session, {"artikel_id": artikel.artikel_id, "stueckzahl": 1})
+    assert "exceeds" in str(exc.value)
+
+
+def test_prepare_detail_records_auto_rabatt_id(session):
+    artikel = _seed_artikel(session, vk_preis=10.0)
+    action = _seed_rabatt(session, artikel_id=artikel.artikel_id, rabatt_relativ=0.10)
+    vd = prepare_detail(session, {"artikel_id": artikel.artikel_id, "stueckzahl": 1})
+    assert vd.rabatt_id == action.rabatt_id
+    assert vd.ges_preis == 9.0
+
+
+def test_prepare_detail_keeps_explicit_price(session):
+    artikel = _seed_artikel(session, vk_preis=10.0)
+    _seed_rabatt(session, artikel_id=artikel.artikel_id, rabatt_relativ=0.10)
+    vd = prepare_detail(session, {"artikel_id": artikel.artikel_id, "stueckzahl": 1, "ges_preis": 7.5})
+    assert vd.ges_preis == 7.5
+    assert vd.rabatt_id is None
+
+
+def test_rabatt_without_target_is_ignored(session):
+    artikel = _seed_artikel(session, vk_preis=10.0)
+    _seed_rabatt(session, rabatt_relativ=0.10)
+    assert determine_ges_preis(session, {"artikel_id": artikel.artikel_id, "stueckzahl": 1}) == 10.0
+
+
+def test_group_rabatt_with_sub_mismatch_is_ignored(session):
+    pg = _seed_pg(session)
+    nested = Produktgruppe(produktgruppen_name="Nested", toplevel_id=pg.toplevel_id,
+                          sub_id=2, subsub_id=7, mwst_id=pg.mwst_id)
+    session.add(nested)
+    session.commit()
+    session.refresh(nested)
+    l = _seed_lieferant(session)
+    a = Artikel(artikel_nr="G2", artikel_name="Gruppenartikel 2",
+                produktgruppen_id=nested.produktgruppen_id, lieferant_id=l.lieferant_id,
+                vk_preis=10.0)
+    session.add(a)
+    session.commit()
+    session.refresh(a)
+
+    action_pg = Produktgruppe(produktgruppen_name="Action", toplevel_id=pg.toplevel_id,
+                              sub_id=1, subsub_id=7, mwst_id=pg.mwst_id)
+    session.add(action_pg)
+    session.commit()
+    session.refresh(action_pg)
+    _seed_rabatt(session, produktgruppen_id=action_pg.produktgruppen_id, rabatt_absolut=2.0)
+    assert determine_ges_preis(session, {"artikel_id": a.artikel_id, "stueckzahl": 1}) == 10.0
+
+
+def test_group_rabatt_with_subsub_mismatch_is_ignored(session):
+    pg = _seed_pg(session)
+    nested = Produktgruppe(produktgruppen_name="Nested", toplevel_id=pg.toplevel_id,
+                          sub_id=1, subsub_id=7, mwst_id=pg.mwst_id)
+    session.add(nested)
+    session.commit()
+    session.refresh(nested)
+    l = _seed_lieferant(session)
+    a = Artikel(artikel_nr="G3", artikel_name="Gruppenartikel 3",
+                produktgruppen_id=nested.produktgruppen_id, lieferant_id=l.lieferant_id,
+                vk_preis=10.0)
+    session.add(a)
+    session.commit()
+    session.refresh(a)
+
+    action_pg = Produktgruppe(produktgruppen_name="Action", toplevel_id=pg.toplevel_id,
+                              sub_id=1, subsub_id=9, mwst_id=pg.mwst_id)
+    session.add(action_pg)
+    session.commit()
+    session.refresh(action_pg)
+    _seed_rabatt(session, produktgruppen_id=action_pg.produktgruppen_id, rabatt_absolut=2.0)
+    assert determine_ges_preis(session, {"artikel_id": a.artikel_id, "stueckzahl": 1}) == 10.0
+
+
+def test_explicit_unknown_rabatt_rejected(session):
+    artikel = _seed_artikel(session, vk_preis=10.0)
+    with pytest.raises(Exception) as exc:
+        determine_ges_preis(session, {
+            "artikel_id": artikel.artikel_id, "stueckzahl": 1, "rabatt_id": 99999,
+        })
+    assert "not found" in str(exc.value)
+
+
+def test_negative_quantity_ignores_discount(session):
+    # storno positions keep the plain price (no discount on refunds)
+    artikel = _seed_artikel(session, vk_preis=10.0)
+    _seed_rabatt(session, artikel_id=artikel.artikel_id, rabatt_relativ=0.10)
+    assert determine_ges_preis(session, {"artikel_id": artikel.artikel_id, "stueckzahl": -1}) == -10.0
+
+
+def test_validate_detail_rejects_unknown_artikel(session):
+    with pytest.raises(Exception) as exc:
+        validate_detail(session, {"artikel_id": 99999, "stueckzahl": 1})
+    assert "not found" in str(exc.value)
+
+
+def test_validate_detail_rejects_unknown_rabatt(session):
+    artikel = _seed_artikel(session, vk_preis=10.0)
+    with pytest.raises(Exception) as exc:
+        validate_detail(session, {"artikel_id": artikel.artikel_id, "stueckzahl": 1, "rabatt_id": 99999})
+    assert "not found" in str(exc.value)
+
+
+def test_router_applies_discount_and_stores_rabatt_id(session):
+    from python.routers.verkauf import create_verkauf as router_create_verkauf
+    from python.models import VerkaufCreate
+
+    artikel = _seed_artikel(session, vk_preis=10.0)
+    action = _seed_rabatt(session, artikel_id=artikel.artikel_id, rabatt_relativ=0.10)
+
+    payload = VerkaufCreate(verkauf_details=[{"artikel_id": artikel.artikel_id, "stueckzahl": 2}])
+    result = router_create_verkauf(payload, session, None, None)
+
+    assert result["verkauf_details"][0].ges_preis == 18.0
+    row = session.exec(select(VerkaufDetails).where(
+        VerkaufDetails.rechnungs_nr == result["rechnungs_nr"])).one()
+    assert row.rabatt_id == action.rabatt_id
+    assert row.ges_preis == 18.0
