@@ -364,6 +364,16 @@ The export endpoints return the generated `.tar` file as a file download (in Jav
 - `get_all_current_mwst_values_by_id` maps MwSt IDs to `[rate, netto, betrag, brutto]` and matches rates numerically, so DECIMAL(6,5) values such as `0.19000` match `0.19` (the previous string comparison silently dropped those rows)
 - Wired into sale creation (`calculate_mwst_summary`) and the Abrechnung Tag response (`mwst_nach_id`); `python/tests/test_vat_calculator.py` covers the module at 100 %
 
+**Rounding (research result 2026-10-25):** German law does not prescribe a rounding
+mode for VAT amounts on invoices (§ 14 UStG only requires the rate and the tax amount;
+§ 33 UStDV has no rule). EuGH C-484/06 leaves the method to the Member States subject
+to neutrality/proportionality, and German practice rounds commercially to cents. The
+Java POS chose `RoundingMode.HALF_UP` explicitly, so the Python module keeps HALF_UP
+and the per-position (horizontal) method for receipts. If B2B e-invoices
+(EN 16931/XRechnung) are added later, the VAT per VAT category must be computed from
+the category total (rule BR-CO-17, vertical method), which can differ by a few cents.
+Details and sources: `docs/VAT_ROUNDING.md`.
+
 ### 6.2 Sale Creation with Proper VAT Handling
 **Source**: `../git/src/org/weltladen_bonn/pos/kasse/Kassieren.java`, `../git/src/org/weltladen_bonn/pos/kasse/RechnungsGrundlage.java`  
 **Target**: Enhance existing sale creation

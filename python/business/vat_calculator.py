@@ -72,6 +72,11 @@ def _normalize_item(item):
 def calculate_vat(brutto, steuersatz):
     """VAT contained in a gross amount.
 
+    Rounding is commercial ("kaufmännisch", HALF_UP to cents): German law does not
+    prescribe a mode (§ 14 UStG only requires the amount; EuGH C-484/06 leaves the
+    method to the Member States), and this matches the Java POS. See
+    `docs/VAT_ROUNDING.md`.
+
     Mirrors the Java POS (`WindowContent.calculateVAT`): divide by `1 + rate`
     to 10 decimal places (HALF_UP), multiply by the rate, then round the result
     to cents (HALF_UP, like `BaseClass.priceFormatterIntern`).
@@ -109,7 +114,9 @@ def calculate_mwst_values_in_rechnung(items=None):
 
     Mirrors Java `RechnungsGrundlage.calculateMwStValuesInRechnung`: rates are
     returned sorted ascending (Java uses a TreeMap) and items without a VAT
-    rate are booked at 0 %.
+    rate are booked at 0 %. Rounding is done per position (horizontal method);
+    EN 16931 e-invoices need the vertical per-category figure instead, see
+    `docs/VAT_ROUNDING.md`.
     """
     sums = {}
     for item in (items or []):
