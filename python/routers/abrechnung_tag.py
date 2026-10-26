@@ -35,11 +35,13 @@ def _last_tag(session: SessionDep):
 @router.get("/")
 def read_abrechnung_tags(
     session: SessionDep,
+    desc: bool = False,
     offset: int = 0,
     limit: Annotated[int, Query(le=100)] = 100,
 ) -> list[AbrechnungTagPublic]:
+    order = AbrechnungTag.id.desc() if desc else AbrechnungTag.id
     rows = session.exec(
-        select(AbrechnungTag).offset(offset).limit(limit).order_by(AbrechnungTag.id)
+        select(AbrechnungTag).offset(offset).limit(limit).order_by(order)
     ).all()
     return [AbrechnungTagPublic.model_validate(r) for r in rows]
 

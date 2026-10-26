@@ -498,6 +498,14 @@ Details and sources: `docs/VAT_ROUNDING.md`.
 - Pagination improvements
 - Sorting options
 
+**Status: ✅ Done (2026-10-27).**
+- Every list endpoint supports `offset` + `limit` with `limit <= 100`
+- Catalog search: `artikel`, `lieferant`, `produktgruppe` and `mwst` support `search_string` (space-separated terms, each must occur) plus their specific filters; `artikel` also searches shortname/number/origin/barcode
+- `rabattaktion`: `search_string`, `artikel_id`, `produktgruppen_id`, `current_only`, typed `since`/`until`. Fixed the default list dropping open-ended actions (`bis IS NULL`), matching the Java filter `bis != von OR bis IS NULL`
+- `bestellung`: `typ` (LM/KHW/IVT) in addition to the date range; `kassenstand`: date range on `buchungsdatum`; `anzahlung`: filter by the two sale numbers; `zaehlprotokoll`: `abrechnung_tag_id`; `tse/transaction`: `rechnungs_nr`; `users`: role/active/username search
+- Sorting: `verkauf` already had `desc`; the settlement lists accept `desc=true` for newest-first
+- Covered by `python/tests/test_filters.py`
+
 ### 7.3 Validation and Error Handling
 **Priority**: 🔴 HIGH - Essential for data integrity
 
@@ -605,7 +613,7 @@ Scripts (cron jobs for price changes, supplier article imports, settlement creat
 | 🟡 MEDIUM | Business Logic | VAT calculation, sale creation | 2-3 days | ✅ Done (VAT + sale workflow incl. discounts; storno/cash-register still partial) |
 | 🟡 MEDIUM | TSE | TSE transaction support + export endpoints | 2-3 days | ⏳ Adapter untested without hardware |
 | 🟡 MEDIUM | Supporting | Zaehlprotokoll (CRU), Bestellung (CRUD incl. positions) | 2-3 days | ✅ Done |
-| 🟢 LOW | Utilities | Import/Export, Search | 1-2 days | ⏳ Partial (CSV done, ODS deferred) |
+| 🟢 LOW | Utilities | Import/Export, Search | 1-2 days | ✅ Done (CSV done, filters done, ODS deferred) |
 
 ---
 
@@ -669,7 +677,7 @@ Scripts (cron jobs for price changes, supplier article imports, settlement creat
 - Minimum 80% code coverage
 - All critical paths tested
 - All business logic validated
-- Current: 89% (227 tests passing, measured 2026-10-26)
+- Current: 90% (238 tests passing, measured 2026-10-27)
 
 ### Real Database Tests
 - Tests run on in-memory SQLite, which does not enforce foreign keys and ignores `UNSIGNED`/`YEAR`/`TIMESTAMP` semantics

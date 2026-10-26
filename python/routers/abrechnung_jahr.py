@@ -28,11 +28,13 @@ router = APIRouter(
 @router.get("/")
 def read_abrechnung_jahre(
     session: SessionDep,
+    desc: bool = False,
     offset: int = 0,
     limit: Annotated[int, Query(le=100)] = 100,
 ) -> list[AbrechnungJahrPublic]:
+    order = AbrechnungJahr.id.desc() if desc else AbrechnungJahr.id
     rows = session.exec(
-        select(AbrechnungJahr).offset(offset).limit(limit).order_by(AbrechnungJahr.id)
+        select(AbrechnungJahr).offset(offset).limit(limit).order_by(order)
     ).all()
     return [AbrechnungJahrPublic.model_validate(r) for r in rows]
 

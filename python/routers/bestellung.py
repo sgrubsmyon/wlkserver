@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from typing import Annotated, Optional
+from typing import Annotated, Literal, Optional
 
 from fastapi import APIRouter, HTTPException, Query
 from sqlmodel import select
@@ -59,12 +59,15 @@ def _delete_details(session: SessionDep, bestell_nr: int, typ: str):
 @router.get("/")
 def read_bestellungen(
     session: SessionDep,
+    typ: Optional[Literal["LM", "KHW", "IVT"]] = None,
     since: Optional[str] = None,
     until: Optional[str] = None,
     offset: int = 0,
     limit: Annotated[int, Query(le=100)] = 100,
 ) -> list[BestellungPublic]:
     selection = select(Bestellung)
+    if typ is not None:
+        selection = selection.where(Bestellung.typ == typ)
     if since:
         since_dt = datetime.fromisoformat(since)
         if since_dt.tzinfo is None:

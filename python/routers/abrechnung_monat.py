@@ -47,11 +47,13 @@ def _parse_month(value) -> date:
 @router.get("/")
 def read_abrechnung_monate(
     session: SessionDep,
+    desc: bool = False,
     offset: int = 0,
     limit: Annotated[int, Query(le=100)] = 100,
 ) -> list[AbrechnungMonatPublic]:
+    order = AbrechnungMonat.id.desc() if desc else AbrechnungMonat.id
     rows = session.exec(
-        select(AbrechnungMonat).offset(offset).limit(limit).order_by(AbrechnungMonat.id)
+        select(AbrechnungMonat).offset(offset).limit(limit).order_by(order)
     ).all()
     return [AbrechnungMonatPublic.model_validate(r) for r in rows]
 

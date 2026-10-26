@@ -30,11 +30,18 @@ router = APIRouter(
 @router.get("/")
 def read_anzahlungen(
     session: SessionDep,
+    anzahlung_in_rech_nr: Optional[int] = None,
+    aufloesung_in_rech_nr: Optional[int] = None,
     offset: int = 0,
     limit: Annotated[int, Query(le=100)] = 100,
 ) -> list[AnzahlungPublic]:
+    selection = select(Anzahlung)
+    if anzahlung_in_rech_nr is not None:
+        selection = selection.where(Anzahlung.anzahlung_in_rech_nr == anzahlung_in_rech_nr)
+    if aufloesung_in_rech_nr is not None:
+        selection = selection.where(Anzahlung.aufloesung_in_rech_nr == aufloesung_in_rech_nr)
     rows = session.exec(
-        select(Anzahlung).offset(offset).limit(limit).order_by(Anzahlung.anzahlung_id)
+        selection.offset(offset).limit(limit).order_by(Anzahlung.anzahlung_id)
     ).all()
     return [AnzahlungPublic.model_validate(a) for a in rows]
 

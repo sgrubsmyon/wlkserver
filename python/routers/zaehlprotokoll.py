@@ -29,11 +29,15 @@ router = APIRouter(
 @router.get("/")
 def read_zaehlprotokolle(
     session: SessionDep,
+    abrechnung_tag_id: Optional[int] = None,
     offset: int = 0,
     limit: Annotated[int, Query(le=100)] = 100,
 ) -> list[ZaehlprotokollPublic]:
+    selection = select(Zaehlprotokoll)
+    if abrechnung_tag_id is not None:
+        selection = selection.where(Zaehlprotokoll.abrechnung_tag_id == abrechnung_tag_id)
     rows = session.exec(
-        select(Zaehlprotokoll).offset(offset).limit(limit).order_by(Zaehlprotokoll.id)
+        selection.offset(offset).limit(limit).order_by(Zaehlprotokoll.id)
     ).all()
     return [ZaehlprotokollPublic.model_validate(r) for r in rows]
 

@@ -1,6 +1,6 @@
 import io
 import tarfile
-from typing import Optional
+from typing import Annotated, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.security import HTTPAuthorizationCredentials
@@ -56,11 +56,15 @@ def read_tse_transactions_for_verkauf(rechnungs_nr: int, session: SessionDep) ->
 @router.get("/transaction")
 def read_tse_transactions(
     session: SessionDep,
+    rechnungs_nr: Optional[int] = None,
     offset: int = 0,
-    limit: int = 100,
+    limit: Annotated[int, Query(le=100)] = 100,
 ) -> list[TSETransactionPublic]:
+    selection = select(TSETransaction)
+    if rechnungs_nr is not None:
+        selection = selection.where(TSETransaction.rechnungs_nr == rechnungs_nr)
     rows = session.exec(
-        select(TSETransaction).offset(offset).limit(limit).order_by(TSETransaction.transaction_id)
+        selection.offset(offset).limit(limit).order_by(TSETransaction.transaction_id)
     ).all()
     return [TSETransactionPublic.model_validate(r) for r in rows]
 

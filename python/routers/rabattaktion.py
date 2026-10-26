@@ -1,7 +1,8 @@
 from datetime import datetime, timezone
-from typing import Annotated
+from typing import Annotated, Optional
 
 from fastapi import APIRouter, HTTPException, Query
+from sqlalchemy import or_
 from sqlmodel import select
 
 # from ..dependencies import get_token_header
@@ -21,21 +22,43 @@ router = APIRouter(
 @router.get("/")
 def read_rabattaktionen(
     session: SessionDep,
-    since: str | None = None,
-    until: str | None = None,
+    since: Optional[datetime] = None,
+    until: Optional[datetime] = None,
+    artikel_id: Optional[int] = None,
+    produktgruppen_id: Optional[int] = None,
+    search_string: str = "",
+    current_only: bool = False,
     exclude_deleted: bool = True,
     offset: int = 0, limit: Annotated[int, Query(le=100)] = 100
     ) -> list[RabattaktionPublic]:
     selection = select(Rabattaktion).outerjoin(Artikel).outerjoin(Produktgruppe)
-    
+
     # Add a where clause if parameters are provided
-    if since:
-        selection = selection.where(Rabattaktion.bis >= since)
-    if until:
+    if since is not None:
+        # open-ended actions (bis IS NULL) run forever and must stay included
+        selection = selection.where(
+            or_(Rabattaktion.bis.is_(None), Rabattaktion.bis >= since)
+        )
+    if until is not None:
         selection = selection.where(Rabattaktion.von <= until)
+    if artikel_id is not None:
+        selection = selection.where(Rabattaktion.artikel_id == artikel_id)
+    if produktgruppen_id is not None:
+        selection = selection.where(Rabattaktion.produktgruppen_id == produktgruppen_id)
+    if current_only:
+        now = datetime.now(timezone.utc)
+        selection = selection.where(
+            Rabattaktion.von <= now,
+            or_(Rabattaktion.bis.is_(None), Rabattaktion.bis >= now),
+        )
     if exclude_deleted:
-        selection = selection.where(Rabattaktion.bis > Rabattaktion.von)
-    
+        # Java Rabattaktionen filter: "bis != von OR bis IS NULL"
+        selection = selection.where(
+            or_(Rabattaktion.bis.is_(None), Rabattaktion.bis > Rabattaktion.von)
+        )
+    for term in search_string.split():
+        selection = selection.where(Rabattaktion.aktionsname.contains(term))
+
     # Execute the query with offset and limit
     rabattaktionen = session.exec(
         selection.offset(offset).limit(limit)

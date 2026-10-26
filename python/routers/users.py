@@ -12,8 +12,24 @@ router = APIRouter(prefix="/users", tags=["users"], responses={404: {"descriptio
 
 
 @router.get("/")
-def read_users(session: SessionDep, offset: int = 0, limit: Annotated[int, Query(le=100)] = 100) -> list[UserPublic]:
-    users = session.exec(select(User).offset(offset).limit(limit)).all()
+def read_users(
+    session: SessionDep,
+    role: str = "",
+    active: Optional[bool] = None,
+    search_string: str = "",
+    offset: int = 0,
+    limit: Annotated[int, Query(le=100)] = 100,
+) -> list[UserPublic]:
+    selection = select(User)
+    if role:
+        selection = selection.where(User.role == role)
+    if active is not None:
+        selection = selection.where(User.active == active)
+    for term in search_string.split():
+        selection = selection.where(User.username.contains(term))
+    users = session.exec(
+        selection.offset(offset).limit(limit).order_by(User.username)
+    ).all()
     return [UserPublic.model_validate(u) for u in users]
 
 
