@@ -205,7 +205,7 @@ See the "Parity Audit" section in `concepts/TODO.md`. The optional per-sale inst
 **Required endpoints (CR only - no update, no delete; the SQL user has only INSERT grants on `abrechnung_tag*`):**
 - GET /abrechnung/tag - List daily settlements
 - GET /abrechnung/tag/{id} - Get single daily settlement
-- POST /abrechnung/tag - Create daily settlement. This single endpoint performs the complete Tagesabschluss (aggregating the day's sales, VAT aggregation, updating kassenstand, running the automatic incremental TSE export, linking counting protocols) - there is no separate "finalize" step.
+- POST /abrechnung/tag - Create daily settlement. This single endpoint performs the complete Tagesabschluss (aggregating the day's sales, VAT aggregation, linking the current Kassenstand entry, running the automatic incremental TSE export, linking counting protocols) - there is no separate "finalize" step. The counted cash is recorded beforehand as a manual `POST /kassenstand` entry; `GET /abrechnung/tag/vorschau` returns the same figures read-only for the cashier.
 - GET /abrechnung/tag/offen - Check for incomplete daily settlements
 
 **Business logic from Java:**
@@ -453,6 +453,14 @@ Details and sources: `docs/VAT_ROUNDING.md`.
 
 (No cash drawer management: there is no automatic cash drawer opened via the POS software.)
 
+**Status: ✅ Done (2026-10-26).**
+- Change calculation and EC threshold warning are part of sale creation (`process_payment`, `ec_payment_threshold_check`; the API surfaces the warning, the Java UI asks for confirmation)
+- Kassenstand: cash sales/stornos append entries, manual entries and Entnahmen are validated, and concurrent updates are serialized (process lock + `SELECT ... FOR UPDATE`)
+- End-of-day: `end_of_day_procedure` is now a real preview of the open period and is exposed as `GET /abrechnung/tag/vorschau`; `POST /abrechnung/tag` uses the same `aggregate_period`/`open_period_range` helpers, so preview and settlement cannot drift
+- Java parity fix: the settlement **links the current Kassenstand entry** (`AbrechnungenTag.insertTagesAbrechnung` uses the highest `kassenstand_id`) instead of inventing a closing entry. The old auto-entry double-counted cash sales and Entnahmen because the ledger already contains them; the counted cash is recorded as a manual Kassenstand entry before closing
+- Fixed while extracting the shared aggregation: settlements with an explicit `rechnungs_nr_von/bis` crashed on an unset variable, and `storno_summe` now reports the cancelled original amounts positively like Java `prepareStmtStornos`
+- Training mode: the flag is read from `TRAINING_MODE`; the training flow lives in `/training`
+
 ---
 
 ## Phase 7: Add Utility and Helper Functionality
@@ -661,7 +669,7 @@ Scripts (cron jobs for price changes, supplier article imports, settlement creat
 - Minimum 80% code coverage
 - All critical paths tested
 - All business logic validated
-- Current: 89% (220 tests passing, measured 2026-10-26)
+- Current: 89% (227 tests passing, measured 2026-10-26)
 
 ### Real Database Tests
 - Tests run on in-memory SQLite, which does not enforce foreign keys and ignores `UNSIGNED`/`YEAR`/`TIMESTAMP` semantics

@@ -17,6 +17,7 @@ from ..models import (
 )
 from ..session import SessionDep
 from ..dependencies import bearer_scheme, require_user
+from ..business.cash_register import aggregate_period, end_of_day_procedure, open_period_range
 from fastapi.security import HTTPAuthorizationCredentials
 from fastapi import Depends
 
@@ -60,6 +61,12 @@ def read_offene_abrechnung_tags(session: SessionDep) -> list[str]:
     return dates
 
 
+@router.get("/vorschau")
+def read_abrechnung_tag_preview(session: SessionDep) -> dict:
+    """Preview the open Tagesabschluss without writing anything."""
+    return end_of_day_procedure(session)
+
+
 @router.get("/{tag_id}")
 def read_single_abrechnung_tag(tag_id: int, session: SessionDep) -> dict:
     t = session.get(AbrechnungTag, tag_id)
@@ -83,99 +90,38 @@ def create_abrechnung_tag(payload: Optional[AbrechnungTagCreate], session: Sessi
         if tok:
             user_id = tok.get("user_id")
     now = datetime.now(timezone.utc)
+    last = _last_tag(session)
 
     # Determine rechnungs range
     if p.rechnungs_nr_von is not None and p.rechnungs_nr_bis is not None:
         von = p.rechnungs_nr_von
         bis = p.rechnungs_nr_bis
     else:
-        last = _last_tag(session)
-        last_bis = last.rechnungs_nr_bis if last else 0
-        first_sale = session.exec(
-            select(Verkauf).where(Verkauf.rechnungs_nr > last_bis).order_by(Verkauf.rechnungs_nr)
-        ).first()
-        if not first_sale:
+        period = open_period_range(session)
+        if period is None:
             raise HTTPException(status_code=400, detail="No sales to settle")
-        last_sale = session.exec(
-            select(Verkauf).where(Verkauf.rechnungs_nr > last_bis).order_by(Verkauf.rechnungs_nr.desc())
-        ).first()
-        von = first_sale.rechnungs_nr
-        bis = last_sale.rechnungs_nr
+        von, bis = period
 
-    sales = session.exec(
-        select(Verkauf).where(Verkauf.rechnungs_nr >= von, Verkauf.rechnungs_nr <= bis)
-    ).all()
+    agg = aggregate_period(session, von, bis)
+    sales = agg["sales"]
     if not sales:
         raise HTTPException(status_code=400, detail="No sales in range")
+    storno_summe = agg["storno_summe"]
+    retouren_summe = agg["retouren_summe"]
+    mwst_map = agg["mwst_map"]
 
-    # Separate storno / retouren reporting (Java parity)
-    storno_summe = 0.0
-    retouren_summe = 0.0
-    for v in sales:
-        if v.storno_von is not None:
-            for m in (v.verkauf_mwst or []):
-                storno_summe += (m.mwst_netto or 0) + (m.mwst_betrag or 0)
-        else:
-            for d in (v.verkauf_details or []):
-                if d.stueckzahl is not None and d.stueckzahl < 0 and d.ges_preis is not None:
-                    retouren_summe += d.ges_preis
-
-    # Aggregate VAT
-    mwst_map = {}
-    for v in sales:
-        for m in v.verkauf_mwst or []:
-            entry = mwst_map.setdefault(m.mwst_satz, {"netto": 0.0, "betrag": 0.0, "bar": 0.0})
-            entry["netto"] += m.mwst_netto
-            entry["betrag"] += m.mwst_betrag
-    # bar_brutto per VAT rate: SUM(ges_preis) over cash (non-EC) receipts only.
-    # Storno/retour receipts have negative ges_preis and are included (nets out),
-    # matching the Java POS queryIncompleteAbrechnung_BarBruttoVATs().
-    cash_sales = [v for v in sales if not v.ec_zahlung]
-    for v in cash_sales:
-        for d in v.verkauf_details or []:
-            if d.mwst_satz is None or d.ges_preis is None:
-                continue
-            entry = mwst_map.setdefault(d.mwst_satz, {"netto": 0.0, "betrag": 0.0, "bar": 0.0})
-            entry["bar"] += d.ges_preis
-
-    # Create kassenstand (Tagesabschluss entry) if not provided
+    # Link the settlement to the current Kassenstand entry (Java
+    # AbrechnungenTag.insertTagesAbrechnung uses the highest kassenstand_id).
+    # A closing balance is not invented here: the cashier records the counted cash
+    # as a manual Kassenstand entry beforehand.
     ks_id = p.kassenstand_id
     if ks_id is not None and not session.get(Kassenstand, ks_id):
         raise HTTPException(status_code=400, detail="Kassenstand not found")
     if ks_id is None:
-        current_balance = 0.0
-        last_ks = session.exec(select(Kassenstand).order_by(Kassenstand.kassenstand_id.desc())).first()
-        if last_ks:
-            current_balance = last_ks.neuer_kassenstand
-        total_bar = sum(e["bar"] for e in mwst_map.values())
-        # Entnahmen (cash withdrawals) within this period reduce the balance.
-        # An entnahme entry stores neuer = previous - amount, so amount = previous - new.
-        total_entnahmen = 0.0
-        all_ks = session.exec(select(Kassenstand).order_by(Kassenstand.kassenstand_id)).all()
-        last_abr_ks_id = 0
-        if last is not None and last.kassenstand_id is not None:
-            last_abr_ks_id = last.kassenstand_id
-        prev_neuer = None
-        for ks in all_ks:
-            if ks.kassenstand_id is None or ks.kassenstand_id <= last_abr_ks_id:
-                prev_neuer = ks.neuer_kassenstand
-                continue
-            if ks.entnahme:
-                base = prev_neuer if prev_neuer is not None else current_balance
-                total_entnahmen += (base - ks.neuer_kassenstand)
-            prev_neuer = ks.neuer_kassenstand
-        new_ks = Kassenstand(
-            buchungsdatum=now,
-            neuer_kassenstand=current_balance + total_bar - total_entnahmen,
-            manuell=True,
-            entnahme=False,
-            kommentar="Tagesabschluss",
-        )
-        new_ks.kassenstand_id = None
-        session.add(new_ks)
-        session.commit()
-        session.refresh(new_ks)
-        ks_id = new_ks.kassenstand_id
+        last_ks = session.exec(
+            select(Kassenstand).order_by(Kassenstand.kassenstand_id.desc())
+        ).first()
+        ks_id = last_ks.kassenstand_id if last_ks is not None else None
 
     # Automatic incremental TSE export (best-effort), mirroring Java
     # AbrechnungenTag.exportTSELog(): partial export by signature counter

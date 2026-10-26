@@ -3,7 +3,7 @@
 > **Sync note**: This document and `concepts/IMPLEMENTATION_PLAN.md` must be kept in sync. When implementation progress changes, update both files so new sessions without prior memory see a consistent status.
 
 > **Last Updated**: 2026-10-26  
-> **Status**: Phases 1-5 implemented at router level (TSE export adapter untested without hardware); main Phase 6/7 flows wired (see "Business Logic Wiring Gaps" for what remains); auth enforced on transaction endpoints; parity audit of the remaining low-priority endpoints done and resolved (see "Parity Audit"), Bestellung positions + date filter implemented; bar_brutto aggregation matches Java; sale workflow (validation, automatic discounts, all four modes), storno (payment-mode parity, cash payout, settlement lock, rollback, attribution) and kassenstand balance validation complete; voucher redemption uses the Java balance calculation; Bestellung CSV import supports positions; Bestellung/Inventur CSV export added (ODS deferred); CORS configured; core `/training` endpoints; integration tests incl. concurrency; same-origin nginx deployment and script automation documented as planned; VAT module Java-parity checked, 100% tested, rounding method configurable; test coverage 89%
+> **Status**: Phases 1-5 implemented at router level (TSE export adapter untested without hardware); main Phase 6/7 flows wired (see "Business Logic Wiring Gaps" for what remains); auth enforced on transaction endpoints; parity audit of the remaining low-priority endpoints done and resolved (see "Parity Audit"), Bestellung positions + date filter implemented; bar_brutto aggregation matches Java; sale workflow (validation, automatic discounts, all four modes), storno (payment-mode parity, cash payout, settlement lock, rollback, attribution), cash register (payment, balance validation, end-of-day preview) complete; voucher redemption uses the Java balance calculation; Bestellung CSV import supports positions; Bestellung/Inventur CSV export added (ODS deferred); CORS configured; core `/training` endpoints; integration tests incl. concurrency; same-origin nginx deployment and script automation documented as planned; VAT module Java-parity checked, 100% tested, rounding method configurable; test coverage 89%
 
 ---
 
@@ -142,8 +142,9 @@
 [x] **Abrechnung Tag** - models + router + smoke tests
 - [x] GET /abrechnung/tag
 - [x] GET /abrechnung/tag/{id}
-- [x] POST /abrechnung/tag (basic Tagesabschluss aggregation)
+- [x] POST /abrechnung/tag (Tagesabschluss: period since the last settlement, VAT/`bar_brutto` aggregation, storno/retouren reporting, links the current Kassenstand entry)
 - [x] GET /abrechnung/tag/offen
+- [x] GET /abrechnung/tag/vorschau (read-only preview of the open Tagesabschluss)
 - [x] Automatic incremental TSE export (best-effort) wired into POST /abrechnung/tag - step 3
 - [x] Stornos/retouren handled in mwst + bar aggregation; entnahmen subtracted from closing balance (step 5)
 - [x] Full Java aggregation parity (storno/retouren reporting in abrechnung response) - items 5-8
@@ -243,7 +244,14 @@
 - [x] **Storno is only allowed for receipts not yet part of a completed Tagesabschluss**: a receipt whose `rechnungs_nr` falls into any `abrechnung_tag` range is rejected with `400` and a clear message naming the settlement; a finished settlement is immutable
 - [x] Single transaction with rollback - a failed inversion no longer leaves a half-written storno
 - [x] Covered by tests/test_verkauf_storno.py and tests/test_storno_logic.py (payment modes, cash payout, settlement guard, rollback, attribution, voucher/installment handling); storno_logic.py at 94 %
-[⏳] Cash Register Operations (python/business/cash_register.py) - `update_kassenstand_for_sale`, `process_payment`, `ec_payment_threshold_check` and `validate_balance_change` wired; `end_of_day_procedure` basic; `is_training_mode` reads `TRAINING_MODE` env var
+[x] Cash Register Operations (python/business/cash_register.py) - complete
+- [x] Payment processing: `calculate_change`, `process_payment` (change + EC warning) and `ec_payment_threshold_check` (10 EUR threshold, Java `ecSchwelle`) wired into sale creation
+- [x] Kassenstand integration: every cash sale/storno appends an entry; manual entries and Entnahmen are validated (`validate_balance_change`); balance updates are serialized (process lock + `SELECT ... FOR UPDATE`)
+- [x] End-of-day: `end_of_day_procedure` is now a real read-only preview of the open period and exposed as `GET /abrechnung/tag/vorschau` (period range since the last settlement, sales/cash/EC/storno counts, VAT per rate, `bar_brutto`, storno/retouren sums, withdrawctions, current and expected balance). `POST /abrechnung/tag` reuses the same aggregation (`aggregate_period`/`open_period_range`), so preview and settlement cannot drift apart
+- [x] Java parity for the closing balance: the settlement now **links the current Kassenstand entry** (highest id) instead of inventing a new one. The old auto-entry double-counted cash sales and Entnahmen (the ledger already contains them); the counted cash is recorded as a manual Kassenstand entry before closing, like the Java POS
+- [x] Fixed while extracting: explicit `rechnungs_nr_von/bis` settlements crashed on an unset `last` variable; `storno_summe` now reports the cancelled original amounts positively (Java `prepareStmtStornos`) instead of summing the negative storno rows
+- [x] `is_training_mode` reads `TRAINING_MODE`; the training flow itself lives in `/training`
+- [x] Covered by tests/test_abrechnung_tag.py (preview before/after settlement, stornos/retouren, Entnahmen, explicit range), tests/test_kassenstand.py and tests/test_integration.py; cash_register.py at 90 %
 
 ---
 
@@ -345,7 +353,7 @@
 
 ### Test Coverage Target
 
-- [x] Achieve 80%+ coverage (measured 89% on 2026-10-26, 220 tests passing)
+- [x] Achieve 80%+ coverage (measured 89% on 2026-10-26, 227 tests passing)
 
 ---
 

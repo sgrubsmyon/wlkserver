@@ -11,7 +11,6 @@ from sqlmodel import Session, select
 
 from ..models import Kassenstand, Verkauf
 from .vat_calculator import _to_decimal
-
 EC_THRESHOLD = Decimal("10.00")
 
 # Balance updates are read-modify-write; serialize them in this process and lock
@@ -127,26 +126,148 @@ def is_training_mode() -> bool:
     return os.getenv("TRAINING_MODE", "").strip().lower() in ("1", "true", "yes", "on")
 
 
-def end_of_day_procedure(session: Session) -> dict:
-    """Basic end-of-day summary: cash balance, today's sales count, EC vs cash."""
-    from sqlmodel import select
-    from ..models import Verkauf, Kassenstand
-    from datetime import datetime, timezone, timedelta
-    today = datetime.now(timezone.utc).date()
-    sales = session.exec(select(Verkauf)).all()
-    today_sales = [v for v in sales if v.verkaufsdatum.date() == today]
-    cash_sales = [v for v in today_sales if not v.ec_zahlung]
-    ec_sales = [v for v in today_sales if v.ec_zahlung]
-    stornos = [v for v in today_sales if v.storno_von is not None]
-    balance = get_current_balance(session)
+def last_settlement(session: Session):
+    from ..models import AbrechnungTag
+    return session.exec(select(AbrechnungTag).order_by(AbrechnungTag.id.desc())).first()
+
+
+def open_period_range(session: Session):
+    """Receipt-number range since the last Tagesabschluss (None if no open sales)."""
+    last = last_settlement(session)
+    last_bis = last.rechnungs_nr_bis if last is not None else 0
+    first_sale = session.exec(
+        select(Verkauf).where(Verkauf.rechnungs_nr > last_bis).order_by(Verkauf.rechnungs_nr)
+    ).first()
+    if first_sale is None:
+        return None
+    last_sale = session.exec(
+        select(Verkauf).where(Verkauf.rechnungs_nr > last_bis).order_by(Verkauf.rechnungs_nr.desc())
+    ).first()
+    return first_sale.rechnungs_nr, last_sale.rechnungs_nr
+
+
+def aggregate_period(session: Session, von: int, bis: int) -> dict:
+    """Aggregate sales of a receipt range for the Tagesabschluss.
+
+    Mirrors the Java queries: VAT net/tax per rate from `verkauf_mwst`,
+    `bar_brutto` from the detail prices of cash (non-EC) receipts only, plus the
+    separate storno (original amounts) and retouren reporting.
+    """
+    sales = session.exec(
+        select(Verkauf).where(Verkauf.rechnungs_nr >= von, Verkauf.rechnungs_nr <= bis)
+    ).all()
+
+    stornoed_numbers = {v.storno_von for v in sales if v.storno_von is not None}
+    storno_summe = 0.0
+    retouren_summe = 0.0
+    for v in sales:
+        if v.rechnungs_nr in stornoed_numbers:
+            # report the amounts of the cancelled original receipts (positive)
+            for m in v.verkauf_mwst or []:
+                storno_summe += (m.mwst_netto or 0) + (m.mwst_betrag or 0)
+        if v.storno_von is None:
+            for d in v.verkauf_details or []:
+                if d.stueckzahl is not None and d.stueckzahl < 0 and d.ges_preis is not None:
+                    retouren_summe += d.ges_preis
+
+    mwst_map = {}
+    for v in sales:
+        for m in v.verkauf_mwst or []:
+            entry = mwst_map.setdefault(m.mwst_satz, {"netto": 0.0, "betrag": 0.0, "bar": 0.0})
+            entry["netto"] += m.mwst_netto
+            entry["betrag"] += m.mwst_betrag
+    # Storno/retour receipts have negative ges_preis and are included (nets out).
+    for v in sales:
+        if v.ec_zahlung:
+            continue
+        for d in v.verkauf_details or []:
+            if d.mwst_satz is None or d.ges_preis is None:
+                continue
+            entry = mwst_map.setdefault(d.mwst_satz, {"netto": 0.0, "betrag": 0.0, "bar": 0.0})
+            entry["bar"] += d.ges_preis
+
     return {
-        "date": today.isoformat(),
-        "total_sales": len(today_sales),
-        "cash_sales": len(cash_sales),
-        "ec_sales": len(ec_sales),
-        "stornos": len(stornos),
-        "current_balance": str(balance),
-        "message": "End of day procedure completed",
+        "sales": sales,
+        "storno_summe": storno_summe,
+        "retouren_summe": retouren_summe,
+        "mwst_map": mwst_map,
+        "cash_sales": [v for v in sales if not v.ec_zahlung],
+        "ec_sales": [v for v in sales if v.ec_zahlung],
+    }
+
+
+def cash_withdrawals(session: Session, last_kassenstand_id: int | None = None) -> float:
+    """Sum of Entnahmen since the previous settlement (neuer = previous - amount)."""
+    current_balance = float(get_current_balance(session))
+    total = 0.0
+    previous = None
+    for ks in session.exec(select(Kassenstand).order_by(Kassenstand.kassenstand_id)).all():
+        if ks.kassenstand_id is None or (
+            last_kassenstand_id is not None and ks.kassenstand_id <= last_kassenstand_id
+        ):
+            previous = ks.neuer_kassenstand
+            continue
+        if ks.entnahme:
+            base = previous if previous is not None else current_balance
+            total += (base - ks.neuer_kassenstand)
+        previous = ks.neuer_kassenstand
+    return total
+
+
+def end_of_day_procedure(session: Session) -> dict:
+    """Read-only preview of the open Tagesabschluss (nothing is written).
+
+    Same calculation as `POST /abrechnung/tag`, so the cashier can compare the
+    expected drawer with the counted cash before closing the day.
+    """
+    last = last_settlement(session)
+    current_balance = get_current_balance(session)
+    entnahmen = cash_withdrawals(
+        session, last.kassenstand_id if last is not None else None
+    )
+    period = open_period_range(session)
+    if period is None:
+        return {
+            "open": False,
+            "rechnungs_nr_von": None,
+            "rechnungs_nr_bis": None,
+            "sales": 0,
+            "cash_sales": 0,
+            "ec_sales": 0,
+            "stornos": 0,
+            "storno_summe": 0.0,
+            "retouren_summe": 0.0,
+            "mwst": [],
+            "current_balance": float(current_balance),
+            "entnahmen": round(entnahmen, 2),
+            "expected_balance": float(current_balance),
+        }
+
+    von, bis = period
+    agg = aggregate_period(session, von, bis)
+    return {
+        "open": True,
+        "rechnungs_nr_von": von,
+        "rechnungs_nr_bis": bis,
+        "sales": len(agg["sales"]),
+        "cash_sales": len(agg["cash_sales"]),
+        "ec_sales": len(agg["ec_sales"]),
+        "stornos": sum(1 for v in agg["sales"] if v.storno_von is not None),
+        "storno_summe": round(agg["storno_summe"], 2),
+        "retouren_summe": round(agg["retouren_summe"], 2),
+        "mwst": [
+            {
+                "mwst_satz": satz,
+                "mwst_netto": round(values["netto"], 2),
+                "mwst_betrag": round(values["betrag"], 2),
+                "bar_brutto": round(values["bar"], 2),
+            }
+            for satz, values in sorted(agg["mwst_map"].items())
+        ],
+        "current_balance": float(current_balance),
+        "entnahmen": round(entnahmen, 2),
+        # the ledger balance already contains all cash movements of the period
+        "expected_balance": float(current_balance),
     }
 
 
@@ -165,6 +286,10 @@ __all__ = [
     "update_kassenstand_for_sale",
     "validate_balance_change",
     "is_training_mode",
+    "last_settlement",
+    "open_period_range",
+    "aggregate_period",
+    "cash_withdrawals",
     "end_of_day_procedure",
     "EC_THRESHOLD",
 ]
