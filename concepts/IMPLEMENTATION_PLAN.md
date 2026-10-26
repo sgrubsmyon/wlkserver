@@ -429,6 +429,16 @@ Details and sources: `docs/VAT_ROUNDING.md`.
 - Comprehensive validation for storno operations
 - Prevent storno of already storniert sales
 
+**Status: ✅ Done (2026-10-26).**
+- Inverted entries match Java `HeutigeRechnungen.insertStornoIntoVerkauf` (position, `artikel_id`, `rabatt_id`, `mwst_satz` copied; quantity, price and VAT negated), written in one transaction with rollback
+- The storno receipt's payment mode mirrors Java: cash when the original was cash or when `cash_refund=true`, otherwise EC. This fixes the previous behaviour where every storno was booked as a cash transaction (wrong drawer movement and wrong `bar_brutto` for EC refunds); the reversing Kassenstand entry is only written for cash refunds
+- Vouchers created in the receipt are invalidated (`restbetrag = 0`, creation position kept) and open installments are resolved against the storno receipt, mirroring `maybeInsertStornoIntoGutschein` / `maybeInsertStornoIntoAnzahlung`
+- Storno sale and TSE transaction carry the `user_id` of the authenticated user
+- Validation: original exists, is not itself a storno and has no storno yet
+- TSE signing remains best-effort (adapter untested without hardware)
+- Deliberate difference: Java only offers storno in the "today's receipts" view, the API allows any receipt (no same-day restriction)
+- Covered by `python/tests/test_verkauf_storno.py` and `python/tests/test_storno_logic.py`
+
 ### 6.4 Cash Register Operations
 **Source**: `../git/src/org/weltladen_bonn/pos/kasse/Kasse.java`, `../git/src/org/weltladen_bonn/pos/kasse/Kassieren.java`  
 **Target**: Business logic for cash register operations
@@ -650,7 +660,7 @@ Scripts (cron jobs for price changes, supplier article imports, settlement creat
 - Minimum 80% code coverage
 - All critical paths tested
 - All business logic validated
-- Current: 88% (215 tests passing, measured 2026-10-26)
+- Current: 89% (220 tests passing, measured 2026-10-26)
 
 ### Real Database Tests
 - Tests run on in-memory SQLite, which does not enforce foreign keys and ignores `UNSIGNED`/`YEAR`/`TIMESTAMP` semantics

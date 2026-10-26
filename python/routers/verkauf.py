@@ -207,7 +207,13 @@ def storno_verkauf(rechnungs_nr: int, session: SessionDep, cash_refund: bool = F
     original = session.get(Verkauf, rechnungs_nr)
     if not original:
         raise HTTPException(status_code=404, detail="Verkauf not found")
-    storno_sale = create_storno(session, rechnungs_nr)
+    user_id = getattr(_user, "user_id", None)
+    storno_sale = create_storno(
+        session,
+        rechnungs_nr,
+        cash_refund=cash_refund,
+        user_id=user_id,
+    )
     # voucher/installment handling hooks
     from ..business.storno_logic import handle_storno_voucher, handle_storno_installment
     handle_storno_voucher(session, original)
@@ -228,15 +234,16 @@ def storno_verkauf(rechnungs_nr: int, session: SessionDep, cash_refund: bool = F
             signature_base64=signed.get("signature_base64"),
             tse_error=signed.get("tse_error"),
             process_data=None,
+            user_id=user_id,
         )
         tse.transaction_id = None
         session.add(tse)
         session.commit()
     except Exception:
         pass
-    # Cash register side-effect: reversing entry for cash refunds
-    # (mirrors Java HeutigeRechnungen.insertStornoIntoKassenstand).
-    if (not original.ec_zahlung) or cash_refund:
+    # Cash register side-effect: the storno is a cash refund when the refund mode
+    # is cash (Java HeutigeRechnungen.insertStornoIntoKassenstand).
+    if not storno_sale.ec_zahlung:
         from ..business.cash_register import update_kassenstand_for_sale
         update_kassenstand_for_sale(
             session=session,

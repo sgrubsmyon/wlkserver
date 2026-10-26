@@ -3,7 +3,7 @@
 > **Sync note**: This document and `concepts/IMPLEMENTATION_PLAN.md` must be kept in sync. When implementation progress changes, update both files so new sessions without prior memory see a consistent status.
 
 > **Last Updated**: 2026-10-26  
-> **Status**: Phases 1-5 implemented at router level (TSE export adapter untested without hardware); main Phase 6/7 flows wired (see "Business Logic Wiring Gaps" for what remains); auth enforced on transaction endpoints; parity audit of the remaining low-priority endpoints done and resolved (see "Parity Audit"), Bestellung positions + date filter implemented; bar_brutto aggregation matches Java; sale workflow (validation, automatic discounts, all four modes) and kassenstand balance validation complete; voucher redemption uses the Java balance calculation; Bestellung CSV import supports positions; Bestellung/Inventur CSV export added (ODS deferred); CORS configured; core `/training` endpoints; integration tests incl. concurrency; same-origin nginx deployment and script automation documented as planned; VAT module Java-parity checked, 100% tested, rounding method configurable; test coverage 88%
+> **Status**: Phases 1-5 implemented at router level (TSE export adapter untested without hardware); main Phase 6/7 flows wired (see "Business Logic Wiring Gaps" for what remains); auth enforced on transaction endpoints; parity audit of the remaining low-priority endpoints done and resolved (see "Parity Audit"), Bestellung positions + date filter implemented; bar_brutto aggregation matches Java; sale workflow (validation, automatic discounts, all four modes), storno (refund modes, rollback, attribution) and kassenstand balance validation complete; voucher redemption uses the Java balance calculation; Bestellung CSV import supports positions; Bestellung/Inventur CSV export added (ODS deferred); CORS configured; core `/training` endpoints; integration tests incl. concurrency; same-origin nginx deployment and script automation documented as planned; VAT module Java-parity checked, 100% tested, rounding method configurable; test coverage 89%
 
 ---
 
@@ -233,7 +233,16 @@
 - [x] EC threshold helper delegates to `cash_register.ec_payment_threshold_check` (no duplicate implementation)
 - [x] Dead duplicate sale-creation path (`create_verkauf`/`create_sale` in the module, unused by the API) removed - the router remains the single sale implementation
 - [x] Covered by tests/test_sale_workflow.py (auto/explicit discounts, group wildcards, date windows, all four modes, rejections, router-level attribution)
-[⏳] Storno Logic Enhancements (python/business/storno_logic.py) - basic storno works; voucher/installment handlers and reversing kassenstand entry implemented; TSE handling best-effort
+[x] Storno Logic Enhancements (python/business/storno_logic.py) - complete
+- [x] Inverted sale/mwst/details entries identical to Java `HeutigeRechnungen.insertStornoIntoVerkauf` (position, artikel, rabatt, mwst copied; stueckzahl/ges_preis/mwst negated)
+- [x] Refund mode mirrors Java: the storno receipt is a cash transaction when the original was cash or `cash_refund=true`, otherwise an EC transaction. Previously every storno was booked as cash, which wrongly moved the drawer and distorted `bar_brutto` for EC refunds
+- [x] Reversing Kassenstand entry only for cash refunds (Java `insertStornoIntoKassenstand`)
+- [x] Voucher cancellation (restbetrag 0, creation position kept) and open-installment resolution against the storno receipt (Java `maybeInsertStornoIntoGutschein` / `maybeInsertStornoIntoAnzahlung`)
+- [x] TSE transaction for the storno (best-effort, still untested without hardware); `user_id` attribution on both the storno sale and the TSE row
+- [x] Validation: original must exist, must not be a storno, must not already have a storno
+- [x] Single transaction with rollback - a failed inversion no longer leaves a half-written storno
+- [x] Covered by tests/test_verkauf_storno.py and tests/test_storno_logic.py (refund modes, rollback, attribution, voucher/installment handling); storno_logic.py at 94 %
+- [ ] Not planned: Java only offers storno from the "today's receipts" view; the API intentionally allows storno of any receipt (no same-day restriction)
 [⏳] Cash Register Operations (python/business/cash_register.py) - `update_kassenstand_for_sale`, `process_payment`, `ec_payment_threshold_check` and `validate_balance_change` wired; `end_of_day_procedure` basic; `is_training_mode` reads `TRAINING_MODE` env var
 
 ---
@@ -336,7 +345,7 @@
 
 ### Test Coverage Target
 
-- [x] Achieve 80%+ coverage (measured 88% on 2026-10-26, 215 tests passing)
+- [x] Achieve 80%+ coverage (measured 89% on 2026-10-26, 220 tests passing)
 
 ---
 
@@ -380,7 +389,7 @@ The remaining imported items are quality/production tasks, tracked below.
 
 ### Quality Assurance
 
-- [x] 80%+ test coverage (88% achieved)
+- [x] 80%+ test coverage (89% achieved)
 - [ ] All endpoints documented
 - [ ] All code documented
 
@@ -416,7 +425,7 @@ The remaining imported items are quality/production tasks, tracked below.
 
 ### Testing Status
 - **Test Files**: 24 (incl. dedicated tests for abrechnung_monat/jahr, tse, sale_workflow, storno_logic, import_export)
-- **Test Coverage**: 88% measured with pytest-cov (target 80% achieved)
+- **Test Coverage**: 89% measured with pytest-cov (target 80% achieved)
 
 ---
 

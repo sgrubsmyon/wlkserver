@@ -77,3 +77,58 @@ def test_duplicate_storno_is_prevented(session):
     with pytest.raises(HTTPException) as exc:
         storno_verkauf(original.rechnungs_nr, session)
     assert exc.value.status_code == 400
+
+
+def _sale_with_detail(session, ec_zahlung):
+    v = Verkauf(verkaufsdatum=datetime.now(timezone.utc), ec_zahlung=ec_zahlung)
+    session.add(v)
+    session.commit()
+    session.refresh(v)
+    session.add(VerkaufDetails(position=1, stueckzahl=2, ges_preis=20.0,
+                               mwst_satz=0.19, rechnungs_nr=v.rechnungs_nr))
+    session.add(VerkaufMwst(rechnungs_nr=v.rechnungs_nr, mwst_satz=0.19,
+                            mwst_netto=16.81, mwst_betrag=3.19))
+    session.commit()
+    return v
+
+
+def test_storno_of_ec_sale_is_ec_refund_by_default(session):
+    original = _sale_with_detail(session, ec_zahlung=True)
+    result = storno_verkauf(original.rechnungs_nr, session)
+    assert result["ec_zahlung"] is True
+    # no cash movement for a card refund
+    from python.models import Kassenstand
+    assert session.exec(select(Kassenstand)).all() == []
+
+
+def test_storno_of_ec_sale_with_cash_refund(session):
+    original = _sale_with_detail(session, ec_zahlung=True)
+    result = storno_verkauf(original.rechnungs_nr, session, cash_refund=True)
+    assert result["ec_zahlung"] is False
+    from python.models import Kassenstand
+    entries = session.exec(select(Kassenstand)).all()
+    assert len(entries) == 1
+    assert entries[0].neuer_kassenstand == -20.0
+
+
+def test_storno_of_cash_sale_is_cash_refund(session):
+    original = _sale_with_detail(session, ec_zahlung=False)
+    result = storno_verkauf(original.rechnungs_nr, session)
+    assert result["ec_zahlung"] is False
+    from python.models import Kassenstand
+    assert len(session.exec(select(Kassenstand)).all()) == 1
+
+
+def test_storno_is_attributed_to_user(session):
+    from python.models import User
+
+    user = User(username="storno_user", password_hash="x", role="mitarbeiter", active=True)
+    session.add(user)
+    session.commit()
+    session.refresh(user)
+
+    original = _sale_with_detail(session, ec_zahlung=False)
+    result = storno_verkauf(original.rechnungs_nr, session, _user=user)
+
+    row = session.get(Verkauf, result["rechnungs_nr"])
+    assert row.user_id == user.user_id

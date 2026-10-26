@@ -109,6 +109,31 @@ def test_create_storno_flow(session):
     assert storno.verkauf_mwst[0].mwst_netto == -16.81
 
 
+def test_storno_rolls_back_on_error(session, monkeypatch):
+    import python.business.storno_logic as storno_logic
+
+    v = _create_sale(session)
+    _add_details(session, v.rechnungs_nr, [(1, 1, 10.0, 0.19)])
+    _add_mwst(session, v.rechnungs_nr, 0.19, 8.40, 1.60)
+
+    def boom(*args, **kwargs):
+        raise RuntimeError("inversion failed")
+
+    monkeypatch.setattr(storno_logic, "invert_detail", boom)
+    with pytest.raises(RuntimeError):
+        storno_logic.create_storno(session, v.rechnungs_nr)
+
+    # the failed attempt must not leave a storno sale behind
+    from python.models import Verkauf
+    assert session.exec(
+        select(Verkauf).where(Verkauf.storno_von == v.rechnungs_nr)
+    ).first() is None
+    # and the original sale can still be storniert afterwards
+    monkeypatch.undo()
+    storno = storno_logic.create_storno(session, v.rechnungs_nr)
+    assert storno.storno_von == v.rechnungs_nr
+
+
 def test_create_storno_double_storno_fails(session):
     v = _create_sale(session)
     _add_details(session, v.rechnungs_nr, [(1, 1, 10.0, 0.19)])

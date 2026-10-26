@@ -76,23 +76,33 @@ def create_storno(*args, **kwargs):
                 rechnungs_nr, session = args[0], args[1]
             else:
                 session, rechnungs_nr = args[0], args[1]
+    cash_refund = kwargs.get("cash_refund", False)
+    user_id = kwargs.get("user_id")
     original = validate_storno(rechnungs_nr, session)
+    # Refund mode mirrors Java HeutigeRechnungen.insertStornoIntoVerkauf: a cash
+    # sale is always refunded in cash, an EC sale only when requested.
+    ec_zahlung = not ((not original.ec_zahlung) or cash_refund)
+
     storno_sale = Verkauf(
         verkaufsdatum=datetime.now(timezone.utc),
-        ec_zahlung=False,
+        ec_zahlung=ec_zahlung,
         kunde_gibt=None,
         storno_von=rechnungs_nr,
+        user_id=user_id,
     )
     storno_sale.rechnungs_nr = None
     session.add(storno_sale)
-    session.commit()
-    session.refresh(storno_sale)
-
-    for d in original.verkauf_details or []:
-        session.add(invert_detail(d, storno_sale.rechnungs_nr))
-    for m in original.verkauf_mwst or []:
-        session.add(invert_mwst(m, storno_sale.rechnungs_nr))
-    session.commit()
+    try:
+        session.flush()  # assigns the new rechnungs_nr without committing
+        for d in original.verkauf_details or []:
+            session.add(invert_detail(d, storno_sale.rechnungs_nr))
+        for m in original.verkauf_mwst or []:
+            session.add(invert_mwst(m, storno_sale.rechnungs_nr))
+        session.commit()
+    except Exception:
+        # never leave a half-written storno behind
+        session.rollback()
+        raise
     session.refresh(storno_sale)
     return storno_sale
 
