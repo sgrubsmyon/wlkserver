@@ -21,18 +21,18 @@ router = APIRouter(
 def read_kassenstaende(
     session: SessionDep,
     rechnungen: bool = False,
-    since: Optional[datetime] = None,
-    until: Optional[datetime] = None,
+    von: Optional[datetime] = None,
+    bis: Optional[datetime] = None,
     offset: int = 0,
     limit: Annotated[int, Query(le=100)] = 100,
 ) -> list[KassenstandPublic]:
     selection = select(Kassenstand)
     if not rechnungen:
         selection = selection.where(Kassenstand.manuell == True)
-    if since is not None:
-        selection = selection.where(Kassenstand.buchungsdatum >= since)
-    if until is not None:
-        selection = selection.where(Kassenstand.buchungsdatum <= until)
+    if von is not None:
+        selection = selection.where(Kassenstand.buchungsdatum >= von)
+    if bis is not None:
+        selection = selection.where(Kassenstand.buchungsdatum <= bis)
     kassenstaende = session.exec(
         selection.offset(offset).limit(limit).order_by(Kassenstand.buchungsdatum.desc())
     ).all()

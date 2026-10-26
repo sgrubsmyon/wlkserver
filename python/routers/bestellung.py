@@ -60,24 +60,24 @@ def _delete_details(session: SessionDep, bestell_nr: int, typ: str):
 def read_bestellungen(
     session: SessionDep,
     typ: Optional[Literal["LM", "KHW", "IVT"]] = None,
-    since: Optional[str] = None,
-    until: Optional[str] = None,
+    von: Optional[str] = None,
+    bis: Optional[str] = None,
     offset: int = 0,
     limit: Annotated[int, Query(le=100)] = 100,
 ) -> list[BestellungPublic]:
     selection = select(Bestellung)
     if typ is not None:
         selection = selection.where(Bestellung.typ == typ)
-    if since:
-        since_dt = datetime.fromisoformat(since)
-        if since_dt.tzinfo is None:
-            since_dt = since_dt.replace(tzinfo=timezone.utc)
-        selection = selection.where(Bestellung.bestell_datum >= since_dt)
-    if until:
-        until_dt = datetime.fromisoformat(until)
-        if until_dt.tzinfo is None:
-            until_dt = until_dt.replace(tzinfo=timezone.utc)
-        selection = selection.where(Bestellung.bestell_datum <= until_dt)
+    if von:
+        von_dt = datetime.fromisoformat(von)
+        if von_dt.tzinfo is None:
+            von_dt = von_dt.replace(tzinfo=timezone.utc)
+        selection = selection.where(Bestellung.bestell_datum >= von_dt)
+    if bis:
+        bis_dt = datetime.fromisoformat(bis)
+        if bis_dt.tzinfo is None:
+            bis_dt = bis_dt.replace(tzinfo=timezone.utc)
+        selection = selection.where(Bestellung.bestell_datum <= bis_dt)
     rows = session.exec(
         selection.offset(offset).limit(limit).order_by(Bestellung.bestell_nr)
     ).all()

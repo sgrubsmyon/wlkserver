@@ -34,8 +34,8 @@ router = APIRouter(
 @router.get("/")
 def read_verkaeufe(
     session: SessionDep,
-    since: Optional[str] = None,
-    until: Optional[str] = None,
+    von: Optional[str] = None,
+    bis: Optional[str] = None,
     only_storno: bool = False,
     include_details: bool = False,
     include_mwst: bool = False,
@@ -44,16 +44,16 @@ def read_verkaeufe(
     desc: bool = False,
 ) -> List[dict]:
     selection = select(Verkauf)
-    if since:
-        since_dt = datetime.fromisoformat(since)
-        if since_dt.tzinfo is None:
-            since_dt = since_dt.replace(tzinfo=timezone.utc)
-        selection = selection.where(Verkauf.verkaufsdatum >= since_dt)
-    if until:
-        until_dt = datetime.fromisoformat(until)
-        if until_dt.tzinfo is None:
-            until_dt = until_dt.replace(tzinfo=timezone.utc)
-        selection = selection.where(Verkauf.verkaufsdatum <= until_dt)
+    if von:
+        von_dt = datetime.fromisoformat(von)
+        if von_dt.tzinfo is None:
+            von_dt = von_dt.replace(tzinfo=timezone.utc)
+        selection = selection.where(Verkauf.verkaufsdatum >= von_dt)
+    if bis:
+        bis_dt = datetime.fromisoformat(bis)
+        if bis_dt.tzinfo is None:
+            bis_dt = bis_dt.replace(tzinfo=timezone.utc)
+        selection = selection.where(Verkauf.verkaufsdatum <= bis_dt)
     if only_storno:
         selection = selection.where(Verkauf.storno_von.is_not(None))
     verkaeufe = session.exec(

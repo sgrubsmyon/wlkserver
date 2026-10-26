@@ -183,7 +183,7 @@
 - [x] DELETE /bestellung/{bestell_nr}
 - [x] Positions saved/read together with the order (`details` in POST/PATCH, returned by GET /bestellung/{bestell_nr}) - matches Java "Bestellung abschließen"
 - [x] No separate position endpoints needed (Java always saves the whole order, see parity audit)
-- [x] Date filter on `GET /bestellung` (`since`/`until` params) - done
+- [x] Date filter on `GET /bestellung` (`von`/`bis` params) - done
 - [x] `typ` restricted to the Java POS values `LM` (Lebensmittel), `KHW` (Kunsthandwerk) and `IVT` (Inventur); defaults to `LM` like the Java order form; invalid values are rejected by API (422) and CSV import (400)
 
 ---
@@ -297,9 +297,9 @@
 [ ] ODS/Spreadsheet export (later phase) - Java POS writes `Bestellvorlage_<typ>.ods` / `Inventur.ods` and fills cells (date/KW for orders, "Inventur 31.12.<jahr>" headline for inventory); needs an ODS library and the `../git/vorlagen/` templates. Also relevant for `abrechnung_tag`/`abrechnung_monat`/`abrechnung_jahr` (Tages-/Monats-/Jahresabrechnung.ods)
 [x] Search and Filter Enhancements - complete for all list endpoints
 - Catalog: `artikel` (aktiv_only, search_string over name/shortname/number/origin/barcode, barcode, artikel_nr, artikel_name, lieferant_id, produktgruppen_id), `lieferant` and `produktgruppe` (aktiv_only, search_string, name/parent filters), `mwst` (search_string) - already present, now documented as the pattern
-- `rabattaktion`: search_string (Aktionsname), `artikel_id`/`produktgruppen_id`, `current_only` (running now), typed `since`/`until`, `exclude_deleted`. Fixed a bug where open-ended actions (`bis IS NULL`) vanished from the default list (Java keeps them: `bis != von OR bis IS NULL`)
-- `bestellung`: `typ` filter (validated against LM/KHW/IVT) on top of the existing `since`/`until`
-- `kassenstand`: `since`/`until` on `buchungsdatum` (plus the existing `rechnungen` filter)
+- `rabattaktion`: search_string (Aktionsname), `artikel_id`/`produktgruppen_id`, `current_only` (running now), typed `von`/`bis`, `exclude_deleted`. Fixed a bug where open-ended actions (`bis IS NULL`) vanished from the default list (Java keeps them: `bis != von OR bis IS NULL`)
+- `bestellung`: `typ` filter (validated against LM/KHW/IVT) on top of the existing `von`/`bis`
+- `kassenstand`: `von`/`bis` on `buchungsdatum` (plus the existing `rechnungen` filter)
 - `anzahlung`: `anzahlung_in_rech_nr` / `aufloesung_in_rech_nr`
 - `zaehlprotokoll`: `abrechnung_tag_id` on the list endpoint
 - `tse/transaction`: `rechnungs_nr` filter and bounded `limit`

@@ -97,11 +97,11 @@ def test_rabattaktion_search_and_date_window(client, session):
     body = client.get("/rabattaktion/", params={"search_string": "Sommer"}).json()
     assert [x["aktionsname"] for x in body] == ["Sommerfest"]
 
-    # "since" includes open-ended actions; the expired one is excluded
-    body = client.get("/rabattaktion/", params={"since": now.isoformat()}).json()
+    # "von" includes open-ended actions; the expired one is excluded
+    body = client.get("/rabattaktion/", params={"von": now.isoformat()}).json()
     assert [x["aktionsname"] for x in body] == ["Sommerfest"]
 
-    body = client.get("/rabattaktion/", params={"until": (now - timedelta(days=300)).isoformat()}).json()
+    body = client.get("/rabattaktion/", params={"bis": (now - timedelta(days=300)).isoformat()}).json()
     assert [x["aktionsname"] for x in body] == ["Winteraktion"]
 
 
@@ -154,10 +154,10 @@ def test_kassenstand_date_range(client):
         "buchungsdatum": "2026-02-10T10:00:00Z",
     })
 
-    body = client.get("/kassenstand/", params={"since": "2026-02-01T00:00:00Z"}).json()
+    body = client.get("/kassenstand/", params={"von": "2026-02-01T00:00:00Z"}).json()
     assert [k["kommentar"] for k in body] == ["neu"]
 
-    body = client.get("/kassenstand/", params={"until": "2026-01-31T00:00:00Z"}).json()
+    body = client.get("/kassenstand/", params={"bis": "2026-01-31T00:00:00Z"}).json()
     assert [k["kommentar"] for k in body] == ["alt"]
 
 

@@ -501,7 +501,7 @@ Details and sources: `docs/VAT_ROUNDING.md`.
 **Status: ✅ Done (2026-10-27).**
 - Every list endpoint supports `offset` + `limit` with `limit <= 100`
 - Catalog search: `artikel`, `lieferant`, `produktgruppe` and `mwst` support `search_string` (space-separated terms, each must occur) plus their specific filters; `artikel` also searches shortname/number/origin/barcode
-- `rabattaktion`: `search_string`, `artikel_id`, `produktgruppen_id`, `current_only`, typed `since`/`until`. Fixed the default list dropping open-ended actions (`bis IS NULL`), matching the Java filter `bis != von OR bis IS NULL`
+- `rabattaktion`: `search_string`, `artikel_id`, `produktgruppen_id`, `current_only`, typed `von`/`bis`. Fixed the default list dropping open-ended actions (`bis IS NULL`), matching the Java filter `bis != von OR bis IS NULL`
 - `bestellung`: `typ` (LM/KHW/IVT) in addition to the date range; `kassenstand`: date range on `buchungsdatum`; `anzahlung`: filter by the two sale numbers; `zaehlprotokoll`: `abrechnung_tag_id`; `tse/transaction`: `rechnungs_nr`; `users`: role/active/username search
 - Sorting: `verkauf` already had `desc`; the settlement lists accept `desc=true` for newest-first
 - Covered by `python/tests/test_filters.py`

@@ -22,8 +22,8 @@ router = APIRouter(
 @router.get("/")
 def read_rabattaktionen(
     session: SessionDep,
-    since: Optional[datetime] = None,
-    until: Optional[datetime] = None,
+    von: Optional[datetime] = None,
+    bis: Optional[datetime] = None,
     artikel_id: Optional[int] = None,
     produktgruppen_id: Optional[int] = None,
     search_string: str = "",
@@ -34,13 +34,13 @@ def read_rabattaktionen(
     selection = select(Rabattaktion).outerjoin(Artikel).outerjoin(Produktgruppe)
 
     # Add a where clause if parameters are provided
-    if since is not None:
+    if von is not None:
         # open-ended actions (bis IS NULL) run forever and must stay included
         selection = selection.where(
-            or_(Rabattaktion.bis.is_(None), Rabattaktion.bis >= since)
+            or_(Rabattaktion.bis.is_(None), Rabattaktion.bis >= von)
         )
-    if until is not None:
-        selection = selection.where(Rabattaktion.von <= until)
+    if bis is not None:
+        selection = selection.where(Rabattaktion.von <= bis)
     if artikel_id is not None:
         selection = selection.where(Rabattaktion.artikel_id == artikel_id)
     if produktgruppen_id is not None:
