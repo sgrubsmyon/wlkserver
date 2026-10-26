@@ -2,8 +2,8 @@
 
 > **Sync note**: This document and `concepts/IMPLEMENTATION_PLAN.md` must be kept in sync. When implementation progress changes, update both files so new sessions without prior memory see a consistent status.
 
-> **Last Updated**: 2026-10-25  
-> **Status**: Phases 1-5 implemented at router level (TSE export adapter untested without hardware); main Phase 6/7 flows wired (see "Business Logic Wiring Gaps" for what remains); auth enforced on transaction endpoints; parity audit of the remaining low-priority endpoints done and resolved (see "Parity Audit"), Bestellung positions + date filter implemented; bar_brutto aggregation matches Java; sale workflow (validation, automatic discounts, all four modes) and kassenstand balance validation complete; Bestellung CSV import supports positions; Bestellung/Inventur CSV export added (ODS deferred); CORS configured; core `/training` endpoints; integration tests incl. concurrency; same-origin nginx deployment and script automation documented as planned; VAT module Java-parity checked, 100% tested, rounding method configurable; test coverage 88%
+> **Last Updated**: 2026-10-26  
+> **Status**: Phases 1-5 implemented at router level (TSE export adapter untested without hardware); main Phase 6/7 flows wired (see "Business Logic Wiring Gaps" for what remains); auth enforced on transaction endpoints; parity audit of the remaining low-priority endpoints done and resolved (see "Parity Audit"), Bestellung positions + date filter implemented; bar_brutto aggregation matches Java; sale workflow (validation, automatic discounts, all four modes) and kassenstand balance validation complete; voucher redemption uses the Java balance calculation; Bestellung CSV import supports positions; Bestellung/Inventur CSV export added (ODS deferred); CORS configured; core `/training` endpoints; integration tests incl. concurrency; same-origin nginx deployment and script automation documented as planned; VAT module Java-parity checked, 100% tested, rounding method configurable; test coverage 88%
 
 ---
 
@@ -122,7 +122,7 @@
 - [x] GET /gutschein/eingeloest
 - [x] /gutschein/ausstehend now returns restbetrag_anfang (initial amount) for partial-redemption detection - done
 - [x] GET /gutschein/verkauf/{rechnungs_nr} - not needed for Java parity (see Parity Audit)
-- [ ] Advanced redemption calculation - Phase 6
+- [x] Advanced redemption calculation - `python/business/voucher_logic.py` mirrors Java `GutscheinEinloesenDialog.queryForGutschein` + `Kassieren.maybeInsertEinloesungIntoGutschein`: balance = `MIN(restbetrag)` over all rows of the `gutschein_nr` (append-only family, not the passed row), start value = `MAX(restbetrag)`; amount is derived from the linked sale position (`abs(ges_preis)`), an explicit `betrag` or the requested new `restbetrag`; must be positive and may not exceed the balance; a sale position can redeem only once; `gutschein_in_vd_id` is copied from the creation row; the redeemed row is attributed to the user. `restbetrag_anfang` in `/ausstehend` now uses `MAX(restbetrag)` (Java semantics). Redemptions are serialized with a process lock + `SELECT ... FOR UPDATE`
 
 [x] **Anzahlung** - models + router + smoke tests
 - [x] GET /anzahlung
@@ -336,7 +336,7 @@
 
 ### Test Coverage Target
 
-- [x] Achieve 80%+ coverage (measured 88% on 2026-10-25, 200 tests passing)
+- [x] Achieve 80%+ coverage (measured 88% on 2026-10-26, 215 tests passing)
 
 ---
 

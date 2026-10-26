@@ -44,6 +44,8 @@ def read_gutscheine(
 
 @router.get("/ausstehend")
 def read_ausstehende_gutscheine(session: SessionDep) -> list[GutscheinPublic]:
+    from ..business.voucher_logic import voucher_start_value
+
     latest = _latest_ids_per_nr(session)
     if not latest:
         return []
@@ -53,13 +55,8 @@ def read_ausstehende_gutscheine(session: SessionDep) -> list[GutscheinPublic]:
     ).all()
     result = []
     for g in rows:
-        # initial restbetrag = restbetrag of the earliest entry for this gutschein_nr
-        first = session.exec(
-            select(Gutschein).where(Gutschein.gutschein_nr == g.gutschein_nr).order_by(Gutschein.gutschein_id)
-        ).first()
-        anfang = first.restbetrag if first is not None else g.restbetrag
         obj = GutscheinPublic.model_validate(g)
-        obj.restbetrag_anfang = anfang
+        obj.restbetrag_anfang = float(voucher_start_value(session, g.gutschein_nr))
         result.append(obj)
     return result
 
@@ -126,57 +123,31 @@ def einloesen_gutschein(
     gutschein_in_vd_id: Optional[int] = Query(default=None),
     _user=Depends(require_user),
 ):
-    original = session.get(Gutschein, gutschein_id)
-    if not original:
-        raise HTTPException(status_code=404, detail="Gutschein not found")
+    from ..business.voucher_logic import redeem_voucher
 
     p = payload
-    ei_vd = einloesung_in_vd_id
-    gi_vd = gutschein_in_vd_id
-    rb = restbetrag
-    b = betrag
     datum = None
     if p is not None:
-        if ei_vd is None:
-            ei_vd = p.einloesung_in_vd_id
-        if gi_vd is None:
-            gi_vd = p.gutschein_in_vd_id
-        if rb is None:
-            rb = p.restbetrag
-        if b is None:
-            b = p.betrag
-        if datum is None:
-            datum = p.datum
+        if einloesung_in_vd_id is None:
+            einloesung_in_vd_id = p.einloesung_in_vd_id
+        if gutschein_in_vd_id is None:
+            gutschein_in_vd_id = p.gutschein_in_vd_id
+        if restbetrag is None:
+            restbetrag = p.restbetrag
+        if betrag is None:
+            betrag = p.betrag
+        datum = p.datum
 
-    if ei_vd is not None:
-        vd = session.get(VerkaufDetails, ei_vd)
-        if not vd:
-            raise HTTPException(status_code=400, detail="VerkaufDetails not found")
-    if gi_vd is not None:
-        vd = session.get(VerkaufDetails, gi_vd)
-        if not vd:
-            raise HTTPException(status_code=400, detail="VerkaufDetails not found")
-
-    if gi_vd is None:
-        gi_vd = original.gutschein_in_vd_id
-    if datum is None:
-        datum = datetime.now(timezone.utc)
-    if rb is None and b is not None:
-        rb = original.restbetrag - b
-    if rb is None:
-        rb = 0.0
-
-    new_g = Gutschein(
-        gutschein_nr=original.gutschein_nr,
+    new_g = redeem_voucher(
+        session,
+        gutschein_id,
+        betrag=betrag,
+        einloesung_in_vd_id=einloesung_in_vd_id,
+        gutschein_in_vd_id=gutschein_in_vd_id,
+        restbetrag=restbetrag,
         datum=datum,
-        gutschein_in_vd_id=gi_vd,
-        einloesung_in_vd_id=ei_vd,
-        restbetrag=rb,
+        user_id=_user.user_id,
     )
-    new_g.gutschein_id = None
-    session.add(new_g)
-    session.commit()
-    session.refresh(new_g)
     return GutscheinPublic.model_validate(new_g)
 
 

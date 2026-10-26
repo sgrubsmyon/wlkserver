@@ -138,6 +138,22 @@ See the "Parity Audit" section in `concepts/TODO.md`. The optional per-sale inst
 - `python/models.py` - Add Gutschein models
 - `python/routers/gutschein.py` - Create + Read endpoints + redemption logic (no update, no delete)
 
+**Status: ✅ Done (2026-10-26).** Redemption logic lives in
+`python/business/voucher_logic.py` and mirrors the Java POS:
+- the balance is `MIN(restbetrag)` over all rows of the voucher number (the table is
+  append-only), the start value is `MAX(restbetrag)`; the row passed to the endpoint
+  is only used to identify the voucher, never as the balance
+- the redeemed amount comes from the linked sale position (`abs(ges_preis)`),
+  an explicit `betrag`, or the requested new `restbetrag`; it must be positive, must
+  not exceed the balance, and a sale position can redeem only once
+- `gutschein_in_vd_id` is copied from the creation row, the redemption row is
+  appended with the new balance and attributed to the authenticated user
+- redemption is serialized (process lock + `SELECT ... FOR UPDATE`) so parallel
+  redemptions cannot overspend a voucher
+- Covered by `python/tests/test_gutschein.py` (partial redemption, balance across
+  rows, sale-position linking, over-redemption, double redemption, mismatch checks);
+  `business/voucher_logic.py` is at 100 % coverage
+
 ### 2.3 Anzahlung (Deposit/Installment Payment)
 **Priority**: 🟡 MEDIUM - Important for installment sales
 
@@ -634,7 +650,7 @@ Scripts (cron jobs for price changes, supplier article imports, settlement creat
 - Minimum 80% code coverage
 - All critical paths tested
 - All business logic validated
-- Current: 88% (200 tests passing, measured 2026-10-25)
+- Current: 88% (215 tests passing, measured 2026-10-26)
 
 ### Real Database Tests
 - Tests run on in-memory SQLite, which does not enforce foreign keys and ignores `UNSIGNED`/`YEAR`/`TIMESTAMP` semantics
