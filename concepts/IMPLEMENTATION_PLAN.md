@@ -431,12 +431,13 @@ Details and sources: `docs/VAT_ROUNDING.md`.
 
 **Status: ✅ Done (2026-10-26).**
 - Inverted entries match Java `HeutigeRechnungen.insertStornoIntoVerkauf` (position, `artikel_id`, `rabatt_id`, `mwst_satz` copied; quantity, price and VAT negated), written in one transaction with rollback
-- The storno receipt's payment mode mirrors Java: cash when the original was cash or when `cash_refund=true`, otherwise EC. This fixes the previous behaviour where every storno was booked as a cash transaction (wrong drawer movement and wrong `bar_brutto` for EC refunds); the reversing Kassenstand entry is only written for cash refunds
+- The storno receipt mirrors the **original payment mode** (Java: `ec_zahlung = !zahlMod.equals("Bar")`)
+- The refund is paid out in cash: Java `insertStornoIntoTSE` always sends the payment type "Bar" ("Weltladen can only pay back in bar, even in case of EC payment"), so a reversing Kassenstand entry is written for cash and EC stornos; `cash_refund=false` only covers the edge case that a card charge was not executed
+- **Only receipts that are not yet part of a completed Tagesabschluss can be storniert**: a receipt inside any `abrechnung_tag` range is rejected with `400` and a message naming the settlement, because a finished settlement is immutable
 - Vouchers created in the receipt are invalidated (`restbetrag = 0`, creation position kept) and open installments are resolved against the storno receipt, mirroring `maybeInsertStornoIntoGutschein` / `maybeInsertStornoIntoAnzahlung`
 - Storno sale and TSE transaction carry the `user_id` of the authenticated user
-- Validation: original exists, is not itself a storno and has no storno yet
+- Additional validation: original exists and is not itself a storno and has no storno yet
 - TSE signing remains best-effort (adapter untested without hardware)
-- Deliberate difference: Java only offers storno in the "today's receipts" view, the API allows any receipt (no same-day restriction)
 - Covered by `python/tests/test_verkauf_storno.py` and `python/tests/test_storno_logic.py`
 
 ### 6.4 Cash Register Operations

@@ -3,7 +3,7 @@
 > **Sync note**: This document and `concepts/IMPLEMENTATION_PLAN.md` must be kept in sync. When implementation progress changes, update both files so new sessions without prior memory see a consistent status.
 
 > **Last Updated**: 2026-10-26  
-> **Status**: Phases 1-5 implemented at router level (TSE export adapter untested without hardware); main Phase 6/7 flows wired (see "Business Logic Wiring Gaps" for what remains); auth enforced on transaction endpoints; parity audit of the remaining low-priority endpoints done and resolved (see "Parity Audit"), Bestellung positions + date filter implemented; bar_brutto aggregation matches Java; sale workflow (validation, automatic discounts, all four modes), storno (refund modes, rollback, attribution) and kassenstand balance validation complete; voucher redemption uses the Java balance calculation; Bestellung CSV import supports positions; Bestellung/Inventur CSV export added (ODS deferred); CORS configured; core `/training` endpoints; integration tests incl. concurrency; same-origin nginx deployment and script automation documented as planned; VAT module Java-parity checked, 100% tested, rounding method configurable; test coverage 89%
+> **Status**: Phases 1-5 implemented at router level (TSE export adapter untested without hardware); main Phase 6/7 flows wired (see "Business Logic Wiring Gaps" for what remains); auth enforced on transaction endpoints; parity audit of the remaining low-priority endpoints done and resolved (see "Parity Audit"), Bestellung positions + date filter implemented; bar_brutto aggregation matches Java; sale workflow (validation, automatic discounts, all four modes), storno (payment-mode parity, cash payout, settlement lock, rollback, attribution) and kassenstand balance validation complete; voucher redemption uses the Java balance calculation; Bestellung CSV import supports positions; Bestellung/Inventur CSV export added (ODS deferred); CORS configured; core `/training` endpoints; integration tests incl. concurrency; same-origin nginx deployment and script automation documented as planned; VAT module Java-parity checked, 100% tested, rounding method configurable; test coverage 89%
 
 ---
 
@@ -235,14 +235,14 @@
 - [x] Covered by tests/test_sale_workflow.py (auto/explicit discounts, group wildcards, date windows, all four modes, rejections, router-level attribution)
 [x] Storno Logic Enhancements (python/business/storno_logic.py) - complete
 - [x] Inverted sale/mwst/details entries identical to Java `HeutigeRechnungen.insertStornoIntoVerkauf` (position, artikel, rabatt, mwst copied; stueckzahl/ges_preis/mwst negated)
-- [x] Refund mode mirrors Java: the storno receipt is a cash transaction when the original was cash or `cash_refund=true`, otherwise an EC transaction. Previously every storno was booked as cash, which wrongly moved the drawer and distorted `bar_brutto` for EC refunds
-- [x] Reversing Kassenstand entry only for cash refunds (Java `insertStornoIntoKassenstand`)
+- [x] Storno receipt mirrors the **original payment mode** (Java: `ec_zahlung = !zahlMod.equals("Bar")`)
+- [x] Refund to the customer is always in cash (Java `insertStornoIntoTSE` sends "Bar" even for EC sales: "Weltladen can only pay back in bar"), so the reversing Kassenstand entry is written for cash **and** EC stornos by default; `cash_refund=false` remains only for the edge case that a card charge was not executed
 - [x] Voucher cancellation (restbetrag 0, creation position kept) and open-installment resolution against the storno receipt (Java `maybeInsertStornoIntoGutschein` / `maybeInsertStornoIntoAnzahlung`)
 - [x] TSE transaction for the storno (best-effort, still untested without hardware); `user_id` attribution on both the storno sale and the TSE row
 - [x] Validation: original must exist, must not be a storno, must not already have a storno
+- [x] **Storno is only allowed for receipts not yet part of a completed Tagesabschluss**: a receipt whose `rechnungs_nr` falls into any `abrechnung_tag` range is rejected with `400` and a clear message naming the settlement; a finished settlement is immutable
 - [x] Single transaction with rollback - a failed inversion no longer leaves a half-written storno
-- [x] Covered by tests/test_verkauf_storno.py and tests/test_storno_logic.py (refund modes, rollback, attribution, voucher/installment handling); storno_logic.py at 94 %
-- [ ] Not planned: Java only offers storno from the "today's receipts" view; the API intentionally allows storno of any receipt (no same-day restriction)
+- [x] Covered by tests/test_verkauf_storno.py and tests/test_storno_logic.py (payment modes, cash payout, settlement guard, rollback, attribution, voucher/installment handling); storno_logic.py at 94 %
 [⏳] Cash Register Operations (python/business/cash_register.py) - `update_kassenstand_for_sale`, `process_payment`, `ec_payment_threshold_check` and `validate_balance_change` wired; `end_of_day_procedure` basic; `is_training_mode` reads `TRAINING_MODE` env var
 
 ---

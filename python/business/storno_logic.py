@@ -7,7 +7,7 @@ from typing import Any, Optional
 from fastapi import HTTPException
 from sqlmodel import Session, select
 
-from ..models import Verkauf, VerkaufDetails, VerkaufMwst
+from ..models import AbrechnungTag, Verkauf, VerkaufDetails, VerkaufMwst
 from .vat_calculator import _to_decimal
 
 
@@ -20,6 +20,17 @@ def can_storno(verkauf: Verkauf, session: Optional[Session] = None) -> tuple[boo
         existing = session.exec(select(Verkauf).where(Verkauf.storno_von == verkauf.rechnungs_nr)).first()
         if existing is not None:
             return False, "This Verkauf already has a storno"
+        settled = session.exec(
+            select(AbrechnungTag).where(
+                AbrechnungTag.rechnungs_nr_von <= verkauf.rechnungs_nr,
+                AbrechnungTag.rechnungs_nr_bis >= verkauf.rechnungs_nr,
+            )
+        ).first()
+        if settled is not None:
+            return False, (
+                f"Verkauf {verkauf.rechnungs_nr} is already part of the completed "
+                f"Tagesabschluss {settled.id} and can no longer be storniert"
+            )
     return True, ""
 
 
@@ -76,16 +87,14 @@ def create_storno(*args, **kwargs):
                 rechnungs_nr, session = args[0], args[1]
             else:
                 session, rechnungs_nr = args[0], args[1]
-    cash_refund = kwargs.get("cash_refund", False)
     user_id = kwargs.get("user_id")
     original = validate_storno(rechnungs_nr, session)
-    # Refund mode mirrors Java HeutigeRechnungen.insertStornoIntoVerkauf: a cash
-    # sale is always refunded in cash, an EC sale only when requested.
-    ec_zahlung = not ((not original.ec_zahlung) or cash_refund)
-
+    # The storno receipt mirrors the original payment mode (Java
+    # HeutigeRechnungen.insertStornoIntoVerkauf: ec_zahlung = !zahlMod.equals("Bar")).
+    # Whether the customer is paid out in cash is decided by the caller.
     storno_sale = Verkauf(
         verkaufsdatum=datetime.now(timezone.utc),
-        ec_zahlung=ec_zahlung,
+        ec_zahlung=original.ec_zahlung,
         kunde_gibt=None,
         storno_von=rechnungs_nr,
         user_id=user_id,

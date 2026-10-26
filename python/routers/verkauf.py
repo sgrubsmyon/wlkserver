@@ -202,7 +202,13 @@ def create_verkauf(verkauf: VerkaufCreate, session: SessionDep, credentials: HTT
 
 
 @router.post("/{rechnungs_nr}/storno", response_model=dict)
-def storno_verkauf(rechnungs_nr: int, session: SessionDep, cash_refund: bool = False, _user: User = Depends(require_user)):
+def storno_verkauf(rechnungs_nr: int, session: SessionDep, cash_refund: bool = True, _user: User = Depends(require_user)):
+    """Storno a receipt that is not yet part of a completed Tagesabschluss.
+
+    The shop can only refund in cash (Java `HeutigeRechnungen.insertStornoIntoTSE`
+    sends "Bar" even for EC sales), so `cash_refund` defaults to true. Set it to
+    false only when an EC charge was not actually executed and nothing is paid out.
+    """
     from ..business.storno_logic import create_storno
     original = session.get(Verkauf, rechnungs_nr)
     if not original:
@@ -211,7 +217,6 @@ def storno_verkauf(rechnungs_nr: int, session: SessionDep, cash_refund: bool = F
     storno_sale = create_storno(
         session,
         rechnungs_nr,
-        cash_refund=cash_refund,
         user_id=user_id,
     )
     # voucher/installment handling hooks
@@ -241,9 +246,10 @@ def storno_verkauf(rechnungs_nr: int, session: SessionDep, cash_refund: bool = F
         session.commit()
     except Exception:
         pass
-    # Cash register side-effect: the storno is a cash refund when the refund mode
-    # is cash (Java HeutigeRechnungen.insertStornoIntoKassenstand).
-    if not storno_sale.ec_zahlung:
+    # Cash payout: a cash sale is always refunded in cash; an EC sale too unless the
+    # caller says the card was not charged (Java asks this in a dialog).
+    payout_cash = (not original.ec_zahlung) or cash_refund
+    if payout_cash:
         from ..business.cash_register import update_kassenstand_for_sale
         update_kassenstand_for_sale(
             session=session,
