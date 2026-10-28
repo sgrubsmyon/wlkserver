@@ -156,3 +156,36 @@ def test_explicit_settlement_range(client):
     preview = client.get("/abrechnung/tag/vorschau").json()
     assert preview["open"] is True
     assert preview["rechnungs_nr_von"] == second
+
+
+def test_backdated_daily_settlement_reopens_month_and_year(client, session):
+    a = _seed_artikel(session)
+    first = client.post("/verkauf/", json={
+        "verkauf_details": [{"artikel_id": a.artikel_id, "stueckzahl": 1}],
+    }).json()["rechnungs_nr"]
+    r = client.post("/abrechnung/tag/", json={
+        "zeitpunkt": "2026-08-15T12:00:00+00:00",
+        "rechnungs_nr_von": first, "rechnungs_nr_bis": first,
+    })
+    assert r.status_code == 200
+    assert client.post("/abrechnung/monat/", json={"monat": "2026-08"}).status_code == 200
+    assert client.post("/abrechnung/jahr/", json={"jahr": 2026}).status_code == 200
+    assert client.get("/abrechnung/monat/offen").json() == []
+    assert client.get("/abrechnung/jahr/offen").json() == []
+
+    # a backdated daily settlement inside the settled month invalidates both
+    second = client.post("/verkauf/", json={
+        "verkauf_details": [{"artikel_id": a.artikel_id, "stueckzahl": 1}],
+    }).json()["rechnungs_nr"]
+    r = client.post("/abrechnung/tag/", json={
+        "zeitpunkt": "2026-08-20T12:00:00+00:00",
+        "rechnungs_nr_von": second, "rechnungs_nr_bis": second,
+    })
+    assert r.status_code == 200
+
+    assert client.get("/abrechnung/monat/offen").json() == ["2026-08"]
+    assert client.get("/abrechnung/monat/").json() == []
+    assert client.get("/abrechnung/jahr/").json() == []
+    # after recreating the month, the year is due again
+    assert client.post("/abrechnung/monat/", json={"monat": "2026-08"}).status_code == 200
+    assert client.get("/abrechnung/jahr/offen").json() == [2026]

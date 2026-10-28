@@ -5,6 +5,10 @@ from fastapi import APIRouter, HTTPException, Query
 from sqlmodel import select
 
 from ..models import (
+    AbrechnungJahr,
+    AbrechnungJahrMwst,
+    AbrechnungMonat,
+    AbrechnungMonatMwst,
     AbrechnungTag,
     AbrechnungTagPublic,
     AbrechnungTagCreate,
@@ -30,6 +34,33 @@ router = APIRouter(
 
 def _last_tag(session: SessionDep):
     return session.exec(select(AbrechnungTag).order_by(AbrechnungTag.id.desc())).first()
+
+
+def _invalidate_period_settlements(session: SessionDep, zeitpunkt: datetime) -> None:
+    """Drop month/year settlements covering a (re)opened daily settlement.
+
+    Mirrors Java `AbrechnungenTag.deleteAbrechnungIfNeedBe()`: a backdated daily
+    settlement makes the enclosing month and year settlements outdated, so they
+    must be recreated by the next `POST /abrechnung/monat|jahr`.
+    """
+    month = zeitpunkt.date().replace(day=1)
+    for row in session.exec(
+        select(AbrechnungMonat).where(AbrechnungMonat.monat == month)
+    ).all():
+        for m in session.exec(
+            select(AbrechnungMonatMwst).where(AbrechnungMonatMwst.id == row.id)
+        ).all():
+            session.delete(m)
+        session.delete(row)
+    for row in session.exec(
+        select(AbrechnungJahr).where(AbrechnungJahr.jahr == zeitpunkt.year)
+    ).all():
+        for m in session.exec(
+            select(AbrechnungJahrMwst).where(AbrechnungJahrMwst.id == row.id)
+        ).all():
+            session.delete(m)
+        session.delete(row)
+    session.commit()
 
 
 @router.get("/")
@@ -164,6 +195,9 @@ def create_abrechnung_tag(payload: Optional[AbrechnungTagCreate], session: Sessi
         )
         session.add(row)
     session.commit()
+
+    # A backdated daily settlement reopens its month and year.
+    _invalidate_period_settlements(session, at.zeitpunkt)
 
     # mwst values by ID (Java getAllCurrentMwstValuesByID)
     from ..business.vat_calculator import get_all_current_mwst_values_by_id
