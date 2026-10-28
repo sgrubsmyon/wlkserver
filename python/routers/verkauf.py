@@ -22,7 +22,7 @@ from ..session import SessionDep
 from ..dependencies import bearer_scheme, require_user
 from ..models import User
 from ..business.vat_calculator import calculate_vat
-from ..business.sale_workflow import prepare_detail, calculate_mwst_summary, validate_detail
+from ..business.sale_workflow import build_sale_details, calculate_mwst_summary
 
 router = APIRouter(
     prefix="/verkauf",
@@ -114,9 +114,9 @@ def create_verkauf(verkauf: VerkaufCreate, session: SessionDep, credentials: HTT
         payload = decode_token(credentials.credentials)
         if payload:
             user_id = payload.get("user_id")
-    # Validate before writing anything so a bad position leaves no empty sale
-    for d in (verkauf.verkauf_details or []):
-        validate_detail(session, d)
+    # Expand auxiliary lines (Pfand, discounts, price adjustment, voucher
+    # redemption) and validate before writing anything.
+    prepared = build_sale_details(session, verkauf)
     # base = VerkaufCreate.model_validate(verkauf)
     new_v = Verkauf(
         verkaufsdatum=datetime.now(timezone.utc),
@@ -131,13 +131,9 @@ def create_verkauf(verkauf: VerkaufCreate, session: SessionDep, credentials: HTT
     session.refresh(new_v)
 
     # Add details if present
-    prepared = []
-    for d in (verkauf.verkauf_details or []):
-        d_obj = prepare_detail(session, d)
-        d_obj.vd_id = None
+    for d_obj in prepared:
         d_obj.rechnungs_nr = new_v.rechnungs_nr
         session.add(d_obj)
-        prepared.append(d_obj)
     session.commit()
     for d_obj in prepared:
         session.refresh(d_obj)
@@ -176,6 +172,27 @@ def create_verkauf(verkauf: VerkaufCreate, session: SessionDep, credentials: HTT
             session.add(g)
             next_nr += 1
     session.commit()
+
+    # Voucher redemption as a sale position (mirrors Java
+    # Kassieren.maybeInsertEinloesungIntoGutschein): the negative position is
+    # booked with the receipt and reduces the voucher's remaining balance.
+    if verkauf.gutschein_einloesung_nr is not None:
+        from ..models import Gutschein
+        from ..business.voucher_logic import redeem_voucher
+        einloesung = next(
+            (d for d in prepared if d.artikel_id is not None
+             and session.get(Artikel, d.artikel_id).artikel_nr == "GUTSCHEINEINLOES"),
+            None,
+        )
+        voucher = session.exec(
+            select(Gutschein)
+            .where(Gutschein.gutschein_nr == verkauf.gutschein_einloesung_nr)
+            .order_by(Gutschein.gutschein_id)
+        ).first()
+        if einloesung is None or voucher is None:
+            raise HTTPException(status_code=400, detail="Gutschein not found")
+        redeem_voucher(session, voucher.gutschein_id,
+                       einloesung_in_vd_id=einloesung.vd_id, user_id=user_id)
 
     # Cash register side-effect: only cash (non-EC) sales add money to the register
     # (mirrors Java Kassieren.insertIntoKassenstand, called when ec == false).

@@ -381,6 +381,11 @@ class VerkaufPublic(VerkaufBase):
 # For creating
 class VerkaufCreate(VerkaufBase):
     storno_von: int | None = None
+    # Receipt-level discount (Java "Rabatt auf Rechnung"), e.g. 0.1 = 10 %.
+    rechnung_rabatt_relativ: float | None = Field(default=None, ge=0, lt=1)
+    # Voucher redemption as a sale position (Java `gutscheinEinloesungHinzufuegen`).
+    gutschein_einloesung_nr: int | None = None
+    gutschein_einloesung_betrag: float | None = Field(default=None, gt=0)
     verkauf_details: list["VerkaufDetailsCreate"] | None = None
 
 #########################
@@ -458,6 +463,8 @@ class VerkaufDetailsPublic(VerkaufDetailsBase):
 class VerkaufDetailsCreate(VerkaufDetailsBase):
     artikel_id: int | None = None
     rabatt_id: int | None = None
+    # Manual per-line discount; negative values are a price increase (Aufschlag).
+    rabatt_absolut: float | None = None
 
 
 #######################

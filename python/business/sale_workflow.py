@@ -11,6 +11,17 @@ from ..models import Artikel, Mwst, Rabattaktion, VerkaufDetails, VerkaufDetails
 from .cash_register import EC_THRESHOLD, ec_payment_threshold_check
 from .vat_calculator import calculate_mwst_values_in_rechnung
 
+CENT = Decimal("0.01")
+
+# Special article numbers from the shop's master data (Java `WindowContent`
+# uses the matching fixed IDs 1, 2, 3 and 7).
+SPECIAL_ARTIKEL = {
+    "rabatt": "RABATT1",
+    "rechnung_rabatt": "RABATT2",
+    "preisanpassung": "ANPASSUNG",
+    "gutschein_einloesung": "GUTSCHEINEINLOES",
+}
+
 
 def _resolve(a, b):
     if isinstance(a, Session) and not isinstance(b, Session):
@@ -131,38 +142,46 @@ def _active_rabattaktionen(session: Session, artikel: Artikel, rabatt_id=None):
 
 
 def _apply_rabattaktionen(base_unit, stueckzahl, aktionen):
-    """Final line price with the given discounts.
+    """Line price and one discount amount per action.
 
     Java order (`Kassieren.checkForRabatt`): absolute, relative, free items,
-    quantity-relative. Each stage works on the unit price left by the previous one.
+    quantity-relative. Each stage works on the unit price left by the previous
+    one. The return value is `(net_total, [(action, reduction), ...])`; each
+    reduction becomes its own RABATT position, like Java `addRabattRow`.
     """
     qty = Decimal(str(stueckzahl))
     unit = Decimal(str(base_unit))
-    reduction = Decimal("0")
+    per_action = {}
+
+    def add(r, amount):
+        if amount:
+            per_action.setdefault(r.rabatt_id, [r, Decimal("0")])[1] += amount
 
     for r in aktionen:
         if r.rabatt_absolut is not None:
-            reduction += qty * Decimal(str(r.rabatt_absolut))
+            add(r, qty * Decimal(str(r.rabatt_absolut)))
             unit -= Decimal(str(r.rabatt_absolut))
     for r in aktionen:
         if r.rabatt_relativ is not None:
-            reduction += qty * Decimal(str(r.rabatt_relativ)) * unit
+            add(r, qty * Decimal(str(r.rabatt_relativ)) * unit)
             unit -= Decimal(str(r.rabatt_relativ)) * unit
     for r in aktionen:
         if (r.mengenrabatt_schwelle and r.mengenrabatt_anzahl_kostenlos
                 and stueckzahl >= r.mengenrabatt_schwelle):
             free = (stueckzahl // r.mengenrabatt_schwelle) * r.mengenrabatt_anzahl_kostenlos
-            reduction += free * unit
+            add(r, free * unit)
     for r in aktionen:
         if (r.mengenrabatt_relativ is not None and r.mengenrabatt_schwelle
                 and stueckzahl >= r.mengenrabatt_schwelle):
-            reduction += qty * Decimal(str(r.mengenrabatt_relativ)) * unit
+            add(r, qty * Decimal(str(r.mengenrabatt_relativ)) * unit)
             unit -= Decimal(str(r.mengenrabatt_relativ)) * unit
 
-    total = qty * Decimal(str(base_unit)) - reduction
+    reductions = [(r, amount.quantize(CENT, rounding=ROUND_HALF_UP))
+                  for r, amount in per_action.values()]
+    total = qty * Decimal(str(base_unit)) - sum((amount for _, amount in reductions), Decimal("0"))
     if total < 0:
         raise HTTPException(status_code=400, detail="Rabattaktion exceeds the line price")
-    return total.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    return total.quantize(CENT, rounding=ROUND_HALF_UP), reductions
 
 
 def determine_ges_preis(*args, **kwargs):
@@ -186,7 +205,7 @@ def determine_ges_preis(*args, **kwargs):
                     Decimal("0.01"), rounding=ROUND_HALF_UP))
             aktionen = _active_rabattaktionen(session, artikel, _field(detail, "rabatt_id"))
             if aktionen:
-                return float(_apply_rabattaktionen(artikel.vk_preis, stueckzahl, aktionen))
+                return float(_apply_rabattaktionen(artikel.vk_preis, stueckzahl, aktionen)[0])
             return float((Decimal(str(artikel.vk_preis)) * Decimal(str(stueckzahl))).quantize(
                 Decimal("0.01"), rounding=ROUND_HALF_UP))
     return None
@@ -242,6 +261,149 @@ def prepare_detail(*args, **kwargs):
     )
 
 
+def _special_artikel(session, key) -> Artikel:
+    nr = SPECIAL_ARTIKEL[key]
+    artikel = session.exec(select(Artikel).where(Artikel.artikel_nr == nr)).first()
+    if artikel is None:
+        raise HTTPException(status_code=400, detail=f"Special article {nr} not found")
+    return artikel
+
+
+def _mwst_of(artikel: Artikel) -> float:
+    pg = artikel.produktgruppe
+    if pg is not None and pg.mwst is not None and pg.mwst.mwst_satz is not None:
+        return float(pg.mwst.mwst_satz)
+    return 0.0
+
+
+def _aux_line(artikel: Artikel, stueckzahl, ges_preis, mwst_satz, rabatt_id=None):
+    return VerkaufDetails(
+        position=None,
+        stueckzahl=stueckzahl,
+        ges_preis=float(ges_preis),
+        mwst_satz=mwst_satz,
+        artikel_id=artikel.artikel_id,
+        rabatt_id=rabatt_id,
+    )
+
+
+def build_sale_details(session, verkauf) -> list[VerkaufDetails]:
+    """Expand a sale request into all positions, including auxiliary lines.
+
+    Mirrors the Java cashier: the article line keeps its full price and every
+    discount becomes its own negative RABATT line (or positive ANPASSUNG line
+    for a price increase). A product-group deposit appends a PFAND position,
+    the receipt-level discount adds one RABATT line per VAT rate, and a voucher
+    redemption adds a negative GUTSCHEINEINLOES position. Discount lines have no
+    position number, like Java `hinzufuegenRaw(addPosition=false)`.
+    """
+    rows: list[VerkaufDetails] = []
+    article_rows = []
+    position = 0
+
+    def next_position():
+        nonlocal position
+        position += 1
+        return position
+
+    for detail in getattr(verkauf, "verkauf_details", None) or []:
+        validate_detail(session, detail)
+        data = detail.model_dump() if hasattr(detail, "model_dump") else dict(detail)
+        artikel_id = data.get("artikel_id")
+        artikel = session.get(Artikel, artikel_id) if artikel_id is not None else None
+        stueckzahl = data.get("stueckzahl", 1)
+        qty = Decimal(str(stueckzahl))
+        mwst_satz = _mwst_of(artikel) if artikel is not None else 0.0
+
+        unit = Decimal("0")
+        if (artikel is not None and not getattr(artikel, "variabler_preis", False)
+                and artikel.vk_preis is not None):
+            unit = Decimal(str(artikel.vk_preis))
+        line = VerkaufDetails(
+            position=next_position(),
+            stueckzahl=stueckzahl,
+            ges_preis=float((unit * qty).quantize(CENT, rounding=ROUND_HALF_UP)),
+            mwst_satz=mwst_satz,
+            artikel_id=artikel_id,
+            rabatt_id=None,
+        )
+        rows.append(line)
+        has_discount = False
+
+        if artikel is not None and stueckzahl > 0:
+            aktionen = _active_rabattaktionen(session, artikel, data.get("rabatt_id"))
+            if aktionen:
+                _, reductions = _apply_rabattaktionen(artikel.vk_preis, stueckzahl, aktionen)
+                for rabatt, reduction in reductions:
+                    if reduction > 0:
+                        rows.append(_aux_line(_special_artikel(session, "rabatt"), stueckzahl,
+                                              -reduction, mwst_satz, rabatt.rabatt_id))
+                        has_discount = True
+
+            rabatt_absolut = data.get("rabatt_absolut")
+            if rabatt_absolut is not None:
+                amount = (Decimal(str(rabatt_absolut)) * qty).quantize(CENT, rounding=ROUND_HALF_UP)
+                if amount:
+                    key = "rabatt" if amount > 0 else "preisanpassung"
+                    rows.append(_aux_line(_special_artikel(session, key), stueckzahl,
+                                          -amount, mwst_satz))
+                    has_discount = True
+
+        article_rows.append((line, mwst_satz, has_discount))
+
+        pfand = artikel.produktgruppe.pfand if artikel is not None and artikel.produktgruppe else None
+        pfand_artikel = pfand.artikel if pfand is not None else None
+        if stueckzahl and pfand_artikel is not None and pfand_artikel.vk_preis is not None:
+            rows.append(VerkaufDetails(
+                position=next_position(),
+                stueckzahl=stueckzahl,
+                ges_preis=float((Decimal(str(pfand_artikel.vk_preis)) * qty).quantize(
+                    CENT, rounding=ROUND_HALF_UP)),
+                mwst_satz=mwst_satz,
+                artikel_id=pfand_artikel.artikel_id,
+                rabatt_id=None,
+            ))
+
+    rechnung_rabatt = getattr(verkauf, "rechnung_rabatt_relativ", None)
+    if rechnung_rabatt:
+        factor = Decimal(str(rechnung_rabatt))
+        sums: dict[float, Decimal] = {}
+        for line, mwst_satz, has_discount in article_rows:
+            if not has_discount:
+                sums[mwst_satz] = sums.get(mwst_satz, Decimal("0")) + Decimal(str(line.ges_preis))
+        rabatt_artikel = _special_artikel(session, "rechnung_rabatt")
+        for mwst_satz, summe in sums.items():
+            reduction = (factor * summe).quantize(CENT, rounding=ROUND_HALF_UP)
+            if reduction > 0:
+                rows.append(_aux_line(rabatt_artikel, 1, -reduction, mwst_satz))
+
+    gutschein_nr = getattr(verkauf, "gutschein_einloesung_nr", None)
+    if gutschein_nr is not None:
+        from .voucher_logic import voucher_balance
+        balance = voucher_balance(session, gutschein_nr)
+        betrag = getattr(verkauf, "gutschein_einloesung_betrag", None)
+        amount = Decimal(str(betrag)) if betrag is not None else balance
+        amount = amount.quantize(CENT, rounding=ROUND_HALF_UP)
+        if amount <= 0:
+            raise HTTPException(status_code=400, detail="Gutschein has no remaining balance")
+        if amount > balance:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Gutschein-Einlösung exceeds the remaining balance of {balance}",
+            )
+        artikel = _special_artikel(session, "gutschein_einloesung")
+        rows.append(VerkaufDetails(
+            position=next_position(),
+            stueckzahl=1,
+            ges_preis=float(-amount),
+            mwst_satz=_mwst_of(artikel),
+            artikel_id=artikel.artikel_id,
+            rabatt_id=None,
+        ))
+
+    return rows
+
+
 def calculate_mwst_summary(details):
     """VAT summary per rate for the given positions.
 
@@ -272,6 +434,7 @@ __all__ = [
     "determine_mwst_satz",
     "determine_ges_preis",
     "prepare_detail",
+    "build_sale_details",
     "calculate_mwst_summary",
     "check_ec_payment_threshold",
 ]

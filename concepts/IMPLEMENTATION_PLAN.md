@@ -13,7 +13,7 @@ This document outlines the comprehensive implementation plan to complete the Fas
 ### ✅ Already Implemented
 - **Database Models**: All core tables have SQLModel definitions in `python/models.py` (training tables with core `/training` sale endpoints; `user_id` columns on all 8 transaction tables)
 - **CRUD Operations**: All planned entities have CRUD functionality, including Bestellung positions (`details` embedded in the order payload) and the Java order types `LM`/`KHW`/`IVT` (default `LM`; `IVT` holds the inventory count)
-- **Business Logic**: Modules under `python/business/` are wired into the main flows (VAT, sale workflow incl. vouchers/discounts and detail validation, storno incl. voucher/installment reversal and kassenstand reversal, cash-register side-effects incl. balance validation, TSE export best-effort). VAT module and sale workflow are Java-parity checked and fully tested. Remaining gap: training mode covers sales only.
+- **Business Logic**: Modules under `python/business/` are wired into the main flows (VAT, sale workflow incl. vouchers/discounts and detail validation, storno incl. voucher/installment reversal and kassenstand reversal, cash-register side-effects incl. balance validation, TSE export best-effort). VAT module and sale workflow are Java-parity checked and fully tested. Remaining gaps: training mode covers sales only, plus the 7 items from the 2026-10-28 audit (see "Remaining business-logic gaps").
 - **API Structure**: Clean FastAPI structure with proper routing
 - **Auth**: Per-user accounts (bcrypt + JWT), login auditing (readable via admin-only `GET /auth/anmeldungen`), `user_id` attribution on transaction endpoints, SQL migration in `migrations/02_user_auth/`; all data endpoints (reads included) require `require_user`, admin endpoints require role `admin`, login has rate limiting, refresh/logout supported
 
@@ -21,13 +21,36 @@ This document outlines the comprehensive implementation plan to complete the Fas
 - Validate against a real MariaDB instance (tests are SQLite-only)
 - CORS configured in `python/main.py` via `CORS_ORIGINS` (defaults to the SvelteKit dev server); keep the OpenAPI schema stable
 - Add integration tests for complete sales/storno/settlement workflows (coverage target 80% reached)
-- Finish remaining edge cases (training mode coverage)
+- Close the remaining business-logic gaps found in the 2026-10-28 audit (DSFinV-K export, Pfand/Rabatt/Aufschlag/Gutschein/Anzahlung sale lines, month/year invalidation, zaehlprotokoll lifecycle, `abrechnung_tag_tse`, real training mode) - see "Remaining business-logic gaps (2026-10-28 audit)" below
 - Complete documentation (migration guide, DB schema reference, docstrings)
 
 > **Note**: The Phase sections below contain the original plan text (some "Current" states are outdated). The authoritative per-endpoint status is in `concepts/TODO.md`; the priority matrix and success criteria below are kept up to date.
 
 ### 🔎 Parity audit of remaining low-priority items (2026-10-22)
 See the "Parity Audit" section in `concepts/TODO.md`. The optional per-sale installment lookup, per-date/per-period settlement lookups and the zaehlprotokoll validation were removed as not needed for Java parity; Bestellung positions were the only real functional gap and are now implemented (positions embedded in the order payload). The remaining testing/documentation/production items are quality tasks, not functional gaps.
+
+### 🧩 Remaining business-logic gaps (2026-10-28 audit)
+
+Audit of `python/` against the Java POS (`../git/src/org/weltladen_bonn/pos/`). None of these is TSE hardware; #6 is TSE-adjacent but pure logic/DB.
+
+| # | Gap | Java reference | Current API state |
+|---|-----|----------------|-------------------|
+| 1 | **DSFinV-K export** written on every Tagesabschluss (Stammdaten, `Z_GV_Typ`, `transactions.csv`, `index.xml`) | `kasse/DSFinVKCSV.java`, `AbrechnungenTag.writeIntoDSFinVKCSVFiles()` | Missing entirely; only `Mwst.dsfinvk_ust_schluessel` exists. Depends on #2 for the `Z_GV_Typ` buckets |
+| 2 | ✅ **Sale auxiliary lines**: Pfand auto-line, separate RABATT line, Preisanpassung/Aufschlag, Gutschein-Einlösung (Anzahlung article remains in #3) | `Kassieren.checkForPfand()`, `addRabattRow()`, `artikelRabattierenAbsolut()`, `gutscheinEinloesungHinzufuegen()`, `anzahlungHinzufuegen()` | **Done (2026-10-28)**: `build_sale_details` in `sale_workflow.py` expands Pfand, per-action RABATT, `rabatt_absolut`/ANPASSUNG, `rechnung_rabatt_relativ` per VAT rate and `gutschein_einloesung_nr` into positions; discount lines carry `position = NULL` + `rabatt_id` |
+| 3 | **Anzahlung creation**: split the paid amount across the basket VAT rates, zero all non-Anzahlung line prices, write `anzahlung_details` from the positions | `Kassieren.anzahlungHinzufuegen()`, `maybeInsertIntoAnzahlung()` | `POST /anzahlung` writes client-supplied rows only; the split/zeroing belongs in the sale flow |
+| 4 | **Daily settlement invalidates month/year settlements** covering its period | `AbrechnungenTag.deleteAbrechnungIfNeedBe()` called from `insertTagesAbrechnung()` | `POST /abrechnung/tag` never touches `AbrechnungMonat`/`AbrechnungJahr` |
+| 5 | **Zählprotokoll lifecycle**: counting happens before the settlement, is linked to it, previous counts are set `aktiv = FALSE` | `AbrechnungenTag.insertZaehlprotokoll()` / `setZaehlprotokollInactive()` | `ZaehlprotokollCreate.abrechnung_tag_id` is mandatory and must already exist; `POST /abrechnung/tag` ignores it |
+| 6 | **`abrechnung_tag_tse` row** with the TSE status values; `last_tse_sig_counter` stores the counter *after* the export | `AbrechnungenTag.insertTagesAbrechnung()` | `AbrechnungTagTse` is never written; the stored counter is the previous one, so the next settlement re-exports the same range |
+| 7 | **Training mode as a mode**: every cashier table access is rerouted to `training_*` | `WindowContent.tableForMode()` | Only `/training` sales; normal endpoints keep writing production tables even with `TRAINING_MODE` set |
+
+**Minor divergences (fix opportunistically, no phase needed):**
+- Voucher numbering uses `MAX(gutschein_nr)` over all rows (redemption rows included); Java counts only creation rows (`gutschein_in_vd_id IS NOT NULL`).
+- `create_verkauf` commits in four separate transactions; a failing Kassenstand update leaves the sale booked (storno is transactional).
+- Receipt-level discount ("Rabatt auf Rechnung", one RABATT line per VAT rate) is available as `rechnung_rabatt_relativ` on `POST /verkauf/` (done).
+- Special articles are detected by their master-data `artikel_nr` (`RABATT1`, `RABATT2`, `ANPASSUNG`, `GUTSCHEINEINLOES`, `GUTSCHEIN`), which matches the Java `WindowContent` IDs 1, 2, 3, 6, 7 in production.
+- Price-tag export (`PreisschilderExport`, ODT templates) is client-side output like the deferred ODS exports.
+
+Suggested order for the POS MVP: #3 (sale correctness), then #4 + #5 (closing correctness), then #1 (legal export, depends on #2), then #6, then #7. Tracking: `concepts/TODO.md` → "Remaining business-logic gaps".
 
 ---
 
@@ -415,7 +438,7 @@ Details and sources: `docs/VAT_ROUNDING.md`.
 - Voucher creation on GUTSCHEIN articles and `user_id` attribution remain in `python/routers/verkauf.py`
 - Customer-display integration is not applicable (there is no customer display in the web client; the Java code only pushes strings to a separate device)
 - Covered by `python/tests/test_sale_workflow.py`; the dead duplicate sale-creation helper in the business module was removed, the router is the single sale implementation
-- **Remaining (not planned):** the Java POS also auto-inserts a Pfand line (`Kassieren.checkForPfand`) and a separate RABATT line per discount. The API folds discounts into the line price and does not auto-add Pfand; both can be added later if the frontend needs them.
+- **Sale auxiliary lines (2026-10-28):** the sale now appends the Java auxiliary positions: a Pfand line (`Kassieren.checkForPfand`), one RABATT line per discount action (`addRabattRow`), a manual `rabatt_absolut` discount or ANPASSUNG/Aufschlag line (`artikelRabattierenAbsolut`), one receipt-level RABATT line per VAT rate (`rechnung_rabatt_relativ`, `rechnungRabattierenRelativ`) and a negative Gutschein-Einlösung position (`gutschein_einloesung_nr`, `gutscheinEinloesungHinzufuegen`). Artikel lines keep their full price; discount lines have `position = NULL` and carry the `rabatt_id`. The Anzahlung split remains open (#3). Implemented in `build_sale_details` (`python/business/sale_workflow.py`), covered by `python/tests/test_sale_workflow.py`.
 
 ### 6.3 Advanced Storno Logic
 **Source**: Various Java files in `../git/src/org/weltladen_bonn/pos/kasse/`  
@@ -605,7 +628,8 @@ Scripts (cron jobs for price changes, supplier article imports, settlement creat
 | 🔴 HIGH | Validation | Comprehensive input validation | 1-2 days | ✅ Done |
 | 🔴 HIGH | Security | User accounts, authentication and authorization | 2-3 days | ✅ Done |
 | 🟡 MEDIUM | Accounting | Abrechnung Tag (CR), Monat (CRD), Jahr (CRD) | 3-5 days | ✅ Done |
-| 🟡 MEDIUM | Business Logic | VAT calculation, sale creation | 2-3 days | ✅ Done (VAT + sale workflow incl. discounts; storno/cash-register still partial) |
+| 🟡 MEDIUM | Business Logic | VAT calculation, sale creation, sale auxiliary lines, Anzahlung split | 2-3 days | ✅ VAT + per-line discounts + auxiliary lines done; Anzahlung split open (audit #3) |
+| 🟡 MEDIUM | Accounting follow-ups | Month/year invalidation on daily settlement, zaehlprotokoll lifecycle, DSFinV-K export | 2-4 days | ⏳ Open (audit #1, #4, #5) |
 | 🟡 MEDIUM | TSE | TSE transaction support + export endpoints | 2-3 days | ⏳ Adapter untested without hardware |
 | 🟡 MEDIUM | Supporting | Zaehlprotokoll (CRU), Bestellung (CRUD incl. positions) | 2-3 days | ✅ Done |
 | 🟢 LOW | Utilities | Import/Export, Search | 1-2 days | ✅ Done (CSV done, filters done, ODS deferred) |
@@ -700,7 +724,7 @@ Still missing: none for the planned workflows; new endpoints should keep adding 
 
 - [x] All database tables have corresponding models and endpoints (training tables have core sale endpoints)
 - [x] Bookkeeping integrity: no update/delete endpoints for immutable tables (verkauf, kassenstand, gutschein, anzahlung, abrechnung_tag)
-- [ ] All business logic from Java POS is ported to API (training mode covers sales only; edge-case validation still missing)
+- [ ] All business logic from Java POS is ported to API (training mode covers sales only; edge-case validation still missing; 2026-10-28 audit gaps #1-#7 open, see above)
 - [x] Per-user accounts with login auditing and transaction attribution
 - [x] Comprehensive validation and error handling
 - [x] 80%+ test coverage (83%)
@@ -805,6 +829,7 @@ Note: There are deliberately **no** `routers/verkauf_mwst.py` and `routers/verka
 3. **Integration tests**: done in `test_integration.py` (workflows, cross-entity effects, concurrent sales)
 4. **Coverage**: target reached; remaining gaps: tse_client.py 44%, users 33%, rabattaktion 33%
 5. **Validation**: done (model constraints + `ensure_*` helpers wired, see TODO "Validation Framework")
-6. **Training mode**: extend the `/training` endpoints (storno, settlements, gutschein/anzahlung) if the frontend needs them
-7. **Import/Export**: CSV exports for Bestellung and Inventur exist; ODS export is deferred to a later phase (needs an ODS library and the Java templates)
-8. **Documentation**: migration guide (Java POS → API), database schema reference, consistent docstrings, deployment/HTTPS docs (same-origin nginx topology and script automation are documented in Phase 7.4; nginx/systemd artifacts still missing)
+6. **Remaining business logic** (2026-10-28 audit, see above): #3 Anzahlung split, #4 month/year invalidation on daily settlement, #5 zaehlprotokoll lifecycle, #1 DSFinV-K export (depends on #2, done), #6 `abrechnung_tag_tse` + signature counter, #7 real training-mode table routing
+7. **Training mode**: extend the `/training` endpoints (storno, settlements, gutschein/anzahlung) if the frontend needs them, and stop normal endpoints from writing production tables while `TRAINING_MODE` is set (#7)
+8. **Import/Export**: CSV exports for Bestellung and Inventur exist; ODS export is deferred to a later phase (needs an ODS library and the Java templates)
+9. **Documentation**: migration guide (Java POS → API), database schema reference, consistent docstrings, deployment/HTTPS docs (same-origin nginx topology and script automation are documented in Phase 7.4; nginx/systemd artifacts still missing)

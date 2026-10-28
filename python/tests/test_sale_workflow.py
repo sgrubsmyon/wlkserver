@@ -399,18 +399,112 @@ def test_validate_detail_rejects_unknown_rabatt(session):
     assert "not found" in str(exc.value)
 
 
-def test_router_applies_discount_and_stores_rabatt_id(session):
+def test_router_applies_discount_as_separate_rabatt_line(session):
     from python.routers.verkauf import create_verkauf as router_create_verkauf
     from python.models import VerkaufCreate
 
     artikel = _seed_artikel(session, vk_preis=10.0)
+    _seed_artikel(session, artikel_nr="RABATT1", vk_preis=None)
     action = _seed_rabatt(session, artikel_id=artikel.artikel_id, rabatt_relativ=0.10)
 
     payload = VerkaufCreate(verkauf_details=[{"artikel_id": artikel.artikel_id, "stueckzahl": 2}])
     result = router_create_verkauf(payload, session, None, None)
 
-    assert result["verkauf_details"][0].ges_preis == 18.0
-    row = session.exec(select(VerkaufDetails).where(
-        VerkaufDetails.rechnungs_nr == result["rechnungs_nr"])).one()
-    assert row.rabatt_id == action.rabatt_id
-    assert row.ges_preis == 18.0
+    rows = sorted(result["verkauf_details"], key=lambda d: d.vd_id)
+    assert [r.ges_preis for r in rows] == [20.0, -2.0]
+    assert rows[0].position == 1
+    assert rows[1].position is None
+    assert rows[1].rabatt_id == action.rabatt_id
+
+
+def test_router_adds_pfand_and_price_adjustment_lines(session):
+    from python.routers.verkauf import create_verkauf as router_create_verkauf
+    from python.models import VerkaufCreate, Pfand
+
+    mwst = _seed_mwst(session, mwst_satz=0.19)
+    lieferant = _seed_lieferant(session)
+    deposit_pg = Produktgruppe(produktgruppen_name="Pfand", mwst_id=mwst.mwst_id)
+    session.add(deposit_pg)
+    session.commit()
+    session.refresh(deposit_pg)
+    deposit = Artikel(artikel_nr="PFAND3", artikel_name="Pfand 0,25",
+                      produktgruppen_id=deposit_pg.produktgruppen_id,
+                      lieferant_id=lieferant.lieferant_id, vk_preis=0.25)
+    session.add(deposit)
+    session.commit()
+    session.refresh(deposit)
+    pfand = Pfand(artikel_id=deposit.artikel_id)
+    session.add(pfand)
+    session.commit()
+    session.refresh(pfand)
+
+    pg = Produktgruppe(produktgruppen_name="Getränk", mwst_id=mwst.mwst_id,
+                       pfand_id=pfand.pfand_id)
+    session.add(pg)
+    session.commit()
+    session.refresh(pg)
+    artikel = Artikel(artikel_nr="T1", artikel_name="Testgetränk",
+                      produktgruppen_id=pg.produktgruppen_id,
+                      lieferant_id=lieferant.lieferant_id, vk_preis=2.0)
+    session.add(artikel)
+    session.commit()
+    session.refresh(artikel)
+    _seed_artikel(session, artikel_nr="ANPASSUNG", vk_preis=None)
+    anpassung = session.exec(select(Artikel).where(Artikel.artikel_nr == "ANPASSUNG")).one()
+
+    payload = VerkaufCreate(verkauf_details=[
+        {"artikel_id": artikel.artikel_id, "stueckzahl": 2, "rabatt_absolut": -1.0},
+    ])
+    result = router_create_verkauf(payload, session, None, None)
+
+    rows = sorted(result["verkauf_details"], key=lambda d: d.vd_id)
+    assert [r.ges_preis for r in rows] == [4.0, 2.0, 0.5]
+    assert [r.artikel_id for r in rows] == [
+        artikel.artikel_id, anpassung.artikel_id, deposit.artikel_id
+    ]
+
+
+def test_router_receipt_discount_one_line_per_vat_rate(session):
+    from python.routers.verkauf import create_verkauf as router_create_verkauf
+    from python.models import VerkaufCreate
+
+    a = _seed_artikel(session, mwst_satz=0.19, vk_preis=10.0, artikel_nr="A1")
+    b = _seed_artikel(session, mwst_satz=0.07, vk_preis=20.0, artikel_nr="A2")
+    _seed_artikel(session, artikel_nr="RABATT2", vk_preis=None)
+
+    payload = VerkaufCreate(
+        rechnung_rabatt_relativ=0.10,
+        verkauf_details=[
+            {"artikel_id": a.artikel_id, "stueckzahl": 1},
+            {"artikel_id": b.artikel_id, "stueckzahl": 1},
+        ],
+    )
+    result = router_create_verkauf(payload, session, None, None)
+    rows = sorted(result["verkauf_details"], key=lambda d: d.vd_id)
+    assert [(r.mwst_satz, r.ges_preis) for r in rows] == [
+        (0.19, 10.0), (0.07, 20.0), (0.19, -1.0), (0.07, -2.0)
+    ]
+
+
+def test_router_redeems_voucher_as_sale_position(session):
+    from python.routers.verkauf import create_verkauf as router_create_verkauf
+    from python.models import VerkaufCreate, Gutschein
+
+    artikel = _seed_artikel(session, vk_preis=20.0)
+    _seed_artikel(session, artikel_nr="GUTSCHEINEINLOES", vk_preis=None, mwst_satz=0.07)
+    g = Gutschein(gutschein_nr=200, datum=datetime.now(timezone.utc),
+                  gutschein_in_vd_id=None, einloesung_in_vd_id=None, restbetrag=10.0)
+    session.add(g)
+    session.commit()
+
+    payload = VerkaufCreate(
+        gutschein_einloesung_nr=200,
+        verkauf_details=[{"artikel_id": artikel.artikel_id, "stueckzahl": 1}],
+    )
+    result = router_create_verkauf(payload, session, None, None)
+    rows = sorted(result["verkauf_details"], key=lambda d: d.vd_id)
+    assert [r.ges_preis for r in rows] == [20.0, -10.0]
+    assert session.get(Gutschein, g.gutschein_id).restbetrag == 10.0
+    from python.business.voucher_logic import voucher_balance
+    assert voucher_balance(session, 200) == 0
+
