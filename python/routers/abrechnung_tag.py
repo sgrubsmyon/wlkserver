@@ -199,6 +199,13 @@ def create_abrechnung_tag(payload: Optional[AbrechnungTagCreate], session: Sessi
     # A backdated daily settlement reopens its month and year.
     _invalidate_period_settlements(session, at.zeitpunkt)
 
+    # The cashier counts the drawer while submitting; insert it afterwards and
+    # deactivate any previous count of the same settlement (Java
+    # AbrechnungenTag.insertZaehlprotokoll / setZaehlprotokollInactive).
+    if p.zaehlprotokoll is not None:
+        from ..business.count_protocol import insert_count_protocol
+        insert_count_protocol(session, at.id, p.zaehlprotokoll, user_id)
+
     # mwst values by ID (Java getAllCurrentMwstValuesByID)
     from ..business.vat_calculator import get_all_current_mwst_values_by_id
     from ..models import Mwst

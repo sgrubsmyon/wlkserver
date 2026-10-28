@@ -647,6 +647,9 @@ class AbrechnungTagCreate(SQLModel):
     rechnungs_nr_von: int | None = None
     rechnungs_nr_bis: int | None = None
     last_tse_sig_counter: int | None = None
+    # Count recorded before/while submitting the settlement (Java
+    # AbrechnungenTag.insertZaehlprotokoll); inserted after the settlement.
+    zaehlprotokoll: "ZaehlprotokollCreate | None" = None
 
 
 class AbrechnungTagMwst(SQLModel, table=True):
@@ -793,7 +796,9 @@ class ZaehlprotokollPublic(SQLModel):
 
 
 class ZaehlprotokollCreate(SQLModel):
-    abrechnung_tag_id: int
+    # Optional here because the count is submitted with POST /abrechnung/tag
+    # before the settlement row exists; POST /zaehlprotokoll still requires it.
+    abrechnung_tag_id: int | None = None
     zeitpunkt: datetime | None = None
     kommentar: str
     aktiv: bool = True

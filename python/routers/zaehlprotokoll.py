@@ -66,30 +66,13 @@ def create_zaehlprotokoll(zp: ZaehlprotokollCreate, session: SessionDep, credent
         tok = decode_token(credentials.credentials)
         if tok:
             user_id = tok.get("user_id")
+    if zp.abrechnung_tag_id is None:
+        raise HTTPException(status_code=400, detail="abrechnung_tag_id is required")
     abr = session.get(AbrechnungTag, zp.abrechnung_tag_id)
     if not abr:
         raise HTTPException(status_code=400, detail="AbrechnungTag not found")
-    new_zp = Zaehlprotokoll(
-        abrechnung_tag_id=zp.abrechnung_tag_id,
-        zeitpunkt=zp.zeitpunkt if zp.zeitpunkt is not None else datetime.now(timezone.utc),
-        kommentar=zp.kommentar,
-        aktiv=zp.aktiv,
-        user_id=user_id,
-    )
-    new_zp.id = None
-    session.add(new_zp)
-    session.commit()
-    session.refresh(new_zp)
-    for d in (zp.details or []):
-        dd = ZaehlprotokollDetails(
-            zaehlprotokoll_id=new_zp.id,
-            anzahl=d.anzahl,
-            einheit=d.einheit,
-        )
-        dd.id = None
-        session.add(dd)
-    if zp.details:
-        session.commit()
+    from ..business.count_protocol import insert_count_protocol
+    new_zp = insert_count_protocol(session, zp.abrechnung_tag_id, zp, user_id)
     return ZaehlprotokollPublic.model_validate(new_zp)
 
 
