@@ -15,7 +15,7 @@ This document outlines the comprehensive implementation plan to complete the Fas
 - **CRUD Operations**: All planned entities have CRUD functionality, including Bestellung positions (`details` embedded in the order payload) and the Java order types `LM`/`KHW`/`IVT` (default `LM`; `IVT` holds the inventory count)
 - **Business Logic**: Modules under `python/business/` are wired into the main flows (VAT, sale workflow incl. vouchers/discounts and detail validation, storno incl. voucher/installment reversal and kassenstand reversal, cash-register side-effects incl. balance validation, TSE export best-effort). VAT module and sale workflow are Java-parity checked and fully tested. Remaining gap: training mode covers sales only.
 - **API Structure**: Clean FastAPI structure with proper routing
-- **Auth**: Per-user accounts (bcrypt + JWT), login auditing, `user_id` attribution on transaction endpoints, SQL migration in `migrations/02_user_auth/`; `require_user` enforced on transaction create/mutate endpoints, admin endpoints accept the shared `ADMIN_TOKEN` stopgap
+- **Auth**: Per-user accounts (bcrypt + JWT), login auditing (readable via admin-only `GET /auth/anmeldungen`), `user_id` attribution on transaction endpoints, SQL migration in `migrations/02_user_auth/`; all data endpoints (reads included) require `require_user`, admin endpoints require role `admin`, login has rate limiting, refresh/logout supported
 
 ### 🎯 What Needs to be Done
 - Validate against a real MariaDB instance (tests are SQLite-only)
@@ -585,7 +585,7 @@ Once the frontend exists, the API and the SvelteKit client are planned to be ser
 
 Scripts (cron jobs for price changes, supplier article imports, settlement creation) are not browsers, so **CORS never applies** to them - a same-origin deployment behind nginx changes nothing on the script side.
 
-- **Authentication**: scripts call `POST /auth/login` and send `Authorization: Bearer <access_token>`. Use a dedicated service account (not a person's account) so the `anmeldung` audit shows what automation did. Admin-only endpoints currently accept either an admin JWT or the shared `ADMIN_TOKEN` stopgap; prefer an admin service-account JWT and retire `ADMIN_TOKEN` once it is no longer needed.
+- **Authentication**: scripts call `POST /auth/login` and send `Authorization: Bearer <access_token>`. Use a dedicated service account (not a person's account) so the `anmeldung` audit shows what automation did. Admin-only endpoints require an admin JWT; the shared `ADMIN_TOKEN` stopgap has been retired.
 - **Token lifetime**: tokens expire, so a scheduled job should log in at the start of every run and re-authenticate on `401`. A long-lived machine token could be added later if per-run logins prove impractical.
 - **TLS**: scripts must verify the internal CA (e.g. `REQUESTS_CA_BUNDLE=/path/ca.pem` or `verify=...`), never disable verification. Use the public origin (`https://<host>/api/...`); `http://127.0.0.1:8000` still works on the server itself but bypasses TLS.
 - **Idempotency**: `POST` creates new rows, so a blind retry of a sale or settlement creates duplicates. Jobs should check state first (e.g. `GET /abrechnung/monat/offen`, `GET /abrechnung/jahr/offen` mirror the Java POS startup check) instead of retrying blindly; price updates use `PUT/PATCH` and are safe to repeat.
@@ -603,7 +603,7 @@ Scripts (cron jobs for price changes, supplier article imports, settlement creat
 | 🔴 HIGH | Core CRUD | MwSt, Pfand admin CRUD with auth (Verkauf stays update-free by design) | 2-3 days | ✅ Done |
 | 🔴 HIGH | Core Tables | Kassenstand (CR), Gutschein (CR), Anzahlung (CR) | 3-4 days | ✅ Done |
 | 🔴 HIGH | Validation | Comprehensive input validation | 1-2 days | ✅ Done |
-| 🔴 HIGH | Security | User accounts, authentication and authorization | 2-3 days | ✅ Done (ADMIN_TOKEN stopgap remains) |
+| 🔴 HIGH | Security | User accounts, authentication and authorization | 2-3 days | ✅ Done |
 | 🟡 MEDIUM | Accounting | Abrechnung Tag (CR), Monat (CRD), Jahr (CRD) | 3-5 days | ✅ Done |
 | 🟡 MEDIUM | Business Logic | VAT calculation, sale creation | 2-3 days | ✅ Done (VAT + sale workflow incl. discounts; storno/cash-register still partial) |
 | 🟡 MEDIUM | TSE | TSE transaction support + export endpoints | 2-3 days | ⏳ Adapter untested without hardware |

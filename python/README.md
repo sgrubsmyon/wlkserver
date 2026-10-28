@@ -25,7 +25,6 @@ precedence over `.env`. `.env` is git-ignored — never commit secrets.
 | Variable | Default | Meaning |
 |---|---|---|
 | `DBHOST`, `DBNAME`, `DBUSER`, `DBPASS` | — | MariaDB connection used by `session.py` |
-| `ADMIN_TOKEN` | unset | Shared stopgap token for admin-only endpoints (503 if unset) |
 | `AUTH_SECRET` | dev placeholder | JWT signing secret — **must** be set in production |
 | `AUTH_TOKEN_TTL` | `3600` | JWT lifetime in seconds |
 | `CORS_ORIGINS` | SvelteKit dev server (`localhost:5173`, `127.0.0.1:5173`) | Comma-separated allowed browser origins |
@@ -38,14 +37,11 @@ is stored in `verkauf_mwst`); existing sales keep their stored amounts. Invoices
 must always use the vertical method (EN 16931 BR-CO-17) — see
 `docs/VAT_ROUNDING.md` for the legal background.
 
-## Admin token
+## Admin access
 
-Admin-only endpoints (POST/PATCH/DELETE on `/mwst` and `/pfand`) require
-`Authorization: Bearer <ADMIN_TOKEN>`, where `ADMIN_TOKEN` is set in `.env`.
-If `ADMIN_TOKEN` is not set, these endpoints refuse to work (503).
-This is a stopgap until per-user accounts exist (Phase 7.4).
-
-Note: the API should run as the `kassenadmin` DB user (see
+Admin-only endpoints (POST/PATCH/DELETE on `/mwst` and `/pfand`, all `/users`
+writes and `GET /auth/anmeldungen`) require a JWT for a user with role `admin`.
+The API should run as the `kassenadmin` DB user (see
 `concepts/IMPLEMENTATION_PLAN.md`, Phase 7.4) so that admin operations
 like DELETE are permitted by the database grants.
 
@@ -74,9 +70,37 @@ fastapi run
 
 Per-user accounts are stored in the `user` table (see `migrations/02_user_auth/`).
 Login via `POST /auth/login` with `{username, password}` returns a JWT bearer
-token. Send it as `Authorization: Bearer <token>` on subsequent requests.
-Admin-only endpoints (`/mwst`, `/pfand`, `/users`) accept either the shared
-`ADMIN_TOKEN` (stopgap) or a token for a user with role `admin`.
+token and records a row in `anmeldung`. All endpoints except `/auth/login`
+require `Authorization: Bearer <token>`. `POST /auth/refresh` issues a new
+token, `POST /auth/logout` records the logout and invalidates the token, and
+`GET /auth/me` returns the current user. `GET /auth/anmeldungen` (admin only)
+lists the login audit. Failed logins are rate limited (5 per minute per
+client and username).
+
+## User administration
+
+There is no public registration and no self-service password reset. The auth
+migration (`migrations/02_user_auth/user_auth.sql`) bootstraps one admin:
+username `admin`, password `changeme` — change it immediately. All other
+accounts are created by an admin.
+
+Authenticate first (`POST /auth/login`), then send
+`Authorization: Bearer <token>` to the user endpoints (writes require `admin`,
+reads are available to every logged-in user):
+
+| Action | Endpoint |
+|---|---|
+| Create user | `POST /users/` with `{"username", "password", "role", "active"}` |
+| List / read users | `GET /users/`, `GET /users/{user_id}` |
+| Update user | `PATCH /users/{user_id}` (`username`, `role`, `active`, `password`) |
+| Deactivate user | `POST /users/{user_id}/deactivate` (no delete endpoint) |
+| Reset password | `POST /users/{user_id}/reset-password?new_password=...` |
+
+Roles are `mitarbeiter` (normal POS operations and reads) and `admin`
+(additionally MwSt/Pfand/user management and `GET /auth/anmeldungen`). Set or
+change a role with `POST /users/` or `PATCH /users/{user_id}`. Deactivating a
+user blocks existing tokens on the next request. Passwords are bcrypt-hashed;
+the only password rule currently is non-empty.
 
 ## Transport security (HTTPS on the LAN)
 

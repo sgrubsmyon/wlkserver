@@ -1,10 +1,11 @@
 import os
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 
 from .business.vat_calculator import vat_rounding_method
+from .dependencies import require_user
 
 # from .dependencies import get_query_token, get_token_header
 # from .internal import admin
@@ -46,26 +47,17 @@ vat_rounding_method()
 async def favicon():
     return FileResponse(favicon_path)
 
-app.include_router(artikel.router)
-app.include_router(lieferant.router)
-app.include_router(produktgruppe.router)
-app.include_router(mwst.router)
-app.include_router(pfand.router)
-app.include_router(rabattaktion.router)
-app.include_router(verkauf.router)
-app.include_router(kassenstand.router)
-app.include_router(gutschein.router)
-app.include_router(anzahlung.router)
-app.include_router(abrechnung_tag.router)
-app.include_router(abrechnung_monat.router)
-app.include_router(abrechnung_jahr.router)
-app.include_router(zaehlprotokoll.router)
-app.include_router(bestellung.router)
-app.include_router(tse.router)
+protected_routers = [
+    artikel.router, lieferant.router, produktgruppe.router,
+    mwst.router, pfand.router, rabattaktion.router,
+    verkauf.router, kassenstand.router, gutschein.router, anzahlung.router,
+    abrechnung_tag.router, abrechnung_monat.router, abrechnung_jahr.router,
+    zaehlprotokoll.router, bestellung.router,
+    tse.router, users.router, import_export.router, training.router,
+]
+for router in protected_routers:
+    app.include_router(router, dependencies=[Depends(require_user)])
 app.include_router(auth.router)
-app.include_router(users.router)
-app.include_router(import_export.router)
-app.include_router(training.router)
 # app.include_router(
 #     admin.router,
 #     prefix="/admin",

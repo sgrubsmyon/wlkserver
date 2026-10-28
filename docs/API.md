@@ -14,12 +14,15 @@ All endpoints are served from the root of the API (default `http://localhost:800
 
 ## Authentication
 
-- `POST /auth/login` — `{username, password}` → `{access_token, token_type, user}`
-- `POST /auth/logout` — invalidates/records logout (Bearer token)
+- `POST /auth/login` — `{username, password}` → `{access_token, token_type, user}` (rate limited)
+- `POST /auth/refresh` — new token for a valid session (Bearer token)
+- `POST /auth/logout` — records logout and invalidates the token (Bearer token)
 - `GET /auth/me` — current user
+- `GET /auth/anmeldungen` — login audit, admin only
 
-Send `Authorization: Bearer <token>` on protected endpoints. Admin-only
-endpoints (`/mwst`, `/pfand`, `/users`) also accept the shared `ADMIN_TOKEN`.
+Every endpoint except `POST /auth/login` requires
+`Authorization: Bearer <token>`. Admin-only endpoints (`/mwst`, `/pfand`,
+`/users` writes, `GET /auth/anmeldungen`) require a user with role `admin`.
 
 ## Endpoint groups
 

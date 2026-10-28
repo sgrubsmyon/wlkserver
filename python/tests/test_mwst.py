@@ -1,64 +1,37 @@
 import pytest
 from fastapi import HTTPException
-from fastapi.security import HTTPAuthorizationCredentials
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
 from python.main import app
-from python.dependencies import require_admin
 from python.session import get_session
-from python.models import Mwst, MwstCreate, MwstUpdate, Produktgruppe
+from python.models import Mwst, MwstCreate, MwstUpdate, Produktgruppe, User
 from python.routers.mwst import create_mwst, update_mwst, delete_mwst, read_mwsts
-
-
-# --- Authorization (require_admin) ---
-
-
-def test_require_admin_rejects_missing_credentials(monkeypatch):
-    monkeypatch.setenv("ADMIN_TOKEN", "secret")
-    with pytest.raises(HTTPException) as exc:
-        require_admin(None)
-    assert exc.value.status_code == 401
-
-
-def test_require_admin_rejects_wrong_token(monkeypatch):
-    monkeypatch.setenv("ADMIN_TOKEN", "secret")
-    creds = HTTPAuthorizationCredentials(scheme="Bearer", credentials="wrong")
-    with pytest.raises(HTTPException) as exc:
-        require_admin(creds)
-    assert exc.value.status_code == 403
-
-
-def test_require_admin_accepts_valid_token(monkeypatch):
-    monkeypatch.setenv("ADMIN_TOKEN", "secret")
-    creds = HTTPAuthorizationCredentials(scheme="Bearer", credentials="secret")
-    require_admin(creds)  # should not raise
-
-
-def test_require_admin_fails_closed_without_configuration(monkeypatch):
-    monkeypatch.delenv("ADMIN_TOKEN", raising=False)
-    creds = HTTPAuthorizationCredentials(scheme="Bearer", credentials="anything")
-    with pytest.raises(HTTPException) as exc:
-        require_admin(creds)
-    assert exc.value.status_code == 503
+from python.utils.auth import hash_password
 
 
 @pytest.fixture
 def client(session):
     app.dependency_overrides[get_session] = lambda: session
     with TestClient(app) as c:
+        r = c.post("/auth/login", json={"username": "test", "password": "test"})
+        c.headers["Authorization"] = "Bearer " + r.json()["access_token"]
         yield c
     app.dependency_overrides.clear()
 
 
-def test_post_mwst_requires_admin_token(client, monkeypatch):
-    monkeypatch.setenv("ADMIN_TOKEN", "secret")
+def test_post_mwst_requires_admin(client, session):
     payload = {"mwst_satz": 0.19, "dsfinvk_ust_schluessel": 1, "dsfinvk_ust_beschr": "19%"}
     r = client.post("/mwst/", json=payload)
-    assert r.status_code == 401
-    r = client.post("/mwst/", json=payload, headers={"Authorization": "Bearer wrong"})
     assert r.status_code == 403
-    r = client.post("/mwst/", json=payload, headers={"Authorization": "Bearer secret"})
+
+    admin = User(username="admin", password_hash=hash_password("admin"), role="admin", active=True)
+    admin.user_id = None
+    session.add(admin)
+    session.commit()
+    r = client.post("/auth/login", json={"username": "admin", "password": "admin"})
+    headers = {"Authorization": "Bearer " + r.json()["access_token"]}
+    r = client.post("/mwst/", json=payload, headers=headers)
     assert r.status_code == 200
 
 

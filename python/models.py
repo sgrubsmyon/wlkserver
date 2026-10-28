@@ -988,6 +988,13 @@ class UserUpdate(SQLModel):
     password: str | None = None
 
 
+class AnmeldungPublic(SQLModel):
+    anmeldung_id: int
+    user_id: int
+    login_time: datetime
+    logout_time: datetime | None
+
+
 class Anmeldung(SQLModel, table=True):
     __tablename__ = "anmeldung"
 

@@ -3,7 +3,7 @@
 > **Sync note**: This document and `concepts/IMPLEMENTATION_PLAN.md` must be kept in sync. When implementation progress changes, update both files so new sessions without prior memory see a consistent status.
 
 > **Last Updated**: 2026-10-28  
-> **Status**: Phases 1-5 implemented at router level (TSE export adapter untested without hardware); main Phase 6/7 flows wired (see "Business Logic Wiring Gaps" for what remains); auth enforced on transaction endpoints; parity audit of the remaining low-priority endpoints done and resolved (see "Parity Audit"), Bestellung positions + date filter implemented; bar_brutto aggregation matches Java; sale workflow (validation, automatic discounts, all four modes), storno (payment-mode parity, cash payout, settlement lock, rollback, attribution), cash register (payment, balance validation, end-of-day preview) complete; validation framework finished (model constraints + `ensure_*` helpers in use); voucher redemption uses the Java balance calculation; search/filter/pagination/sorting finished for all list endpoints; Bestellung CSV import supports positions; Bestellung/Inventur CSV export added (ODS deferred); CORS configured; core `/training` endpoints; integration tests incl. concurrency; same-origin nginx deployment and script automation documented as planned; VAT module Java-parity checked, 100% tested, rounding method configurable; test coverage 90%
+> **Status**: Phases 1-5 implemented at router level (TSE export adapter untested without hardware); main Phase 6/7 flows wired (see "Business Logic Wiring Gaps" for what remains); auth enforced on all endpoints (admin role for admin operations); parity audit of the remaining low-priority endpoints done and resolved (see "Parity Audit"), Bestellung positions + date filter implemented; bar_brutto aggregation matches Java; sale workflow (validation, automatic discounts, all four modes), storno (payment-mode parity, cash payout, settlement lock, rollback, attribution), cash register (payment, balance validation, end-of-day preview) complete; validation framework finished (model constraints + `ensure_*` helpers in use); voucher redemption uses the Java balance calculation; search/filter/pagination/sorting finished for all list endpoints; Bestellung CSV import supports positions; Bestellung/Inventur CSV export added (ODS deferred); CORS configured; core `/training` endpoints; integration tests incl. concurrency; same-origin nginx deployment and script automation documented as planned; VAT module Java-parity checked, 100% tested, rounding method configurable; test coverage 90%
 
 ---
 
@@ -21,53 +21,53 @@
 ## 🏗️ Core Infrastructure & Existing Functionality
 
 ### Database Models (python/models.py)
-[x] Lieferant models (Base, Table, Public, Update)
-[x] MwSt models (Base, Table, Public, Create, Update)
-[x] Pfand models (Table, Public, Create, Update)
-[x] Produktgruppe models (Base, Table, Public, Create, Update)
-[x] Artikel models (Base, Table, Public, Create, Update)
-[x] Rabattaktion models (Base, Table, Public, Create, Update)
-[x] Verkauf models (Base, Table, Public, Create)
-[x] VerkaufMwst models (Base, Table, Public, Create)
-[x] VerkaufDetails models (Base, Table, Public, Create)
-[x] Kassenstand models (Table, Public, Create)
-[x] Gutschein models (Table, Public, Create, Einloesen)
-[x] Anzahlung models (Table, Public, Create, Details)
-[x] AbrechnungTag models (Table, Public, Create, Mwst, Tse)
-[x] AbrechnungMonat models (Table, Public, Create, Mwst)
-[x] AbrechnungJahr models (Table, Public, Create, Mwst)
-[x] Zaehlprotokoll models (Table, Public, Create, Update, Details)
-[x] Bestellung models (Table, Public, Create, Update, Details)
-[x] TSETransaction models (Table, Public, Create)
-[x] Training table models added (Table-only) for all training_* tables (step 6)
-[x] User model (Table, Public, Create, Update) - Phase 7.4
-[x] Anmeldung model (Table) - Phase 7.4 (login auditing)
-[x] `user_id` FK column added to gutschein, zaehlprotokoll, bestellung, tse_transaction models (step 4)
-[x] SQL migration script created in `migrations/02_user_auth/` (user_auth.sql + migrate_user_auth.py + migrate.sh) (step 4)
-[x] Auth utils switched to bcrypt + PyJWT (step 4)
-[x] Auth router logout/me now read token from Authorization header (step 4)
-[x] Per-user auth enforcement on transaction endpoints (require_user enforced) - done
+- [x] Lieferant models (Base, Table, Public, Update)
+- [x] MwSt models (Base, Table, Public, Create, Update)
+- [x] Pfand models (Table, Public, Create, Update)
+- [x] Produktgruppe models (Base, Table, Public, Create, Update)
+- [x] Artikel models (Base, Table, Public, Create, Update)
+- [x] Rabattaktion models (Base, Table, Public, Create, Update)
+- [x] Verkauf models (Base, Table, Public, Create)
+- [x] VerkaufMwst models (Base, Table, Public, Create)
+- [x] VerkaufDetails models (Base, Table, Public, Create)
+- [x] Kassenstand models (Table, Public, Create)
+- [x] Gutschein models (Table, Public, Create, Einloesen)
+- [x] Anzahlung models (Table, Public, Create, Details)
+- [x] AbrechnungTag models (Table, Public, Create, Mwst, Tse)
+- [x] AbrechnungMonat models (Table, Public, Create, Mwst)
+- [x] AbrechnungJahr models (Table, Public, Create, Mwst)
+- [x] Zaehlprotokoll models (Table, Public, Create, Update, Details)
+- [x] Bestellung models (Table, Public, Create, Update, Details)
+- [x] TSETransaction models (Table, Public, Create)
+- [x] Training table models added (Table-only) for all training_* tables (step 6)
+- [x] User model (Table, Public, Create, Update) - Phase 7.4
+- [x] Anmeldung model (Table) - Phase 7.4 (login auditing)
+- [x] `user_id` FK column added to gutschein, zaehlprotokoll, bestellung, tse_transaction models (step 4)
+- [x] SQL migration script created in `migrations/02_user_auth/` (user_auth.sql + migrate_user_auth.py + migrate.sh) (step 4)
+- [x] Auth utils switched to bcrypt + PyJWT (step 4)
+- [x] Auth router logout/me now read token from Authorization header (step 4)
+- [x] Per-user auth enforcement on transaction endpoints (require_user enforced) - done
 
 ### Existing Router Functionality
-[x] Artikel router - Full CRUD with advanced versioning logic
-[x] Lieferant router - Full CRUD with deactivation pattern
-[x] Produktgruppe router - Full CRUD with deactivation pattern
-[x] MwSt router - Admin-only CRUD (POST/PUT/PATCH/DELETE) + read
-[x] Pfand router - Admin-only CRUD (POST/PUT/PATCH/DELETE) + read
-[x] Rabattaktion router - Full CRUD with date validation and update restrictions
-[x] Verkauf router - Create, Read, Storno functionality
-[x] Kassenstand router - CR + /aktuell + rechnungen filter
-[x] Gutschein router - CR + redemption + ausstehend/eingeloest
-[x] Anzahlung router - CR + aufloesen + offen/aufgeloest + details
-[x] AbrechnungTag router - CR + /offen (basic Tagesabschluss aggregation)
-[x] AbrechnungMonat router - CRD (delete-and-recreate) + /offen
-[x] AbrechnungJahr router - CRD (delete-and-recreate) + /offen
-[x] Zaehlprotokoll router - CRU + /abrechnung/{id}
-[x] Bestellung router - CRUD incl. positions (`details` on create/update, returned by GET single)
-[x] TSE router - transaction CRUD + status/init + export endpoints (stub adapter)
-[x] Main API setup with all routers included
-[x] Database session management
-[x] Test infrastructure (conftest.py, smoke tests Phase 2-5)
+- [x] Artikel router - Full CRUD with advanced versioning logic
+- [x] Lieferant router - Full CRUD with deactivation pattern
+- [x] Produktgruppe router - Full CRUD with deactivation pattern
+- [x] MwSt router - Admin-only CRUD (POST/PUT/PATCH/DELETE) + read
+- [x] Pfand router - Admin-only CRUD (POST/PUT/PATCH/DELETE) + read
+- [x] Rabattaktion router - Full CRUD with date validation and update restrictions
+- [x] Verkauf router - Create, Read, Storno functionality
+- [x] Kassenstand router - CR + /aktuell + rechnungen filter
+- [x] Gutschein router - CR + redemption + ausstehend/eingeloest
+- [x] Anzahlung router - CR + aufloesen + offen/aufgeloest + details
+- [x] AbrechnungTag router - CR + /offen (basic Tagesabschluss aggregation)
+- [x] AbrechnungMonat router - CRD (delete-and-recreate) + /offen
+- [x] AbrechnungJahr router - CRD (delete-and-recreate) + /offen
+- [x] Zaehlprotokoll router - CRU + /abrechnung/{id}
+- [x] Bestellung router - CRUD incl. positions (`details` on create/update, returned by GET single)
+- [x] TSE router - transaction CRUD + status/init + export endpoints (stub adapter)
+- [x] Main API setup with all routers included
+- [x] Database session management
+- [x] Test infrastructure (conftest.py, smoke tests Phase 2-5)
 
 ---
 
@@ -75,20 +75,20 @@
 
 ### Phase 1: Missing CRUD for Existing Models
 
-[x] **MwSt Admin-Only CRUD Completion** - `python/routers/mwst.py`
+- [x] **MwSt Admin-Only CRUD Completion** - `python/routers/mwst.py`
 - [x] POST /mwst - Create new VAT rate with validation - **ADMIN ONLY**
 - [x] PUT /mwst/{mwst_id} - Update VAT rate - **ADMIN ONLY**
 - [x] PATCH /mwst/{mwst_id} - Update VAT rate - **ADMIN ONLY**
 - [x] DELETE /mwst/{mwst_id} - Delete VAT rate (with constraints check) - **ADMIN ONLY**
-- [x] Add authentication/authorization dependency (stopgap: shared ADMIN_TOKEN)
+- [x] Add authentication/authorization dependency (admin role required)
 - [x] `MwstBase.mwst_satz` has `ge=0, le=1` constraint (models.py line 48) - done
 
-[x] **Pfand Admin-Only CRUD Completion** - `python/routers/pfand.py`
+- [x] **Pfand Admin-Only CRUD Completion** - `python/routers/pfand.py`
 - [x] POST /pfand - Create new deposit item - **ADMIN ONLY**
 - [x] PUT /pfand/{pfand_id} - Update deposit item - **ADMIN ONLY**
 - [x] PATCH /pfand/{pfand_id} - Update deposit item - **ADMIN ONLY**
 - [x] DELETE /pfand/{pfand_id} - Delete deposit item (with constraints check) - **ADMIN ONLY**
-- [x] Add authentication/authorization dependency (stopgap: shared ADMIN_TOKEN)
+- [x] Add authentication/authorization dependency (admin role required)
 
 **Verkauf: No Update Functionality (By Design)** - `python/routers/verkauf.py`
 - [x] No update endpoint for verkauf (bookkeeping integrity)
@@ -103,7 +103,7 @@
 
 ### Phase 2: Missing Core Tables
 
-[x] **Kassenstand** - models + router + smoke tests
+- [x] **Kassenstand** - models + router + smoke tests
 - [x] GET /kassenstand (rechnungen filter)
 - [x] GET /kassenstand/{id}
 - [x] POST /kassenstand
@@ -113,7 +113,7 @@
 - [x] Advanced business logic (balance validation) - `validate_balance_change` rejects Entnahmen that increase the balance or exceed it; wired into POST /kassenstand
 - [x] Non-negative validation on `neuer_kassenstand` enforced via `ge=0` model constraint (models.py line 472)
 
-[x] **Gutschein** - models + router + smoke tests
+- [x] **Gutschein** - models + router + smoke tests
 - [x] GET /gutschein
 - [x] GET /gutschein/{id}
 - [x] POST /gutschein
@@ -124,7 +124,7 @@
 - [x] GET /gutschein/verkauf/{rechnungs_nr} - not needed for Java parity (see Parity Audit)
 - [x] Advanced redemption calculation - `python/business/voucher_logic.py` mirrors Java `GutscheinEinloesenDialog.queryForGutschein` + `Kassieren.maybeInsertEinloesungIntoGutschein`: balance = `MIN(restbetrag)` over all rows of the `gutschein_nr` (append-only family, not the passed row), start value = `MAX(restbetrag)`; amount is derived from the linked sale position (`abs(ges_preis)`), an explicit `betrag` or the requested new `restbetrag`; must be positive and may not exceed the balance; a sale position can redeem only once; `gutschein_in_vd_id` is copied from the creation row; the redeemed row is attributed to the user. `restbetrag_anfang` in `/ausstehend` now uses `MAX(restbetrag)` (Java semantics). Redemptions are serialized with a process lock + `SELECT ... FOR UPDATE`
 
-[x] **Anzahlung** - models + router + smoke tests
+- [x] **Anzahlung** - models + router + smoke tests
 - [x] GET /anzahlung
 - [x] GET /anzahlung/{id}
 - [x] POST /anzahlung
@@ -139,7 +139,7 @@
 
 ### Phase 3: Settlement Tables
 
-[x] **Abrechnung Tag** - models + router + smoke tests
+- [x] **Abrechnung Tag** - models + router + smoke tests
 - [x] GET /abrechnung/tag
 - [x] GET /abrechnung/tag/{id}
 - [x] POST /abrechnung/tag (Tagesabschluss: period since the last settlement, VAT/`bar_brutto` aggregation, storno/retouren reporting, links the current Kassenstand entry)
@@ -150,13 +150,13 @@
 - [x] Full Java aggregation parity (storno/retouren reporting in abrechnung response) - items 5-8
 - [x] kassenstand entry validation during Tagesabschluss (provided `kassenstand_id` must exist)
 
-[x] **Abrechnung Monat** - models + router + smoke tests
+- [x] **Abrechnung Monat** - models + router + smoke tests
 - [x] GET /abrechnung/monat
 - [x] GET /abrechnung/monat/{id}
 - [x] POST /abrechnung/monat (delete-and-recreate)
 - [x] GET /abrechnung/monat/offen
 
-[x] **Abrechnung Jahr** - models + router + smoke tests
+- [x] **Abrechnung Jahr** - models + router + smoke tests
 - [x] GET /abrechnung/jahr
 - [x] GET /abrechnung/jahr/{id}
 - [x] POST /abrechnung/jahr (delete-and-recreate)
@@ -168,14 +168,14 @@
 
 ### Phase 4: Supporting Tables
 
-[x] **Zaehlprotokoll** - models + router + smoke tests
+- [x] **Zaehlprotokoll** - models + router + smoke tests
 - [x] GET /zaehlprotokoll
 - [x] GET /zaehlprotokoll/{id}
 - [x] POST /zaehlprotokoll
 - [x] PATCH /zaehlprotokoll/{id}
 - [x] GET /zaehlprotokoll/abrechnung/{abrechnung_tag_id}
 
-[x] **Bestellung** - models + router + smoke tests
+- [x] **Bestellung** - models + router + smoke tests
 - [x] GET /bestellung
 - [x] GET /bestellung/{bestell_nr}
 - [x] POST /bestellung
@@ -192,7 +192,7 @@
 
 ### Phase 5: TSE Integration
 
-[x] **TSE Transaction Support** - models + router + smoke tests (stub adapter)
+- [x] **TSE Transaction Support** - models + router + smoke tests (stub adapter)
 - [x] GET /tse/transaction
 - [x] GET /tse/transaction/{id}
 - [x] POST /tse/transaction
@@ -217,7 +217,7 @@
 
 ### Phase 6: Core Business Logic from Java (main flows wired; gaps below)
 
-[x] VAT Calculation Module (python/business/vat_calculator.py) - complete and Java-parity checked
+- [x] VAT Calculation Module (python/business/vat_calculator.py) - complete and Java-parity checked
 - [x] `calculate_vat` mirrors `WindowContent.calculateVAT` (divide to 10 places HALF_UP, multiply, round to cents HALF_UP); handles negative storno amounts, 0 % rates and string/percent inputs
 - [x] `calculate_netto` / `calculate_total` (dicts, tuples, objects; skips missing prices)
 - [x] `calculate_mwst_values_in_rechnung` aggregates per rate and returns rates sorted ascending like the Java `TreeMap`; missing rates are booked at 0 %
@@ -225,7 +225,7 @@
 - [x] Used by sale creation (`calculate_mwst_summary`) and the Abrechnung Tag response (`mwst_nach_id`); `tests/test_vat_calculator.py` covers the module at 100 %
 - [x] Rounding mode researched (2026-10-25): no German statutory rounding rule for VAT on invoices (§ 14 UStG / § 33 UStDV); EuGH C-484/06 leaves the method to the Member States; commercial rounding to cents (`ROUND_HALF_UP`) is the practice and matches the Java POS' explicit `RoundingMode.HALF_UP`. Details/sources: `docs/VAT_ROUNDING.md`
 - [x] Rounding method configurable for receipts via `VAT_ROUNDING_METHOD` (`horizontal` = per position, Java POS default; `vertical` = per VAT rate, EN 16931 BR-CO-17). Read per request from the environment, invalid values abort startup; stored in `verkauf_mwst` for new sales. Invoices must always pass `method="vertical"` explicitly
-[x] Sale Workflow Enhancements (python/business/sale_workflow.py) - complete
+- [x] Sale Workflow Enhancements (python/business/sale_workflow.py) - complete
 - [x] `validate_detail` runs before any write (rejects `stueckzahl == 0`, unknown `artikel_id`, unknown `rabatt_id`)
 - [x] `determine_mwst_satz` derives the rate via `artikel.produktgruppe.mwst`; VAT for discounts always comes from the article
 - [x] `determine_ges_preis` covers explicit price, article price and `variabler_preis` articles (no derived price)
@@ -234,7 +234,7 @@
 - [x] EC threshold helper delegates to `cash_register.ec_payment_threshold_check` (no duplicate implementation)
 - [x] Dead duplicate sale-creation path (`create_verkauf`/`create_sale` in the module, unused by the API) removed - the router remains the single sale implementation
 - [x] Covered by tests/test_sale_workflow.py (auto/explicit discounts, group wildcards, date windows, all four modes, rejections, router-level attribution)
-[x] Storno Logic Enhancements (python/business/storno_logic.py) - complete
+- [x] Storno Logic Enhancements (python/business/storno_logic.py) - complete
 - [x] Inverted sale/mwst/details entries identical to Java `HeutigeRechnungen.insertStornoIntoVerkauf` (position, artikel, rabatt, mwst copied; stueckzahl/ges_preis/mwst negated)
 - [x] Storno receipt mirrors the **original payment mode** (Java: `ec_zahlung = !zahlMod.equals("Bar")`)
 - [x] Refund to the customer is always in cash (Java `insertStornoIntoTSE` sends "Bar" even for EC sales: "Weltladen can only pay back in bar"), so the reversing Kassenstand entry is written for cash **and** EC stornos by default; `cash_refund=false` remains only for the edge case that a card charge was not executed
@@ -244,7 +244,7 @@
 - [x] **Storno is only allowed for receipts not yet part of a completed Tagesabschluss**: a receipt whose `rechnungs_nr` falls into any `abrechnung_tag` range is rejected with `400` and a clear message naming the settlement; a finished settlement is immutable
 - [x] Single transaction with rollback - a failed inversion no longer leaves a half-written storno
 - [x] Covered by tests/test_verkauf_storno.py and tests/test_storno_logic.py (payment modes, cash payout, settlement guard, rollback, attribution, voucher/installment handling); storno_logic.py at 94 %
-[x] Cash Register Operations (python/business/cash_register.py) - complete
+- [x] Cash Register Operations (python/business/cash_register.py) - complete
 - [x] Payment processing: `calculate_change`, `process_payment` (change + EC warning) and `ec_payment_threshold_check` (10 EUR threshold, Java `ecSchwelle`) wired into sale creation
 - [x] Kassenstand integration: every cash sale/storno appends an entry; manual entries and Entnahmen are validated (`validate_balance_change`); balance updates are serialized (process lock + `SELECT ... FOR UPDATE`)
 - [x] End-of-day: `end_of_day_procedure` is now a real read-only preview of the open period and exposed as `GET /abrechnung/tag/vorschau` (period range since the last settlement, sales/cash/EC/storno counts, VAT per rate, `bar_brutto`, storno/retouren sums, withdrawctions, current and expected balance). `POST /abrechnung/tag` reuses the same aggregation (`aggregate_period`/`open_period_range`), so preview and settlement cannot drift apart
@@ -293,9 +293,9 @@
 
 ### Phase 7: Data Import/Export, Validation, Auth
 
-[x] Import/Export Functionality - `import_bestellung_from_csv` imports positions (`artikel_id`/`stueckzahl`/`position`, rows grouped by order header) with validation; `import_artikel` maps all Artikel fields; CSV exports for artikel, abrechnung, bestellung (VK order list) and inventur (EK valuation, mirrors Java `writeInventur`); session dependency fixed (step 7)
-[ ] ODS/Spreadsheet export (later phase) - Java POS writes `Bestellvorlage_<typ>.ods` / `Inventur.ods` and fills cells (date/KW for orders, "Inventur 31.12.<jahr>" headline for inventory); needs an ODS library and the `../git/vorlagen/` templates. Also relevant for `abrechnung_tag`/`abrechnung_monat`/`abrechnung_jahr` (Tages-/Monats-/Jahresabrechnung.ods)
-[x] Search and Filter Enhancements - complete for all list endpoints
+- [x] Import/Export Functionality - `import_bestellung_from_csv` imports positions (`artikel_id`/`stueckzahl`/`position`, rows grouped by order header) with validation; `import_artikel` maps all Artikel fields; CSV exports for artikel, abrechnung, bestellung (VK order list) and inventur (EK valuation, mirrors Java `writeInventur`); session dependency fixed (step 7)
+- [ ] ODS/Spreadsheet export (later phase) - Java POS writes `Bestellvorlage_<typ>.ods` / `Inventur.ods` and fills cells (date/KW for orders, "Inventur 31.12.<jahr>" headline for inventory); needs an ODS library and the `../git/vorlagen/` templates. Also relevant for `abrechnung_tag`/`abrechnung_monat`/`abrechnung_jahr` (Tages-/Monats-/Jahresabrechnung.ods)
+- [x] Search and Filter Enhancements - complete for all list endpoints
 - Catalog: `artikel` (aktiv_only, search_string over name/shortname/number/origin/barcode, barcode, artikel_nr, artikel_name, lieferant_id, produktgruppen_id), `lieferant` and `produktgruppe` (aktiv_only, search_string, name/parent filters), `mwst` (search_string) - already present, now documented as the pattern
 - `rabattaktion`: search_string (Aktionsname), `artikel_id`/`produktgruppen_id`, `current_only` (running now), typed `von`/`bis`, `exclude_deleted`. Fixed a bug where open-ended actions (`bis IS NULL`) vanished from the default list (Java keeps them: `bis != von OR bis IS NULL`)
 - `bestellung`: `typ` filter (validated against LM/KHW/IVT) on top of the existing `von`/`bis`
@@ -307,16 +307,19 @@
 - Sorting: `verkauf` already had `desc`; settlement lists (`abrechnung/tag|monat|jahr`) can now be sorted newest-first with `desc=true`
 - Pagination: every list endpoint now uses `offset` + `limit` with `limit <= 100` (TSE list was unbounded before)
 - Covered by tests/test_filters.py (all new filters, the open-ended Rabattaktion regression, settlement ordering, invalid type rejection)
-[x] Validation Framework - model-level constraints on all numeric inputs where negatives/zero are invalid (Artikel, Rabattaktion, Verkauf.kunde_gibt, Kassenstand, Gutschein, AnzahlungDetails, ZaehlprotokollDetails, Mwst 0-1, BestellungDetails.stueckzahl, ZaehlprotokollDetails, User role); `ensure_*` helpers in `utils/validation.py` are used for the rules models cannot express: cross-field Rabattaktion rules (quantity discount needs a threshold, `bis > von`, merged state on PATCH), CSV import values (negative prices, `ek_rabatt` outside 0-1) and voucher amounts. Future dates need no rule (only Rabattaktion may start in the future, timestamps are server-set). Covered by tests/test_validation.py
-[⏳] Authentication and Authorization System (per-user accounts, login auditing, transaction attribution) - HIGH PRIORITY
-  - Models + login/logout/me + user CRUD exist
+- [x] Validation Framework - model-level constraints on all numeric inputs where negatives/zero are invalid (Artikel, Rabattaktion, Verkauf.kunde_gibt, Kassenstand, Gutschein, AnzahlungDetails, ZaehlprotokollDetails, Mwst 0-1, BestellungDetails.stueckzahl, ZaehlprotokollDetails, User role); `ensure_*` helpers in `utils/validation.py` are used for the rules models cannot express: cross-field Rabattaktion rules (quantity discount needs a threshold, `bis > von`, merged state on PATCH), CSV import values (negative prices, `ek_rabatt` outside 0-1) and voucher amounts. Future dates need no rule (only Rabattaktion may start in the future, timestamps are server-set). Covered by tests/test_validation.py
+- [x] Authentication and Authorization System (per-user accounts, login auditing, transaction attribution) - HIGH PRIORITY
+  - Models + login/logout/refresh/me + user CRUD exist; `GET /auth/anmeldungen` (admin only) exposes the login audit
+  - All data endpoints (reads included) require a logged-in user; only `/auth/login` is public
   - `require_user` enforced on all transaction create/mutate endpoints (step 4 enforcement follow-up)
   - `user_id` now populated from auth token in all transaction create endpoints (step 4 follow-up)
-  - logout/me now read token from Authorization header (step 4)
+  - logout/me/refresh read the token from the Authorization header; logout invalidates the token (step 4)
+  - Admin endpoints require a JWT for an active user with role `admin`; the shared `ADMIN_TOKEN` stopgap was removed
+  - Failed logins are rate limited (5 per minute per client and username)
   - Password hashing switched to bcrypt; JWT switched to PyJWT (step 4)
   - SQL migration script created in migrations/02_user_auth/ (step 4)
   - user_id columns added to all 8 transaction table models (step 4)
-[x] Transport security (HTTPS on LAN) - documented in python/README.md (step 7)
+- [x] Transport security (HTTPS on LAN) - documented in python/README.md (step 7)
 
 ---
 
@@ -435,7 +438,7 @@ The remaining imported items are quality/production tasks, tracked below.
 ### Endpoints Status
 - **Routers Implemented**: 19 routers (incl. auth, users, import_export)
 - **Phase 1-5 endpoints**: implemented; the optional per-date/per-period lookup and balanced-protocol items were dropped as not needed for Java parity (see "Parity Audit")
-- **Phase 6/7**: main sale/storno/settlement flows wired; per-user auth enforced on transaction create/mutate endpoints (admin endpoints still also accept the shared `ADMIN_TOKEN` stopgap)
+- **Phase 6/7**: main sale/storno/settlement flows wired; per-user auth enforced on all endpoints, admin operations require the `admin` role (shared `ADMIN_TOKEN` removed)
 
 ### Business Logic Status
 - **Business Logic Ported**: CRUD + settlement aggregation + VAT/sale-workflow/storno/cash-register modules wired into the endpoints; VAT module is Java-parity checked and fully tested
