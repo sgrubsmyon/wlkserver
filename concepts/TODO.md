@@ -2,8 +2,8 @@
 
 > **Sync note**: This document and `concepts/IMPLEMENTATION_PLAN.md` must be kept in sync. When implementation progress changes, update both files so new sessions without prior memory see a consistent status.
 
-> **Last Updated**: 2026-10-27  
-> **Status**: Phases 1-5 implemented at router level (TSE export adapter untested without hardware); main Phase 6/7 flows wired (see "Business Logic Wiring Gaps" for what remains); auth enforced on transaction endpoints; parity audit of the remaining low-priority endpoints done and resolved (see "Parity Audit"), Bestellung positions + date filter implemented; bar_brutto aggregation matches Java; sale workflow (validation, automatic discounts, all four modes), storno (payment-mode parity, cash payout, settlement lock, rollback, attribution), cash register (payment, balance validation, end-of-day preview) complete; voucher redemption uses the Java balance calculation; search/filter/pagination/sorting finished for all list endpoints; Bestellung CSV import supports positions; Bestellung/Inventur CSV export added (ODS deferred); CORS configured; core `/training` endpoints; integration tests incl. concurrency; same-origin nginx deployment and script automation documented as planned; VAT module Java-parity checked, 100% tested, rounding method configurable; test coverage 90%
+> **Last Updated**: 2026-10-28  
+> **Status**: Phases 1-5 implemented at router level (TSE export adapter untested without hardware); main Phase 6/7 flows wired (see "Business Logic Wiring Gaps" for what remains); auth enforced on transaction endpoints; parity audit of the remaining low-priority endpoints done and resolved (see "Parity Audit"), Bestellung positions + date filter implemented; bar_brutto aggregation matches Java; sale workflow (validation, automatic discounts, all four modes), storno (payment-mode parity, cash payout, settlement lock, rollback, attribution), cash register (payment, balance validation, end-of-day preview) complete; validation framework finished (model constraints + `ensure_*` helpers in use); voucher redemption uses the Java balance calculation; search/filter/pagination/sorting finished for all list endpoints; Bestellung CSV import supports positions; Bestellung/Inventur CSV export added (ODS deferred); CORS configured; core `/training` endpoints; integration tests incl. concurrency; same-origin nginx deployment and script automation documented as planned; VAT module Java-parity checked, 100% tested, rounding method configurable; test coverage 90%
 
 ---
 
@@ -307,7 +307,7 @@
 - Sorting: `verkauf` already had `desc`; settlement lists (`abrechnung/tag|monat|jahr`) can now be sorted newest-first with `desc=true`
 - Pagination: every list endpoint now uses `offset` + `limit` with `limit <= 100` (TSE list was unbounded before)
 - Covered by tests/test_filters.py (all new filters, the open-ended Rabattaktion regression, settlement ordering, invalid type rejection)
-[⏳] Validation Framework - model-level constraints added (MwstBase 0-1, Kassenstand, Gutschein, AnzahlungDetails, BestellungDetails); `ensure_*` helpers in `utils/validation.py` are fully unit-tested (100% coverage) but still not called by any router
+[x] Validation Framework - model-level constraints on all numeric inputs where negatives/zero are invalid (Artikel, Rabattaktion, Verkauf.kunde_gibt, Kassenstand, Gutschein, AnzahlungDetails, ZaehlprotokollDetails, Mwst 0-1, BestellungDetails.stueckzahl, ZaehlprotokollDetails, User role); `ensure_*` helpers in `utils/validation.py` are used for the rules models cannot express: cross-field Rabattaktion rules (quantity discount needs a threshold, `bis > von`, merged state on PATCH), CSV import values (negative prices, `ek_rabatt` outside 0-1) and voucher amounts. Future dates need no rule (only Rabattaktion may start in the future, timestamps are server-set). Covered by tests/test_validation.py
 [⏳] Authentication and Authorization System (per-user accounts, login auditing, transaction attribution) - HIGH PRIORITY
   - Models + login/logout/me + user CRUD exist
   - `require_user` enforced on all transaction create/mutate endpoints (step 4 enforcement follow-up)
@@ -401,7 +401,7 @@ The remaining imported items are quality/production tasks, tracked below.
 - [x] Most database tables have corresponding models and endpoints (Phase 1-5)
 - [x] All database tables have models (training tables now have core sale endpoints)
 - [ ] All business logic from Java POS ported (Phase 6) - main flows wired, see "Business Logic Wiring Gaps"
-- [ ] Comprehensive validation and error handling (Phase 7) - validation module exists but rarely applied
+- [x] Comprehensive validation and error handling (Phase 7) - model constraints + wired `ensure_*` helpers (see Validation Framework)
 - [x] Per-user accounts with login auditing (Phase 7.4) - models + endpoints + migration + enforcement complete
 - [x] Transaction attribution via user_id (all 8 transaction tables have the column; populated from token where present) (step 4 follow-up)
 - [ ] Proper separation of concerns
@@ -454,7 +454,7 @@ The remaining imported items are quality/production tasks, tracked below.
 2. **Frontend readiness**: CORS is configured via `CORS_ORIGINS` (defaults to the SvelteKit dev server); keep the OpenAPI schema stable
 3. **Integration tests**: done in `test_integration.py` (workflows, cross-entity effects, concurrent sales)
 4. **Coverage**: target 80%+ reached; remaining gaps: tse_client.py 44%, users 33%, rabattaktion 33%
-5. **Validation**: apply the `ensure_*` helpers in the routers (helpers are tested, but still unused)
+5. **Validation**: done (model constraints + `ensure_*` helpers wired, see Validation Framework)
 6. **Training mode**: extend the `/training` endpoints (storno, settlements, gutschein/anzahlung) if the frontend needs them
 7. **Import/Export**: CSV exports for Bestellung and Inventur exist; ODS export is deferred to a later phase (see "Phase 7" above)
 8. **Documentation**: migration guide (Java POS → API), database schema reference, consistent docstrings, deployment/HTTPS docs

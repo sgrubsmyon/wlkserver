@@ -10,6 +10,7 @@ from fastapi import HTTPException
 from sqlmodel import Session
 
 from ..models import BESTELLUNG_TYPEN, Artikel, Bestellung, BestellungDetails
+from .validation import ensure_non_negative, ensure_range
 
 
 def _float(v):
@@ -36,6 +37,9 @@ def import_artikel_from_csv(content: str, session: Session) -> List[Artikel]:
     reader = csv.DictReader(io.StringIO(content))
     created = []
     for row in reader:
+        for field in ("menge", "vk_preis", "empf_vk_preis", "ek_preis"):
+            ensure_non_negative(_float(row.get(field)), field)
+        ensure_range(_float(row.get("ek_rabatt")), 0, 1, "ek_rabatt")
         artikel = Artikel(
             artikel_nr=row.get("artikel_nr") or row.get("nr") or "",
             artikel_name=row.get("artikel_name") or row.get("name") or "",

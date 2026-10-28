@@ -9,6 +9,7 @@ from sqlmodel import select
 
 from ..models import Artikel, Produktgruppe, Rabattaktion, RabattaktionPublic, RabattaktionCreate, RabattaktionUpdate
 from ..session import SessionDep
+from ..utils.validation import ensure_non_negative, ensure_positive, ensure_range
 
 
 router = APIRouter(
@@ -17,6 +18,38 @@ router = APIRouter(
     # dependencies=[Depends(get_token_header)],
     responses={404: {"description": "Not found"}},
 )
+
+def _validate_discounts(values: dict):
+    """Cross-field validation of the discount configuration.
+
+    Single-field ranges are enforced by the models; this checks the business
+    rules that span several fields (also for PATCH, where the merged state counts).
+    """
+    ensure_range(values.get("rabatt_relativ"), 0, 1, "rabatt_relativ")
+    ensure_non_negative(values.get("rabatt_absolut"), "rabatt_absolut")
+    ensure_positive(values.get("mengenrabatt_schwelle"), "mengenrabatt_schwelle")
+    ensure_positive(
+        values.get("mengenrabatt_anzahl_kostenlos"), "mengenrabatt_anzahl_kostenlos"
+    )
+    ensure_range(values.get("mengenrabatt_relativ"), 0, 1, "mengenrabatt_relativ")
+
+    if values.get("mengenrabatt_anzahl_kostenlos") is not None and values.get("mengenrabatt_schwelle") is None:
+        raise HTTPException(
+            status_code=400,
+            detail="mengenrabatt_anzahl_kostenlos requires mengenrabatt_schwelle",
+        )
+    if values.get("mengenrabatt_relativ") is not None and values.get("mengenrabatt_schwelle") is None:
+        raise HTTPException(
+            status_code=400,
+            detail="mengenrabatt_relativ requires mengenrabatt_schwelle",
+        )
+
+    von, bis = values.get("von"), values.get("bis")
+    if von is not None and bis is not None and bis <= von:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid dates: 'bis' must be after 'von' or null",
+        )
 
 
 @router.get("/")
@@ -91,16 +124,14 @@ def read_single_rabattaktion(rabattaktion_id: int, session: SessionDep) -> Rabat
 
 @router.post("/", response_model=RabattaktionPublic)
 def create_rabattaktion(rabattaktion: RabattaktionCreate, session: SessionDep):
+    values = rabattaktion.model_dump()
+    _validate_discounts(values)
     new_rabattaktion = Rabattaktion.model_validate(rabattaktion)
     # Normalize naive datetimes to UTC
     if new_rabattaktion.von.tzinfo is None:
         new_rabattaktion.von = new_rabattaktion.von.replace(tzinfo=timezone.utc)
     if new_rabattaktion.bis is not None and new_rabattaktion.bis.tzinfo is None:
         new_rabattaktion.bis = new_rabattaktion.bis.replace(tzinfo=timezone.utc)
-
-    # Add plausibility check
-    if new_rabattaktion.bis is not None and new_rabattaktion.bis <= new_rabattaktion.von:
-        raise HTTPException(status_code=400, detail="Invalid dates: 'bis' must be after 'von' or null")
 
     session.add(new_rabattaktion)
     session.commit()
@@ -153,6 +184,19 @@ def update_rabattaktion(rabattaktion_id: int, rabattaktion: RabattaktionUpdate, 
         for key in list(rabattaktion_data.keys()):
             if key not in allowed_fields:
                 raise HTTPException(status_code=400, detail=f"Cannot change field '{key}' of started Rabattaktion, only 'aktionsname' and 'bis' can be changed")
+    # validate the resulting state, not just the supplied fields
+    merged = {
+        "von": old_rabattaktion.von,
+        "bis": old_rabattaktion.bis,
+        "rabatt_relativ": old_rabattaktion.rabatt_relativ,
+        "rabatt_absolut": old_rabattaktion.rabatt_absolut,
+        "mengenrabatt_schwelle": old_rabattaktion.mengenrabatt_schwelle,
+        "mengenrabatt_anzahl_kostenlos": old_rabattaktion.mengenrabatt_anzahl_kostenlos,
+        "mengenrabatt_relativ": old_rabattaktion.mengenrabatt_relativ,
+    }
+    merged.update(rabattaktion_data)
+    _validate_discounts(merged)
+
     # Case 1 passed the checks or it is Case 2: Rabattaktion has not started yet, all fields can be changed
     for key, value in rabattaktion_data.items():
         if isinstance(value, datetime) and value.tzinfo is None:

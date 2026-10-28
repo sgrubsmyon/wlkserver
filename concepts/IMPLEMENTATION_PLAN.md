@@ -21,7 +21,7 @@ This document outlines the comprehensive implementation plan to complete the Fas
 - Validate against a real MariaDB instance (tests are SQLite-only)
 - CORS configured in `python/main.py` via `CORS_ORIGINS` (defaults to the SvelteKit dev server); keep the OpenAPI schema stable
 - Add integration tests for complete sales/storno/settlement workflows (coverage target 80% reached)
-- Finish remaining validation/edge cases (training mode coverage, wiring the tested `ensure_*` helpers)
+- Finish remaining edge cases (training mode coverage)
 - Complete documentation (migration guide, DB schema reference, docstrings)
 
 > **Note**: The Phase sections below contain the original plan text (some "Current" states are outdated). The authoritative per-endpoint status is in `concepts/TODO.md`; the priority matrix and success criteria below are kept up to date.
@@ -509,12 +509,7 @@ Details and sources: `docs/VAT_ROUNDING.md`.
 ### 7.3 Validation and Error Handling
 **Priority**: 🔴 HIGH - Essential for data integrity
 
-**Enhancements:**
-- Comprehensive input validation for all endpoints
-- Proper error messages and HTTP status codes
-- Business rule validation (e.g., prevent future dates)
-- Foreign key constraint validation
-- Add validation for all Decimal fields to prevent negative values where inappropriate
+**Status**: ✅ Done. Numeric fields that must not be negative are constrained in the models (Pydantic `ge`/`le`/`gt`, so invalid input yields 422); the `ensure_*` helpers in `python/utils/validation.py` cover the rules models cannot express and are used by the Rabattaktion router (cross-field rules, incl. the merged state on PATCH), the CSV import (negative prices, `ek_rabatt` outside 0-1) and voucher redemption. Foreign keys are checked explicitly in the create/update endpoints (Verkauf, Gutschein, Anzahlung, Bestellung, Pfand, Zaehlprotokoll, Rabattaktion). No future-date rule is needed: all transaction timestamps are server-set and a Rabattaktion may legitimately start in the future.
 
 ### 7.4 Authentication and Authorization
 **Priority**: 🔴 HIGH - Essential for security
@@ -607,7 +602,7 @@ Scripts (cron jobs for price changes, supplier article imports, settlement creat
 |----------|----------|-------|------------------|--------|
 | 🔴 HIGH | Core CRUD | MwSt, Pfand admin CRUD with auth (Verkauf stays update-free by design) | 2-3 days | ✅ Done |
 | 🔴 HIGH | Core Tables | Kassenstand (CR), Gutschein (CR), Anzahlung (CR) | 3-4 days | ✅ Done |
-| 🔴 HIGH | Validation | Comprehensive input validation | 1-2 days | ⏳ Partial |
+| 🔴 HIGH | Validation | Comprehensive input validation | 1-2 days | ✅ Done |
 | 🔴 HIGH | Security | User accounts, authentication and authorization | 2-3 days | ✅ Done (ADMIN_TOKEN stopgap remains) |
 | 🟡 MEDIUM | Accounting | Abrechnung Tag (CR), Monat (CRD), Jahr (CRD) | 3-5 days | ✅ Done |
 | 🟡 MEDIUM | Business Logic | VAT calculation, sale creation | 2-3 days | ✅ Done (VAT + sale workflow incl. discounts; storno/cash-register still partial) |
@@ -707,7 +702,7 @@ Still missing: none for the planned workflows; new endpoints should keep adding 
 - [x] Bookkeeping integrity: no update/delete endpoints for immutable tables (verkauf, kassenstand, gutschein, anzahlung, abrechnung_tag)
 - [ ] All business logic from Java POS is ported to API (training mode covers sales only; edge-case validation still missing)
 - [x] Per-user accounts with login auditing and transaction attribution
-- [ ] Comprehensive validation and error handling
+- [x] Comprehensive validation and error handling
 - [x] 80%+ test coverage (83%)
 - [ ] Complete API documentation
 - [ ] Working integration with existing database (SQLite-only tests so far)
@@ -809,7 +804,7 @@ Note: There are deliberately **no** `routers/verkauf_mwst.py` and `routers/verka
 2. **Frontend readiness**: CORS is configured via `CORS_ORIGINS`; keep the OpenAPI schema stable
 3. **Integration tests**: done in `test_integration.py` (workflows, cross-entity effects, concurrent sales)
 4. **Coverage**: target reached; remaining gaps: tse_client.py 44%, users 33%, rabattaktion 33%
-5. **Validation**: apply the `ensure_*` helpers in the routers (they are tested but never called today)
+5. **Validation**: done (model constraints + `ensure_*` helpers wired, see TODO "Validation Framework")
 6. **Training mode**: extend the `/training` endpoints (storno, settlements, gutschein/anzahlung) if the frontend needs them
 7. **Import/Export**: CSV exports for Bestellung and Inventur exist; ODS export is deferred to a later phase (needs an ODS library and the Java templates)
 8. **Documentation**: migration guide (Java POS → API), database schema reference, consistent docstrings, deployment/HTTPS docs (same-origin nginx topology and script automation are documented in Phase 7.4; nginx/systemd artifacts still missing)

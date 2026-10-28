@@ -186,16 +186,16 @@ class ArtikelBase(SQLModel):
     artikel_nr: str = Field(max_length=30, nullable=False)
     artikel_name: str = Field(max_length=180, nullable=False)
     kurzname: str | None = Field(max_length=50, default=None)
-    menge: float | None = Field(sa_column=DECIMAL(precision=8, scale=5), default=None)
+    menge: float | None = Field(sa_column=DECIMAL(precision=8, scale=5), default=None, ge=0)
     einheit: str | None = Field(max_length=10, default=None)
     barcode: str | None = Field(max_length=30, default=None)
     herkunft: str | None = Field(max_length=100, default=None)
     vpe: int | None = Field(default=None) # sa_column_kwargs={"unsigned": True}
-    setgroesse: int = Field(nullable=False, default=1) # sa_column_kwargs={"unsigned": True}, 
-    vk_preis: float | None = Field(sa_column=DECIMAL(precision=13, scale=2), default=None)
-    empf_vk_preis: float | None = Field(sa_column=DECIMAL(precision=13, scale=2), default=None)
-    ek_rabatt: float | None = Field(sa_column=DECIMAL(precision=6, scale=5), default=None)
-    ek_preis: float | None = Field(sa_column=DECIMAL(precision=13, scale=2), default=None)
+    setgroesse: int = Field(nullable=False, default=1, ge=1) # sa_column_kwargs={"unsigned": True}, 
+    vk_preis: float | None = Field(sa_column=DECIMAL(precision=13, scale=2), default=None, ge=0)
+    empf_vk_preis: float | None = Field(sa_column=DECIMAL(precision=13, scale=2), default=None, ge=0)
+    ek_rabatt: float | None = Field(sa_column=DECIMAL(precision=6, scale=5), default=None, ge=0, le=1)
+    ek_preis: float | None = Field(sa_column=DECIMAL(precision=13, scale=2), default=None, ge=0)
     variabler_preis: bool = Field(nullable=False, default=False)
     sortiment: bool = Field(nullable=False, default=False)
     lieferbar: bool = Field(nullable=False, default=False)
@@ -253,16 +253,16 @@ class ArtikelUpdate(SQLModel):
     artikel_nr: str | None = None
     artikel_name: str | None = None
     kurzname: str | None = None
-    menge: float | None = None
+    menge: float | None = Field(default=None, ge=0)
     einheit: str | None = None
     barcode: str | None = None
     herkunft: str | None = None
     vpe: int | None = None
-    setgroesse: int | None = None
-    vk_preis: float | None = None
-    empf_vk_preis: float | None = None
-    ek_rabatt: float | None = None
-    ek_preis: float | None = None
+    setgroesse: int | None = Field(default=None, ge=1)
+    vk_preis: float | None = Field(default=None, ge=0)
+    empf_vk_preis: float | None = Field(default=None, ge=0)
+    ek_rabatt: float | None = Field(default=None, ge=0, le=1)
+    ek_preis: float | None = Field(default=None, ge=0)
     variabler_preis: bool | None = None
     sortiment: bool | None = None
     lieferbar: bool | None = None
@@ -277,11 +277,11 @@ class ArtikelUpdate(SQLModel):
 # The base model, shared by all
 class RabattaktionBase(SQLModel):
     aktionsname: str = Field(max_length=50, default=None)
-    rabatt_relativ: float | None = Field(sa_column=DECIMAL(precision=6, scale=5), default=None)
-    rabatt_absolut: float | None = Field(sa_column=DECIMAL(precision=13, scale=2), default=None)
-    mengenrabatt_schwelle: int | None = Field(default=None) # sa_column_kwargs={"unsigned": True}
-    mengenrabatt_anzahl_kostenlos: int | None = Field(default=None) # sa_column_kwargs={"unsigned": True}
-    mengenrabatt_relativ: float | None = Field(sa_column=DECIMAL(precision=6, scale=5), default=None)
+    rabatt_relativ: float | None = Field(sa_column=DECIMAL(precision=6, scale=5), default=None, ge=0, le=1)
+    rabatt_absolut: float | None = Field(sa_column=DECIMAL(precision=13, scale=2), default=None, ge=0)
+    mengenrabatt_schwelle: int | None = Field(default=None, ge=1) # sa_column_kwargs={"unsigned": True}
+    mengenrabatt_anzahl_kostenlos: int | None = Field(default=None, ge=1) # sa_column_kwargs={"unsigned": True}
+    mengenrabatt_relativ: float | None = Field(sa_column=DECIMAL(precision=6, scale=5), default=None, ge=0, le=1)
     von: datetime = Field(sa_column=Column(TIMESTAMP, nullable=False))
     bis: datetime | None = Field(sa_column=Column(TIMESTAMP, nullable=True), default=None)
 
@@ -322,11 +322,11 @@ class RabattaktionUpdate(SQLModel):
     artikel_id: int | None = None
 
     aktionsname: str | None = None
-    rabatt_relativ: float | None = None
-    rabatt_absolut: float | None = None
-    mengenrabatt_schwelle: int | None = None
-    mengenrabatt_anzahl_kostenlos: int | None = None
-    mengenrabatt_relativ: float | None = None
+    rabatt_relativ: float | None = Field(default=None, ge=0, le=1)
+    rabatt_absolut: float | None = Field(default=None, ge=0)
+    mengenrabatt_schwelle: int | None = Field(default=None, ge=1)
+    mengenrabatt_anzahl_kostenlos: int | None = Field(default=None, ge=1)
+    mengenrabatt_relativ: float | None = Field(default=None, ge=0, le=1)
     von: datetime | None = None
     bis: datetime | None = None
 
@@ -338,7 +338,7 @@ class RabattaktionUpdate(SQLModel):
 # The base model, shared by all
 class VerkaufBase(SQLModel):
     ec_zahlung: bool = Field(nullable=False, default=False)
-    kunde_gibt: float | None = Field(sa_column=DECIMAL(precision=13, scale=2), default=None)
+    kunde_gibt: float | None = Field(sa_column=DECIMAL(precision=13, scale=2), default=None, ge=0)
     user_id: int | None = Field(default=None, foreign_key="user.user_id")
 
 
@@ -798,8 +798,8 @@ class ZaehlprotokollDetails(SQLModel, table=True):
 
     id: int | None = Field(default=None, primary_key=True)
     zaehlprotokoll_id: int = Field(foreign_key="zaehlprotokoll.id", nullable=False)
-    anzahl: int = Field(nullable=False)
-    einheit: float = Field(sa_column=DECIMAL(precision=13, scale=2))
+    anzahl: int = Field(nullable=False, ge=0)
+    einheit: float = Field(sa_column=DECIMAL(precision=13, scale=2), gt=0)
 
 
 class ZaehlprotokollDetailsPublic(SQLModel):
@@ -810,8 +810,8 @@ class ZaehlprotokollDetailsPublic(SQLModel):
 
 
 class ZaehlprotokollDetailsCreate(SQLModel):
-    anzahl: int
-    einheit: float
+    anzahl: int = Field(ge=0)
+    einheit: float = Field(gt=0)
 
 
 #######################
@@ -881,7 +881,7 @@ class BestellungDetailsCreate(SQLModel):
     typ: str | None = None
     position: int
     artikel_id: int
-    stueckzahl: int = 1
+    stueckzahl: int = Field(default=1, ge=1)
 
 
 #######################
@@ -976,14 +976,14 @@ class UserPublic(SQLModel):
 
 class UserCreate(SQLModel):
     username: str = Field(max_length=50)
-    password: str
-    role: str = Field(default="mitarbeiter")
+    password: str = Field(min_length=1)
+    role: Literal["admin", "mitarbeiter"] = Field(default="mitarbeiter")
     active: bool = Field(default=True)
 
 
 class UserUpdate(SQLModel):
     username: str | None = None
-    role: str | None = None
+    role: Literal["admin", "mitarbeiter"] | None = None
     active: bool | None = None
     password: str | None = None
 

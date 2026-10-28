@@ -16,6 +16,7 @@ from fastapi import HTTPException
 from sqlmodel import func, select
 
 from ..models import Gutschein, VerkaufDetails
+from ..utils.validation import ensure_positive
 from .vat_calculator import _to_decimal
 
 CENT = Decimal("0.01")
@@ -120,8 +121,7 @@ def redeem_voucher(
             )
 
         amount = amount.quantize(CENT, rounding=ROUND_HALF_UP)
-        if amount <= 0:
-            raise HTTPException(status_code=400, detail="betrag must be positive")
+        ensure_positive(amount, "betrag")
         new_balance = (balance - amount).quantize(CENT, rounding=ROUND_HALF_UP)
         if new_balance < 0:
             raise HTTPException(
