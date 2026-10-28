@@ -22,7 +22,12 @@ from ..session import SessionDep
 from ..dependencies import bearer_scheme, require_user
 from ..models import User
 from ..business.vat_calculator import calculate_vat
-from ..business.sale_workflow import build_sale_details, calculate_mwst_summary
+from ..business.sale_workflow import (
+    apply_anzahlung,
+    build_sale_details,
+    calculate_mwst_summary,
+    write_anzahlung,
+)
 
 router = APIRouter(
     prefix="/verkauf",
@@ -115,8 +120,9 @@ def create_verkauf(verkauf: VerkaufCreate, session: SessionDep, credentials: HTT
         if payload:
             user_id = payload.get("user_id")
     # Expand auxiliary lines (Pfand, discounts, price adjustment, voucher
-    # redemption) and validate before writing anything.
+    # redemption, Anzahlung) and validate before writing anything.
     prepared = build_sale_details(session, verkauf)
+    anzahlung = apply_anzahlung(session, verkauf, prepared)
     # base = VerkaufCreate.model_validate(verkauf)
     new_v = Verkauf(
         verkaufsdatum=datetime.now(timezone.utc),
@@ -137,6 +143,10 @@ def create_verkauf(verkauf: VerkaufCreate, session: SessionDep, credentials: HTT
     session.commit()
     for d_obj in prepared:
         session.refresh(d_obj)
+
+    # Deposit bookkeeping: the anzahlung row and the original prices of the
+    # zeroed positions / the resolution entry for an open deposit.
+    write_anzahlung(session, anzahlung, new_v.rechnungs_nr, new_v.verkaufsdatum, user_id)
 
     # Aggregate VAT per tax rate using Decimal-safe calculation
     mwst_summary = calculate_mwst_summary(prepared)

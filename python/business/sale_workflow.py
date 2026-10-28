@@ -7,7 +7,16 @@ from decimal import Decimal, ROUND_HALF_UP
 from fastapi import HTTPException
 from sqlmodel import Session, select
 
-from ..models import Artikel, Mwst, Rabattaktion, VerkaufDetails, VerkaufDetailsCreate
+from ..models import (
+    Anzahlung,
+    AnzahlungDetails,
+    Artikel,
+    Mwst,
+    Rabattaktion,
+    Verkauf,
+    VerkaufDetails,
+    VerkaufDetailsCreate,
+)
 from .cash_register import EC_THRESHOLD, ec_payment_threshold_check
 from .vat_calculator import calculate_mwst_values_in_rechnung
 
@@ -19,6 +28,8 @@ SPECIAL_ARTIKEL = {
     "rabatt": "RABATT1",
     "rechnung_rabatt": "RABATT2",
     "preisanpassung": "ANPASSUNG",
+    "anzahlung": "ANZAHLUNG",
+    "anzahlungsaufloesung": "ANZAHLAUFLOES",
     "gutschein_einloesung": "GUTSCHEINEINLOES",
 }
 
@@ -404,6 +415,166 @@ def build_sale_details(session, verkauf) -> list[VerkaufDetails]:
     return rows
 
 
+def apply_anzahlung(session, verkauf, rows) -> dict | None:
+    """Apply an Anzahlung (deposit) to the built sale rows.
+
+    Creating one (`anzahlung_betrag`) splits the paid amount across the VAT
+    rates of the basket, appends one ANZAHLUNG position per rate and zeroes all
+    other positions; their original prices are kept for `anzahlung_details`
+    (Java `Kassieren.anzahlungHinzufuegen` / `maybeInsertIntoAnzahlung`).
+
+    Resolving one (`anzahlung_aufloesen_nr`) re-adds the open deposit's
+    positions with their original prices and turns each ANZAHLUNG line into a
+    negative ANZAHLAUFLOES line (Java `AnzahlungAufloesDialog` /
+    `maybeInsertAufloesungIntoAnzahlung`).
+    """
+    betrag = getattr(verkauf, "anzahlung_betrag", None)
+    aufloesen_nr = getattr(verkauf, "anzahlung_aufloesen_nr", None)
+    if betrag is not None and aufloesen_nr is not None:
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot create and resolve an Anzahlung in the same sale",
+        )
+
+    if betrag is not None:
+        total = sum((Decimal(str(r.ges_preis)) for r in rows), Decimal("0"))
+        amount = Decimal(str(betrag)).quantize(CENT, rounding=ROUND_HALF_UP)
+        if amount <= 0:
+            raise HTTPException(status_code=400, detail="anzahlung_betrag must be positive")
+        if total <= 0:
+            raise HTTPException(status_code=400, detail="Anzahlung requires article positions")
+        if amount > total:
+            raise HTTPException(
+                status_code=400,
+                detail="anzahlung_betrag exceeds the sale total",
+            )
+
+        summary = calculate_mwst_summary(rows)
+        shares = []
+        remaining = amount
+        items = list(summary.items())
+        for index, (rate, values) in enumerate(items):
+            if index == len(items) - 1:
+                share = remaining
+            else:
+                share = (values["brutto"] / total * amount).quantize(
+                    CENT, rounding=ROUND_HALF_UP)
+                remaining -= share
+            shares.append((rate, share))
+
+        originals = [(row, row.ges_preis) for row in rows]
+        for row in rows:
+            row.ges_preis = 0.0
+
+        artikel = _special_artikel(session, "anzahlung")
+        position = max((r.position or 0) for r in rows) + 1
+        for rate, share in shares:
+            rows.append(VerkaufDetails(
+                position=position,
+                stueckzahl=1,
+                ges_preis=float(share),
+                mwst_satz=float(rate),
+                artikel_id=artikel.artikel_id,
+                rabatt_id=None,
+            ))
+            position += 1
+        return {"type": "create", "originals": originals}
+
+    if aufloesen_nr is not None:
+        if session.get(Verkauf, aufloesen_nr) is None:
+            raise HTTPException(status_code=400, detail="Anzahlung Verkauf not found")
+        already = session.exec(
+            select(Anzahlung).where(
+                Anzahlung.anzahlung_in_rech_nr == aufloesen_nr,
+                Anzahlung.aufloesung_in_rech_nr.is_not(None),
+            )
+        ).first()
+        if already is not None:
+            raise HTTPException(status_code=400, detail="Anzahlung is already resolved")
+
+        anzahlung_artikel = _special_artikel(session, "anzahlung")
+        aufloesung_artikel = _special_artikel(session, "anzahlungsaufloesung")
+        original_rows = session.exec(
+            select(VerkaufDetails)
+            .where(VerkaufDetails.rechnungs_nr == aufloesen_nr)
+            .order_by(VerkaufDetails.vd_id)
+        ).all()
+        anzahlung_rows = [
+            r for r in original_rows if r.artikel_id == anzahlung_artikel.artikel_id
+        ]
+        if not anzahlung_rows:
+            raise HTTPException(status_code=400, detail="Verkauf is not an Anzahlung")
+        last_vd_id = max(r.vd_id for r in anzahlung_rows)
+        original_prices = {
+            d.vd_id: d.ges_preis
+            for d in session.exec(
+                select(AnzahlungDetails).where(
+                    AnzahlungDetails.rechnungs_nr == aufloesen_nr)
+            ).all()
+        }
+
+        position = max((r.position or 0) for r in rows) + 1
+        for original in original_rows:
+            if original.vd_id > last_vd_id:
+                continue
+            if original.artikel_id == anzahlung_artikel.artikel_id:
+                rows.append(VerkaufDetails(
+                    position=position,
+                    stueckzahl=1,
+                    ges_preis=-original.ges_preis,
+                    mwst_satz=original.mwst_satz,
+                    artikel_id=aufloesung_artikel.artikel_id,
+                    rabatt_id=None,
+                ))
+            else:
+                rows.append(VerkaufDetails(
+                    position=position,
+                    stueckzahl=original.stueckzahl,
+                    ges_preis=original_prices.get(original.vd_id, original.ges_preis),
+                    mwst_satz=original.mwst_satz,
+                    artikel_id=original.artikel_id,
+                    rabatt_id=original.rabatt_id,
+                ))
+            position += 1
+        return {"type": "resolve", "anzahlung_in_rech_nr": aufloesen_nr}
+
+    return None
+
+
+def write_anzahlung(session, meta, rechnungs_nr, datum, user_id=None):
+    """Write the `anzahlung` row(s) after the sale positions are stored."""
+    if not meta:
+        return None
+    if meta["type"] == "create":
+        new_a = Anzahlung(
+            datum=datum,
+            anzahlung_in_rech_nr=rechnungs_nr,
+            user_id=user_id,
+        )
+        new_a.anzahlung_id = None
+        session.add(new_a)
+        session.commit()
+        for source, price in meta["originals"]:
+            session.add(AnzahlungDetails(
+                rechnungs_nr=rechnungs_nr,
+                vd_id=source.vd_id,
+                ges_preis=price,
+            ))
+        session.commit()
+        return new_a
+
+    new_a = Anzahlung(
+        datum=datum,
+        anzahlung_in_rech_nr=meta["anzahlung_in_rech_nr"],
+        aufloesung_in_rech_nr=rechnungs_nr,
+        user_id=user_id,
+    )
+    new_a.anzahlung_id = None
+    session.add(new_a)
+    session.commit()
+    return new_a
+
+
 def calculate_mwst_summary(details):
     """VAT summary per rate for the given positions.
 
@@ -435,6 +606,8 @@ __all__ = [
     "determine_ges_preis",
     "prepare_detail",
     "build_sale_details",
+    "apply_anzahlung",
+    "write_anzahlung",
     "calculate_mwst_summary",
     "check_ec_payment_threshold",
 ]

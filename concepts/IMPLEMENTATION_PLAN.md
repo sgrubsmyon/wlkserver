@@ -36,8 +36,8 @@ Audit of `python/` against the Java POS (`../git/src/org/weltladen_bonn/pos/`). 
 | # | Gap | Java reference | Current API state |
 |---|-----|----------------|-------------------|
 | 1 | **DSFinV-K export** written on every Tagesabschluss (Stammdaten, `Z_GV_Typ`, `transactions.csv`, `index.xml`) | `kasse/DSFinVKCSV.java`, `AbrechnungenTag.writeIntoDSFinVKCSVFiles()` | Missing entirely; only `Mwst.dsfinvk_ust_schluessel` exists. Depends on #2 for the `Z_GV_Typ` buckets |
-| 2 | ✅ **Sale auxiliary lines**: Pfand auto-line, separate RABATT line, Preisanpassung/Aufschlag, Gutschein-Einlösung (Anzahlung article remains in #3) | `Kassieren.checkForPfand()`, `addRabattRow()`, `artikelRabattierenAbsolut()`, `gutscheinEinloesungHinzufuegen()`, `anzahlungHinzufuegen()` | **Done (2026-10-28)**: `build_sale_details` in `sale_workflow.py` expands Pfand, per-action RABATT, `rabatt_absolut`/ANPASSUNG, `rechnung_rabatt_relativ` per VAT rate and `gutschein_einloesung_nr` into positions; discount lines carry `position = NULL` + `rabatt_id` |
-| 3 | **Anzahlung creation**: split the paid amount across the basket VAT rates, zero all non-Anzahlung line prices, write `anzahlung_details` from the positions | `Kassieren.anzahlungHinzufuegen()`, `maybeInsertIntoAnzahlung()` | `POST /anzahlung` writes client-supplied rows only; the split/zeroing belongs in the sale flow |
+| 2 | ✅ **Sale auxiliary lines**: Pfand auto-line, separate RABATT line, Preisanpassung/Aufschlag, Gutschein-Einlösung (Anzahlung in #3, done) | `Kassieren.checkForPfand()`, `addRabattRow()`, `artikelRabattierenAbsolut()`, `gutscheinEinloesungHinzufuegen()`, `anzahlungHinzufuegen()` | **Done (2026-10-28)**: `build_sale_details` in `sale_workflow.py` expands Pfand, per-action RABATT, `rabatt_absolut`/ANPASSUNG, `rechnung_rabatt_relativ` per VAT rate and `gutschein_einloesung_nr` into positions; discount lines carry `position = NULL` + `rabatt_id` |
+| 3 | ✅ **Anzahlung creation**: split the paid amount across the basket VAT rates, zero all non-Anzahlung line prices, write `anzahlung_details` from the positions, resolve an open deposit in a normal sale | `Kassieren.anzahlungHinzufuegen()`, `maybeInsertIntoAnzahlung()`, `maybeInsertAufloesungIntoAnzahlung()` | **Done (2026-10-28)**: `anzahlung_betrag` splits/zeroes in `apply_anzahlung` and writes the row + `anzahlung_details` in `write_anzahlung`; `anzahlung_aufloesen_nr` re-adds the open deposit and books the negative ANZAHLAUFLOES lines; `POST /anzahlung` stays as raw CRUD |
 | 4 | **Daily settlement invalidates month/year settlements** covering its period | `AbrechnungenTag.deleteAbrechnungIfNeedBe()` called from `insertTagesAbrechnung()` | `POST /abrechnung/tag` never touches `AbrechnungMonat`/`AbrechnungJahr` |
 | 5 | **Zählprotokoll lifecycle**: counting happens before the settlement, is linked to it, previous counts are set `aktiv = FALSE` | `AbrechnungenTag.insertZaehlprotokoll()` / `setZaehlprotokollInactive()` | `ZaehlprotokollCreate.abrechnung_tag_id` is mandatory and must already exist; `POST /abrechnung/tag` ignores it |
 | 6 | **`abrechnung_tag_tse` row** with the TSE status values; `last_tse_sig_counter` stores the counter *after* the export | `AbrechnungenTag.insertTagesAbrechnung()` | `AbrechnungTagTse` is never written; the stored counter is the previous one, so the next settlement re-exports the same range |
@@ -50,7 +50,7 @@ Audit of `python/` against the Java POS (`../git/src/org/weltladen_bonn/pos/`). 
 - Special articles are detected by their master-data `artikel_nr` (`RABATT1`, `RABATT2`, `ANPASSUNG`, `GUTSCHEINEINLOES`, `GUTSCHEIN`), which matches the Java `WindowContent` IDs 1, 2, 3, 6, 7 in production.
 - Price-tag export (`PreisschilderExport`, ODT templates) is client-side output like the deferred ODS exports.
 
-Suggested order for the POS MVP: #3 (sale correctness), then #4 + #5 (closing correctness), then #1 (legal export, depends on #2), then #6, then #7. Tracking: `concepts/TODO.md` → "Remaining business-logic gaps".
+Suggested order for the POS MVP: #4 + #5 (closing correctness), then #1 (legal export, depends on #2), then #6, then #7. Tracking: `concepts/TODO.md` → "Remaining business-logic gaps".
 
 ---
 
@@ -212,6 +212,8 @@ Suggested order for the POS MVP: #3 (sale correctness), then #4 + #5 (closing co
 **Files to create:**
 - `python/models.py` - Add Anzahlung and AnzahlungDetails models
 - `python/routers/anzahlung.py` - Create + Read endpoints + resolution logic (no update, no delete)
+
+**Status: ✅ Done.** CR/R + open/resolved lists are in `python/routers/anzahlung.py`; the sale integration (VAT split, zeroing, `anzahlung_details`, resolution positions) is in `python/business/sale_workflow.py` (`apply_anzahlung`/`write_anzahlung`) and covered by `python/tests/test_sale_workflow.py`.
 
 ---
 
@@ -438,7 +440,8 @@ Details and sources: `docs/VAT_ROUNDING.md`.
 - Voucher creation on GUTSCHEIN articles and `user_id` attribution remain in `python/routers/verkauf.py`
 - Customer-display integration is not applicable (there is no customer display in the web client; the Java code only pushes strings to a separate device)
 - Covered by `python/tests/test_sale_workflow.py`; the dead duplicate sale-creation helper in the business module was removed, the router is the single sale implementation
-- **Sale auxiliary lines (2026-10-28):** the sale now appends the Java auxiliary positions: a Pfand line (`Kassieren.checkForPfand`), one RABATT line per discount action (`addRabattRow`), a manual `rabatt_absolut` discount or ANPASSUNG/Aufschlag line (`artikelRabattierenAbsolut`), one receipt-level RABATT line per VAT rate (`rechnung_rabatt_relativ`, `rechnungRabattierenRelativ`) and a negative Gutschein-Einlösung position (`gutschein_einloesung_nr`, `gutscheinEinloesungHinzufuegen`). Artikel lines keep their full price; discount lines have `position = NULL` and carry the `rabatt_id`. The Anzahlung split remains open (#3). Implemented in `build_sale_details` (`python/business/sale_workflow.py`), covered by `python/tests/test_sale_workflow.py`.
+- **Sale auxiliary lines (2026-10-28):** the sale now appends the Java auxiliary positions: a Pfand line (`Kassieren.checkForPfand`), one RABATT line per discount action (`addRabattRow`), a manual `rabatt_absolut` discount or ANPASSUNG/Aufschlag line (`artikelRabattierenAbsolut`), one receipt-level RABATT line per VAT rate (`rechnung_rabatt_relativ`, `rechnungRabattierenRelativ`) and a negative Gutschein-Einlösung position (`gutschein_einloesung_nr`, `gutscheinEinloesungHinzufuegen`). Artikel lines keep their full price; discount lines have `position = NULL` and carry the `rabatt_id`. Implemented in `build_sale_details` (`python/business/sale_workflow.py`), covered by `python/tests/test_sale_workflow.py`.
+- **Anzahlung (2026-10-28):** `anzahlung_betrag` splits the deposit across the basket's VAT rates, appends one ANZAHLUNG position per rate and zeroes the other positions, keeping their original prices in `anzahlung_details` (`Kassieren.anzahlungHinzufuegen` / `maybeInsertIntoAnzahlung`). `anzahlung_aufloesen_nr` re-adds an open deposit's positions and books one negative ANZAHLAUFLOES line per rate plus the `anzahlung` resolution row (`AnzahlungAufloesDialog` / `maybeInsertAufloesungIntoAnzahlung`); double resolution is rejected. Implemented in `apply_anzahlung` / `write_anzahlung`.
 
 ### 6.3 Advanced Storno Logic
 **Source**: Various Java files in `../git/src/org/weltladen_bonn/pos/kasse/`  
@@ -628,7 +631,7 @@ Scripts (cron jobs for price changes, supplier article imports, settlement creat
 | 🔴 HIGH | Validation | Comprehensive input validation | 1-2 days | ✅ Done |
 | 🔴 HIGH | Security | User accounts, authentication and authorization | 2-3 days | ✅ Done |
 | 🟡 MEDIUM | Accounting | Abrechnung Tag (CR), Monat (CRD), Jahr (CRD) | 3-5 days | ✅ Done |
-| 🟡 MEDIUM | Business Logic | VAT calculation, sale creation, sale auxiliary lines, Anzahlung split | 2-3 days | ✅ VAT + per-line discounts + auxiliary lines done; Anzahlung split open (audit #3) |
+| 🟡 MEDIUM | Business Logic | VAT calculation, sale creation, sale auxiliary lines, Anzahlung split | 2-3 days | ✅ VAT + per-line discounts + auxiliary lines + Anzahlung split done |
 | 🟡 MEDIUM | Accounting follow-ups | Month/year invalidation on daily settlement, zaehlprotokoll lifecycle, DSFinV-K export | 2-4 days | ⏳ Open (audit #1, #4, #5) |
 | 🟡 MEDIUM | TSE | TSE transaction support + export endpoints | 2-3 days | ⏳ Adapter untested without hardware |
 | 🟡 MEDIUM | Supporting | Zaehlprotokoll (CRU), Bestellung (CRUD incl. positions) | 2-3 days | ✅ Done |
@@ -829,7 +832,7 @@ Note: There are deliberately **no** `routers/verkauf_mwst.py` and `routers/verka
 3. **Integration tests**: done in `test_integration.py` (workflows, cross-entity effects, concurrent sales)
 4. **Coverage**: target reached; remaining gaps: tse_client.py 44%, users 33%, rabattaktion 33%
 5. **Validation**: done (model constraints + `ensure_*` helpers wired, see TODO "Validation Framework")
-6. **Remaining business logic** (2026-10-28 audit, see above): #3 Anzahlung split, #4 month/year invalidation on daily settlement, #5 zaehlprotokoll lifecycle, #1 DSFinV-K export (depends on #2, done), #6 `abrechnung_tag_tse` + signature counter, #7 real training-mode table routing
+6. **Remaining business logic** (2026-10-28 audit, see above): #4 month/year invalidation on daily settlement, #5 zaehlprotokoll lifecycle, #1 DSFinV-K export (depends on #2, done), #6 `abrechnung_tag_tse` + signature counter, #7 real training-mode table routing
 7. **Training mode**: extend the `/training` endpoints (storno, settlements, gutschein/anzahlung) if the frontend needs them, and stop normal endpoints from writing production tables while `TRAINING_MODE` is set (#7)
 8. **Import/Export**: CSV exports for Bestellung and Inventur exist; ODS export is deferred to a later phase (needs an ODS library and the Java templates)
 9. **Documentation**: migration guide (Java POS → API), database schema reference, consistent docstrings, deployment/HTTPS docs (same-origin nginx topology and script automation are documented in Phase 7.4; nginx/systemd artifacts still missing)

@@ -508,3 +508,82 @@ def test_router_redeems_voucher_as_sale_position(session):
     from python.business.voucher_logic import voucher_balance
     assert voucher_balance(session, 200) == 0
 
+
+# ------------------------------------------------------------ Anzahlung
+
+def test_router_creates_anzahlung_with_vat_split(session):
+    from python.routers.verkauf import create_verkauf as router_create_verkauf
+    from python.models import VerkaufCreate, Anzahlung, AnzahlungDetails, Kassenstand
+
+    a = _seed_artikel(session, mwst_satz=0.19, vk_preis=10.0, artikel_nr="A1")
+    b = _seed_artikel(session, mwst_satz=0.07, vk_preis=20.0, artikel_nr="A2")
+    anzahlung_artikel = _seed_artikel(session, artikel_nr="ANZAHLUNG", vk_preis=None)
+
+    payload = VerkaufCreate(
+        anzahlung_betrag=15.0,
+        verkauf_details=[
+            {"artikel_id": a.artikel_id, "stueckzahl": 1},
+            {"artikel_id": b.artikel_id, "stueckzahl": 1},
+        ],
+    )
+    result = router_create_verkauf(payload, session, None, None)
+    rows = sorted(result["verkauf_details"], key=lambda d: d.vd_id)
+    split = [r for r in rows if r.artikel_id == anzahlung_artikel.artikel_id]
+    goods = [r for r in rows if r.artikel_id != anzahlung_artikel.artikel_id]
+
+    assert [r.ges_preis for r in goods] == [0.0, 0.0]
+    assert {r.mwst_satz: r.ges_preis for r in split} == {0.07: 10.0, 0.19: 5.0}
+    assert sum(r.ges_preis for r in split) == 15.0
+
+    anzahlungen = session.exec(select(Anzahlung)).all()
+    assert len(anzahlungen) == 1
+    assert anzahlungen[0].anzahlung_in_rech_nr == result["rechnungs_nr"]
+    details = session.exec(select(AnzahlungDetails).order_by(AnzahlungDetails.ad_id)).all()
+    assert [(d.vd_id, d.ges_preis) for d in details] == [
+        (goods[0].vd_id, 10.0), (goods[1].vd_id, 20.0),
+    ]
+    assert session.exec(select(Kassenstand)).one().neuer_kassenstand == 15.0
+
+
+def test_router_resolves_anzahlung_in_normal_sale(session):
+    from python.routers.verkauf import create_verkauf as router_create_verkauf
+    from python.models import VerkaufCreate, Anzahlung
+
+    a = _seed_artikel(session, mwst_satz=0.19, vk_preis=10.0, artikel_nr="A1")
+    b = _seed_artikel(session, mwst_satz=0.07, vk_preis=20.0, artikel_nr="A2")
+    c = _seed_artikel(session, mwst_satz=0.19, vk_preis=5.0, artikel_nr="C1")
+    _seed_artikel(session, artikel_nr="ANZAHLUNG", vk_preis=None)
+    aufloesung_artikel = _seed_artikel(session, artikel_nr="ANZAHLAUFLOES", vk_preis=None)
+
+    deposit = router_create_verkauf(VerkaufCreate(
+        anzahlung_betrag=15.0,
+        verkauf_details=[
+            {"artikel_id": a.artikel_id, "stueckzahl": 1},
+            {"artikel_id": b.artikel_id, "stueckzahl": 1},
+        ],
+    ), session, None, None)
+
+    result = router_create_verkauf(VerkaufCreate(
+        anzahlung_aufloesen_nr=deposit["rechnungs_nr"],
+        verkauf_details=[{"artikel_id": c.artikel_id, "stueckzahl": 1}],
+    ), session, None, None)
+    rows = sorted(result["verkauf_details"], key=lambda d: d.vd_id)
+
+    assert [r.ges_preis for r in rows] == [5.0, 10.0, 20.0, -10.0, -5.0]
+    assert [r.artikel_id for r in rows[3:]] == [
+        aufloesung_artikel.artikel_id, aufloesung_artikel.artikel_id,
+    ]
+    assert sum(r.ges_preis for r in rows) == 20.0
+
+    anzahlungen = session.exec(select(Anzahlung).order_by(Anzahlung.anzahlung_id)).all()
+    assert len(anzahlungen) == 2
+    assert anzahlungen[1].anzahlung_in_rech_nr == deposit["rechnungs_nr"]
+    assert anzahlungen[1].aufloesung_in_rech_nr == result["rechnungs_nr"]
+
+    with pytest.raises(Exception) as exc:
+        router_create_verkauf(VerkaufCreate(
+            anzahlung_aufloesen_nr=deposit["rechnungs_nr"],
+        ), session, None, None)
+    assert "already resolved" in str(exc.value)
+
+

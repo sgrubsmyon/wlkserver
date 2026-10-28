@@ -386,6 +386,12 @@ class VerkaufCreate(VerkaufBase):
     # Voucher redemption as a sale position (Java `gutscheinEinloesungHinzufuegen`).
     gutschein_einloesung_nr: int | None = None
     gutschein_einloesung_betrag: float | None = Field(default=None, gt=0)
+    # New deposit: split this amount across the basket's VAT rates and zero the
+    # other positions (Java `anzahlungHinzufuegen`).
+    anzahlung_betrag: float | None = Field(default=None, gt=0)
+    # Resolve an open deposit: re-add its positions and book the negative
+    # Anzahlungsauflösung line (Java `AnzahlungAufloesDialog`).
+    anzahlung_aufloesen_nr: int | None = None
     verkauf_details: list["VerkaufDetailsCreate"] | None = None
 
 #########################
@@ -579,7 +585,7 @@ class AnzahlungDetails(SQLModel, table=True):
     ad_id: int | None = Field(default=None, primary_key=True)
     rechnungs_nr: int = Field(foreign_key="verkauf.rechnungs_nr", nullable=False)
     vd_id: int = Field(foreign_key="verkauf_details.vd_id", nullable=False)
-    ges_preis: float = Field(ge=0, sa_column=DECIMAL(precision=13, scale=2))
+    ges_preis: float = Field(sa_column=DECIMAL(precision=13, scale=2))
 
 
 class AnzahlungDetailsPublic(SQLModel):

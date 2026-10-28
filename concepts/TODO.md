@@ -3,7 +3,7 @@
 > **Sync note**: This document and `concepts/IMPLEMENTATION_PLAN.md` must be kept in sync. When implementation progress changes, update both files so new sessions without prior memory see a consistent status.
 
 > **Last Updated**: 2026-10-28  
-> **Status**: Phases 1-5 implemented at router level (TSE export adapter untested without hardware); main Phase 6/7 flows wired (see "Business Logic Wiring Gaps" for what remains); **2026-10-28 audit found 7 open business-logic gaps; #2 sale auxiliary lines is done (see "Remaining business-logic gaps", remaining: DSFinV-K export, Anzahlung split, month/year invalidation, zaehlprotokoll lifecycle, `abrechnung_tag_tse`, real training mode) plus minor divergences**; auth enforced on all endpoints (admin role for admin operations); parity audit of the remaining low-priority endpoints done and resolved (see "Parity Audit"), Bestellung positions + date filter implemented; bar_brutto aggregation matches Java; sale workflow (validation, automatic discounts, all four modes, Pfand/RABATT/Aufschlag/Gutschein-Einlösung positions), storno (payment-mode parity, cash payout, settlement lock, rollback, attribution), cash register (payment, balance validation, end-of-day preview) complete; validation framework finished (model constraints + `ensure_*` helpers in use); voucher redemption uses the Java balance calculation; search/filter/pagination/sorting finished for all list endpoints; Bestellung CSV import supports positions; Bestellung/Inventur CSV export added (ODS deferred); CORS configured; core `/training` endpoints; integration tests incl. concurrency; same-origin nginx deployment and script automation documented as planned; VAT module Java-parity checked, 100% tested, rounding method configurable; test coverage 90%
+> **Status**: Phases 1-5 implemented at router level (TSE export adapter untested without hardware); main Phase 6/7 flows wired (see "Business Logic Wiring Gaps" for what remains); **2026-10-28 audit found 7 open business-logic gaps; #2 sale auxiliary lines and #3 Anzahlung split are done (see "Remaining business-logic gaps", remaining: DSFinV-K export, month/year invalidation, zaehlprotokoll lifecycle, `abrechnung_tag_tse`, real training mode) plus minor divergences**; auth enforced on all endpoints (admin role for admin operations); parity audit of the remaining low-priority endpoints done and resolved (see "Parity Audit"), Bestellung positions + date filter implemented; bar_brutto aggregation matches Java; sale workflow (validation, automatic discounts, all four modes, Pfand/RABATT/Aufschlag/Gutschein-Einlösung positions, Anzahlung creation/resolution), storno (payment-mode parity, cash payout, settlement lock, rollback, attribution), cash register (payment, balance validation, end-of-day preview) complete; validation framework finished (model constraints + `ensure_*` helpers in use); voucher redemption uses the Java balance calculation; search/filter/pagination/sorting finished for all list endpoints; Bestellung CSV import supports positions; Bestellung/Inventur CSV export added (ODS deferred); CORS configured; core `/training` endpoints; integration tests incl. concurrency; same-origin nginx deployment and script automation documented as planned; VAT module Java-parity checked, 100% tested, rounding method configurable; test coverage 90%
 
 ---
 
@@ -305,15 +305,16 @@ Audit of `python/` against the Java POS (`../git/src/org/weltladen_bonn/pos/`). 
 - [x] Separate RABATT line per discount instead of folding it into the line price (`addRabattRow`, `artikelRabattierenAbsolut/Relativ`) and the Aufschlag/Preisanpassung variant (`preisanpassungArtikelID = 3`); per-line `rabatt_absolut` (positive discount, negative Aufschlag)
 - [x] Receipt-level discount ("Rabatt auf Rechnung"): `rechnung_rabatt_relativ` on `POST /verkauf/`, one RABATT line per VAT rate (`rechnungRabattierenRelativ`); articles that already have a discount are excluded like Java
 - [x] Gutschein-Einlösung as a sale position (`gutschein_einloesung_nr`/`_betrag` on `POST /verkauf/`, `gutscheinEinloesungHinzufuegen`, `maybeInsertEinloesungIntoGutschein`) instead of only the separate `POST /gutschein/{id}/einloesen`
-- [ ] Anzahlung/Anzahlungsauflösung positions are handled by #3
+- [x] Anzahlung/Anzahlungsauflösung positions are handled by #3 (done)
 - Special articles are detected by `artikel_nr` (`RABATT1`, `RABATT2`, `ANPASSUNG`, `GUTSCHEINEINLOES`); a missing master-data article is a `400`. Discount lines carry `position = NULL` and the `rabatt_id`, like Java `addRabattRow`.
 - Refs: `kasse/Kassieren.java`. Implementation: `python/business/sale_workflow.py` (`build_sale_details`), `python/routers/verkauf.py`
 
-### #3 Anzahlung creation split
-- [ ] When a sale contains the Anzahlung article: split the paid amount across the basket's VAT rates (`Kassieren.anzahlungHinzufuegen`), zero `ges_preis` of all non-Anzahlung positions, keep the original prices in `anzahlung_details` (`maybeInsertIntoAnzahlung`), then create the `anzahlung` row
-- [ ] Anzahlungsauflösung in a normal sale (line + `aufloesung_in_rech_nr`, `maybeInsertAufloesungIntoAnzahlung`) instead of only `POST /anzahlung/{id}/aufloesen`
-- [ ] Keep `POST /anzahlung` as the raw CRUD endpoint for scripts
-- Refs: `Kassieren.anzahlungHinzufuegen`, `maybeInsertIntoAnzahlung`, `maybeInsertAufloesungIntoAnzahlung`
+### #3 Anzahlung creation split ✅ Done (2026-10-28)
+- [x] When a sale contains the Anzahlung article: split the paid amount across the basket's VAT rates (`Kassieren.anzahlungHinzufuegen`), zero `ges_preis` of all non-Anzahlung positions, keep the original prices in `anzahlung_details` (`maybeInsertIntoAnzahlung`), then create the `anzahlung` row; API input is `anzahlung_betrag` on `POST /verkauf/`
+- [x] Anzahlungsauflösung in a normal sale: `anzahlung_aufloesen_nr` re-adds the open deposit's positions with their original prices and books a negative ANZAHLAUFLOES line plus `aufloesung_in_rech_nr` (`AnzahlungAufloesDialog`, `maybeInsertAufloesungIntoAnzahlung`) instead of only `POST /anzahlung/{id}/aufloesen`; double resolution is rejected
+- [x] Keep `POST /anzahlung` as the raw CRUD endpoint for scripts
+- A sale cannot create and resolve an Anzahlung at the same time (`400`); `anzahlung_details` may hold negative original prices for discount lines.
+- Refs: `Kassieren.anzahlungHinzufuegen`, `maybeInsertIntoAnzahlung`, `maybeInsertAufloesungIntoAnzahlung`. Implementation: `python/business/sale_workflow.py` (`apply_anzahlung`, `write_anzahlung`), `python/routers/verkauf.py`
 
 ### #4 Daily settlement invalidates month/year settlements
 - [ ] `POST /abrechnung/tag` must delete the `abrechnung_monat`/`abrechnung_jahr` rows covering the new settlement's `zeitpunkt` (Java calls `deleteAbrechnungIfNeedBe()` from `insertTagesAbrechnung`) so the next `POST /abrechnung/monat|jahr` recreates them
@@ -499,7 +500,7 @@ The remaining imported items are quality/production tasks, tracked below.
 ### Business Logic Status
 - **Business Logic Ported**: CRUD + settlement aggregation + VAT/sale-workflow/storno/cash-register modules wired into the endpoints; VAT module is Java-parity checked and fully tested
 - **Business Logic NOT wired**: TSE hardware (adapter untested); training mode covers sales only; 7 gaps from the 2026-10-28 audit open (see "Remaining business-logic gaps")
-- **Remaining Java logic**: DSFinV-K export, Anzahlung split, month/year invalidation, zaehlprotokoll lifecycle, `abrechnung_tag_tse`/sig counter, real training mode; plus validation/edge cases
+- **Remaining Java logic**: DSFinV-K export, month/year invalidation, zaehlprotokoll lifecycle, `abrechnung_tag_tse`/sig counter, real training mode; plus validation/edge cases
 
 ### Testing Status
 - **Test Files**: 24 (incl. dedicated tests for abrechnung_monat/jahr, tse, sale_workflow, storno_logic, import_export)
@@ -514,7 +515,7 @@ The remaining imported items are quality/production tasks, tracked below.
 3. **Integration tests**: done in `test_integration.py` (workflows, cross-entity effects, concurrent sales)
 4. **Coverage**: target 80%+ reached; remaining gaps: tse_client.py 44%, users 33%, rabattaktion 33%
 5. **Validation**: done (model constraints + `ensure_*` helpers wired, see Validation Framework)
-6. **Remaining business logic** (order: #3 Anzahlung split, #4 month/year invalidation, #5 zaehlprotokoll lifecycle, #1 DSFinV-K export, #6 `abrechnung_tag_tse`/sig counter, #7 training mode) - see "Remaining business-logic gaps (2026-10-28 audit)"
+6. **Remaining business logic** (order: #4 month/year invalidation, #5 zaehlprotokoll lifecycle, #1 DSFinV-K export, #6 `abrechnung_tag_tse`/sig counter, #7 training mode) - see "Remaining business-logic gaps (2026-10-28 audit)"
 7. **Training mode**: extend the `/training` endpoints (storno, settlements, gutschein/anzahlung) if the frontend needs them, and stop normal endpoints from writing production tables while `TRAINING_MODE` is set (#7)
 8. **Import/Export**: CSV exports for Bestellung and Inventur exist; ODS export is deferred to a later phase (see "Phase 7" above)
 9. **Documentation**: migration guide (Java POS → API), database schema reference, consistent docstrings, deployment/HTTPS docs
