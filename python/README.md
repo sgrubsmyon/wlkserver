@@ -31,11 +31,29 @@ precedence over `.env`. `.env` is git-ignored — never commit secrets.
 | `TRAINING_MODE` | off | `1`/`true`/`yes`/`on` marks the instance as training mode |
 | `TSE_DEVICE_PATH`, `TSE_LIB_PATH`, `TSE_CLIENT_ID` | unset / `WeltladenKasse` | TSE (cryptovision SE-API) adapter settings |
 | `VAT_ROUNDING_METHOD` | `horizontal` | Receipt VAT rounding: `horizontal` (per position, Java POS) or `vertical` (per VAT rate, e-invoice compatible). Invalid values abort startup |
+| `DSFINVK_EXPORT_DIR` | unset | Directory for the DSFinV-K ZIP written after every Tagesabschluss; unset means on-demand only |
+| `DSFINVK_<KEY>` | see below | DSFinV-K Stammdaten (`Z_KASSE_ID`, `TAXONOMIE_VERSION`, `NAME`, `STRASSE`, `PLZ`, `ORT`, `LAND`, `STNR`, `USTID`, `LOC_*`, `KASSE_*`, `TERMINAL_*`) |
 
 `VAT_ROUNDING_METHOD` affects only receipts/sales created from now on (the value
 is stored in `verkauf_mwst`); existing sales keep their stored amounts. Invoices
 must always use the vertical method (EN 16931 BR-CO-17) — see
 `docs/VAT_ROUNDING.md` for the legal background.
+
+## DSFinV-K export
+
+`GET /export/dsfinvk/{abrechnung_tag_id}` builds the DSFinV-K files of one
+Tagesabschluss (`cashpointclosing.csv`, `location.csv`, `cashregister.csv`,
+`slaves.csv`, `pa.csv`, `vat.csv`, `tse.csv`, `businesscases.csv`,
+`transactions_tse.csv` plus the official `index.xml` and DTD) and returns them
+as a ZIP archive. `POST /abrechnung/tag` also writes `dsfinvk_<id>.zip` to
+`DSFINVK_EXPORT_DIR` when that variable is set.
+
+The Stammdaten come from `DSFINVK_*` environment variables; the shop's name,
+address and tax numbers must be configured for a usable export (defaults match
+the Java POS: `Z_KASSE_ID=YLUE036019`, `TAXONOMIE_VERSION=2.2`,
+`KASSE_SW_BRAND=Weltladenkasse`, `KASSE_BASISWAEH_CODE=EUR`). Unconfigured
+fields are exported empty. The column order, delimiters and number formatting
+are read from `python/assets/dsfinvk/index.xml`.
 
 ## Admin access
 

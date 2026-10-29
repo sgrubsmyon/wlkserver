@@ -3,7 +3,7 @@
 > **Sync note**: This document and `concepts/IMPLEMENTATION_PLAN.md` must be kept in sync. When implementation progress changes, update both files so new sessions without prior memory see a consistent status.
 
 > **Last Updated**: 2026-10-28  
-> **Status**: Phases 1-5 implemented at router level (TSE export adapter untested without hardware); main Phase 6/7 flows wired (see "Business Logic Wiring Gaps" for what remains); **2026-10-28 audit found 7 open business-logic gaps; #2 sale auxiliary lines, #3 Anzahlung split, #4 month/year invalidation and #5 Zählprotokoll lifecycle are done (see "Remaining business-logic gaps", remaining: DSFinV-K export, `abrechnung_tag_tse`, real training mode) plus minor divergences**; auth enforced on all endpoints (admin role for admin operations); parity audit of the remaining low-priority endpoints done and resolved (see "Parity Audit"), Bestellung positions + date filter implemented; bar_brutto aggregation matches Java; sale workflow (validation, automatic discounts, all four modes, Pfand/RABATT/Aufschlag/Gutschein-Einlösung positions, Anzahlung creation/resolution), storno (payment-mode parity, cash payout, settlement lock, rollback, attribution), cash register (payment, balance validation, end-of-day preview) complete; validation framework finished (model constraints + `ensure_*` helpers in use); voucher redemption uses the Java balance calculation; search/filter/pagination/sorting finished for all list endpoints; Bestellung CSV import supports positions; Bestellung/Inventur CSV export added (ODS deferred); CORS configured; core `/training` endpoints; integration tests incl. concurrency; same-origin nginx deployment and script automation documented as planned; VAT module Java-parity checked, 100% tested, rounding method configurable; test coverage 90%
+> **Status**: Phases 1-5 implemented at router level (TSE export adapter untested without hardware); main Phase 6/7 flows wired (see "Business Logic Wiring Gaps" for what remains); **2026-10-28 audit: #1 DSFinV-K export, #2 sale auxiliary lines, #3 Anzahlung split, #4 month/year invalidation and #5 Zählprotokoll lifecycle are done (see "Remaining business-logic gaps"); remaining #6 `abrechnung_tag_tse`/sig counter and #7 real training mode, plus minor divergences**; auth enforced on all endpoints (admin role for admin operations); parity audit of the remaining low-priority endpoints done and resolved (see "Parity Audit"), Bestellung positions + date filter implemented; bar_brutto aggregation matches Java; sale workflow (validation, automatic discounts, all four modes, Pfand/RABATT/Aufschlag/Gutschein-Einlösung positions, Anzahlung creation/resolution), storno (payment-mode parity, cash payout, settlement lock, rollback, attribution), cash register (payment, balance validation, end-of-day preview) complete; validation framework finished (model constraints + `ensure_*` helpers in use); voucher redemption uses the Java balance calculation; search/filter/pagination/sorting finished for all list endpoints; Bestellung CSV import supports positions; Bestellung/Inventur CSV export added (ODS deferred); CORS configured; core `/training` endpoints; integration tests incl. concurrency; same-origin nginx deployment and script automation documented as planned; VAT module Java-parity checked, 100% tested, rounding method configurable; test coverage 90%
 
 ---
 
@@ -294,11 +294,12 @@
 
 Audit of `python/` against the Java POS (`../git/src/org/weltladen_bonn/pos/`). None of these is TSE hardware; #6 is TSE-adjacent but pure logic/DB. `concepts/IMPLEMENTATION_PLAN.md` mirrors this list with the full Java references.
 
-### #1 DSFinV-K export (depends on #2)
-- [ ] Export the DSFinV-K modules the Java POS writes on every Tagesabschluss: `Stamm_Abschluss`/`Orte`/`Kassen`/`Terminals`/`Agenturen`/`USt`/`TSE`, `Z_GV_Typ` (Anfangsbestand, Umsatz, Pfand, PfandRückzahlung, Rabatt, Aufschlag, MehrzweckgutscheinKauf/-Einlösung) and `TSE_Transaktionen`, plus `index.xml` and the DTD
-- [ ] Ship them as a downloadable bundle (`.tar`/zip) per settlement, and hook the same writer into `POST /abrechnung/tag` like `writeIntoDSFinVKCSVFiles(id)`
-- [ ] This is the German legal export (KassensichV/DSFinV-K, GoBD retention); it was missing from both documents until this audit
-- Refs: `kasse/DSFinVKCSV.java`, `AbrechnungenTag.writeIntoDSFinVKCSVFiles()`. Targets: `python/business/dsfinvk_export.py`, `python/routers/import_export.py` (or a new `dsfinvk.py`), hook in `python/routers/abrechnung_tag.py`
+### #1 DSFinV-K export ✅ Done (2026-10-30)
+- [x] Export the DSFinV-K modules the Java POS writes on every Tagesabschluss: `Stamm_Abschluss`/`Orte`/`Kassen`/`Terminals`/`Agenturen`/`USt`/`TSE`, `Z_GV_Typ` (Anfangsbestand, Umsatz, Pfand, PfandRückzahlung, Rabatt, Aufschlag, MehrzweckgutscheinKauf/-Einlösung) and `TSE_Transaktionen`, plus `index.xml` and the DTD (`python/business/dsfinvk_export.py`, column order and CSV formatting parsed from the official `index.xml`)
+- [x] Downloadable ZIP per settlement: `GET /export/dsfinvk/{abrechnung_tag_id}`; `POST /abrechnung/tag` additionally writes `dsfinvk_<id>.zip` to `DSFINVK_EXPORT_DIR` when configured (best-effort, like `writeIntoDSFinVKCSVFiles(id)`)
+- [x] German legal export (KassensichV/DSFinV-K, GoBD retention); Stammdaten come from `DSFINVK_*` env vars
+- The `Z_GV_Typ` buckets follow the Java SQL conditions; Pfand is recognised via the `pfand` master data (the API creates its sale lines in #2), Rabatt/Aufschlag/Gutschein via the special articles `RABATT1`/`RABATT2`/`ANPASSUNG`/`GUTSCHEIN`/`GUTSCHEINEINLOES`. Two deliberate fixes vs. Java: the opening balance is the first manual cash-in after the *previous settlement's* `kassenstand_id` (Java compares it to `rechnungs_nr = tag_id - 1`), and the first settlement exports all TSE transactions up to its time (Java's `id - 1` subquery yields none)
+- Refs: `kasse/DSFinVKCSV.java`, `AbrechnungenTag.writeIntoDSFinVKCSVFiles()`. Implementation: `python/business/dsfinvk_export.py`, `python/routers/import_export.py`, hook in `python/routers/abrechnung_tag.py`, tests in `python/tests/test_dsfinvk.py` (6 tests)
 
 ### #2 Sale auxiliary lines ✅ Done (2026-10-28)
 - [x] Pfand auto-line: article whose product group has a `pfand` entry gets the deposit article as an extra position (`Kassieren.checkForPfand`, `queryPfandArtikelID`); Leergut/return uses negative quantity
@@ -498,8 +499,8 @@ The remaining imported items are quality/production tasks, tracked below.
 
 ### Business Logic Status
 - **Business Logic Ported**: CRUD + settlement aggregation + VAT/sale-workflow/storno/cash-register modules wired into the endpoints; VAT module is Java-parity checked and fully tested
-- **Business Logic NOT wired**: TSE hardware (adapter untested); training mode covers sales only; 7 gaps from the 2026-10-28 audit open (see "Remaining business-logic gaps")
-- **Remaining Java logic**: DSFinV-K export, `abrechnung_tag_tse`/sig counter, real training mode; plus validation/edge cases
+- **Business Logic NOT wired**: TSE hardware (adapter untested); training mode covers sales only; audit #6 `abrechnung_tag_tse`/sig counter and #7 real training mode open (see "Remaining business-logic gaps")
+- **Remaining Java logic**: `abrechnung_tag_tse`/sig counter, real training mode; plus validation/edge cases
 
 ### Testing Status
 - **Test Files**: 24 (incl. dedicated tests for abrechnung_monat/jahr, tse, sale_workflow, storno_logic, import_export)
@@ -514,7 +515,7 @@ The remaining imported items are quality/production tasks, tracked below.
 3. **Integration tests**: done in `test_integration.py` (workflows, cross-entity effects, concurrent sales)
 4. **Coverage**: target 80%+ reached; remaining gaps: tse_client.py 44%, users 33%, rabattaktion 33%
 5. **Validation**: done (model constraints + `ensure_*` helpers wired, see Validation Framework)
-6. **Remaining business logic** (order: #1 DSFinV-K export, #6 `abrechnung_tag_tse`/sig counter, #7 training mode) - see "Remaining business-logic gaps (2026-10-28 audit)"
+6. **Remaining business logic** (order: #6 `abrechnung_tag_tse`/sig counter, #7 training mode; #1-#5 done) - see "Remaining business-logic gaps (2026-10-28 audit)"
 7. **Training mode**: extend the `/training` endpoints (storno, settlements, gutschein/anzahlung) if the frontend needs them, and stop normal endpoints from writing production tables while `TRAINING_MODE` is set (#7)
 8. **Import/Export**: CSV exports for Bestellung and Inventur exist; ODS export is deferred to a later phase (see "Phase 7" above)
 9. **Documentation**: migration guide (Java POS → API), database schema reference, consistent docstrings, deployment/HTTPS docs

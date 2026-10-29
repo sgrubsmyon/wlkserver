@@ -53,3 +53,16 @@ def export_bestellung(session: SessionDep):
 def export_inventur(session: SessionDep):
     csv = export_inventur_to_csv(session)
     return Response(content=csv, media_type="text/csv", headers={"Content-Disposition": "attachment; filename=inventur.csv"})
+
+
+@router.get("/export/dsfinvk/{abrechnung_tag_id}")
+def export_dsfinvk_zip(abrechnung_tag_id: int, session: SessionDep):
+    """DSFinV-K export of one Tagesabschluss as a ZIP archive."""
+    from ..business.dsfinvk_export import export_dsfinvk
+
+    data = export_dsfinvk(session, abrechnung_tag_id)
+    return Response(
+        content=data,
+        media_type="application/zip",
+        headers={"Content-Disposition": f"attachment; filename=dsfinvk_{abrechnung_tag_id}.zip"},
+    )

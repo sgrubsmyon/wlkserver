@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime, timezone, date
 from typing import Annotated, Optional
 
@@ -30,6 +31,8 @@ router = APIRouter(
     tags=["abrechnung_tag"],
     responses={404: {"description": "Not found"}},
 )
+
+logger = logging.getLogger(__name__)
 
 
 def _last_tag(session: SessionDep):
@@ -205,6 +208,15 @@ def create_abrechnung_tag(payload: Optional[AbrechnungTagCreate], session: Sessi
     if p.zaehlprotokoll is not None:
         from ..business.count_protocol import insert_count_protocol
         insert_count_protocol(session, at.id, p.zaehlprotokoll, user_id)
+
+    # DSFinV-K export (Java AbrechnungenTag.writeIntoDSFinVKCSVFiles): written
+    # to DSFINVK_EXPORT_DIR when configured, otherwise on demand via
+    # GET /export/dsfinvk/{id}.
+    try:
+        from ..business.dsfinvk_export import write_dsfinvk_export
+        write_dsfinvk_export(session, at.id)
+    except Exception:
+        logger.exception("DSFinV-K export for AbrechnungTag %s failed", at.id)
 
     # mwst values by ID (Java getAllCurrentMwstValuesByID)
     from ..business.vat_calculator import get_all_current_mwst_values_by_id
