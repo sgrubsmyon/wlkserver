@@ -46,7 +46,7 @@ Audit of `python/` against the Java POS (`../git/src/org/weltladen_bonn/pos/`). 
 **Minor divergences (fix opportunistically, no phase needed):**
 - ✅ Voucher numbering: `gutschein_nr` is assigned by the backend (`business/voucher_logic.next_gutschein_nr`) for sale-created and standalone vouchers; the single `gutschein_counter` row (`migrations/03_gutschein_counter/`) is locked `FOR UPDATE` until commit, so concurrent creators cannot pick the same number. Clients cannot pass a number. (Java filters to sale-linked rows, but redemption rows carry that link too, so the practical difference is only manually/legacy numbered vouchers.)
 - ✅ `create_verkauf` writes sale, details, VAT, voucher and Kassenstand in one transaction (single commit, locks held until it); a failing write rolls the receipt back.
-- Receipt-level discount ("Rabatt auf Rechnung", one RABATT line per VAT rate) is available as `rechnung_rabatt_relativ` on `POST /verkauf/` (done).
+- ✅ Receipt-level discount ("Rabatt auf Rechnung", one RABATT line per VAT rate) is available as `rechnung_rabatt_relativ` on `POST /verkauf/` (done).
 - Special articles are detected by their master-data `artikel_nr` (`RABATT1`, `RABATT2`, `ANPASSUNG`, `GUTSCHEINEINLOES`, `GUTSCHEIN`), which matches the Java `WindowContent` IDs 1, 2, 3, 6, 7 in production.
 - Price-tag export (`PreisschilderExport`, ODT templates) is client-side output like the deferred ODS exports.
 

@@ -304,7 +304,7 @@ Audit of `python/` against the Java POS (`../git/src/org/weltladen_bonn/pos/`). 
 ### #2 Sale auxiliary lines ✅ Done (2026-10-28)
 - [x] Pfand auto-line: article whose product group has a `pfand` entry gets the deposit article as an extra position (`Kassieren.checkForPfand`, `queryPfandArtikelID`); Leergut/return uses negative quantity
 - [x] Separate RABATT line per discount instead of folding it into the line price (`addRabattRow`, `artikelRabattierenAbsolut/Relativ`) and the Aufschlag/Preisanpassung variant (`preisanpassungArtikelID = 3`); per-line `rabatt_absolut` (positive discount, negative Aufschlag)
-- [x] Receipt-level discount ("Rabatt auf Rechnung"): `rechnung_rabatt_relativ` on `POST /verkauf/`, one RABATT line per VAT rate (`rechnungRabattierenRelativ`); articles that already have a discount are excluded like Java
+- [x] ✅ Receipt-level discount ("Rabatt auf Rechnung"): `rechnung_rabatt_relativ` on `POST /verkauf/`, one RABATT line per VAT rate (`rechnungRabattierenRelativ`); articles that already have a discount are excluded like Java
 - [x] Gutschein-Einlösung as a sale position (`gutschein_einloesung_nr`/`_betrag` on `POST /verkauf/`, `gutscheinEinloesungHinzufuegen`, `maybeInsertEinloesungIntoGutschein`) instead of only the separate `POST /gutschein/{id}/einloesen`
 - [x] Anzahlung/Anzahlungsauflösung positions are handled by #3 (done)
 - Special articles are detected by `artikel_nr` (`RABATT1`, `RABATT2`, `ANPASSUNG`, `GUTSCHEINEINLOES`); a missing master-data article is a `400`. Discount lines carry `position = NULL` and the `rabatt_id`, like Java `addRabattRow`.
