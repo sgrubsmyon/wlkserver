@@ -547,8 +547,11 @@ def apply_anzahlung(session, verkauf, rows) -> dict | None:
     return None
 
 
-def write_anzahlung(session, meta, rechnungs_nr, datum, user_id=None):
-    """Write the `anzahlung` row(s) after the sale positions are stored."""
+def write_anzahlung(session, meta, rechnungs_nr, datum, user_id=None, commit=True):
+    """Write the `anzahlung` row(s) after the sale positions are stored.
+
+    `commit=False` keeps the rows in the caller's sale transaction.
+    """
     if not meta:
         return None
     if meta["type"] == "create":
@@ -559,14 +562,16 @@ def write_anzahlung(session, meta, rechnungs_nr, datum, user_id=None):
         )
         new_a.anzahlung_id = None
         session.add(new_a)
-        session.commit()
+        session.flush()
         for source, price in meta["originals"]:
             session.add(AnzahlungDetails(
                 rechnungs_nr=rechnungs_nr,
                 vd_id=source.vd_id,
                 ges_preis=price,
             ))
-        session.commit()
+        session.flush()
+        if commit:
+            session.commit()
         return new_a
 
     new_a = Anzahlung(
@@ -577,7 +582,9 @@ def write_anzahlung(session, meta, rechnungs_nr, datum, user_id=None):
     )
     new_a.anzahlung_id = None
     session.add(new_a)
-    session.commit()
+    session.flush()
+    if commit:
+        session.commit()
     return new_a
 
 

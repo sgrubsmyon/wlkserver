@@ -1,3 +1,4 @@
+from contextlib import ExitStack
 from datetime import datetime, timezone
 from typing import Annotated, List, Optional
 
@@ -123,7 +124,15 @@ def create_verkauf(verkauf: VerkaufCreate, session: SessionDep, credentials: HTT
     # redemption, Anzahlung) and validate before writing anything.
     prepared = build_sale_details(session, verkauf)
     anzahlung = apply_anzahlung(session, verkauf, prepared)
-    # base = VerkaufCreate.model_validate(verkauf)
+    total = sum((d.ges_preis or 0) for d in prepared)
+
+    from ..business.cash_register import (
+        KASSENSTAND_LOCK,
+        process_payment,
+        update_kassenstand_for_sale,
+    )
+    from ..business.voucher_logic import VOUCHER_LOCK, redeem_voucher
+
     new_v = Verkauf(
         verkaufsdatum=datetime.now(timezone.utc),
         ec_zahlung=verkauf.ec_zahlung,
@@ -131,91 +140,103 @@ def create_verkauf(verkauf: VerkaufCreate, session: SessionDep, credentials: HTT
         storno_von=verkauf.storno_von,
         user_id=user_id,
     )
-    new_v.rechnungs_nr = None
-    session.add(new_v)
-    session.commit()
-    session.refresh(new_v)
+    try:
+        # Everything below is written in one transaction: a failure must not
+        # leave a half-booked receipt behind.
+        new_v.rechnungs_nr = None
+        session.add(new_v)
+        session.flush()
 
-    # Add details if present
-    for d_obj in prepared:
-        d_obj.rechnungs_nr = new_v.rechnungs_nr
-        session.add(d_obj)
-    session.commit()
-    for d_obj in prepared:
-        session.refresh(d_obj)
+        for d_obj in prepared:
+            d_obj.rechnungs_nr = new_v.rechnungs_nr
+            session.add(d_obj)
+        session.flush()
 
-    # Deposit bookkeeping: the anzahlung row and the original prices of the
-    # zeroed positions / the resolution entry for an open deposit.
-    write_anzahlung(session, anzahlung, new_v.rechnungs_nr, new_v.verkaufsdatum, user_id)
-
-    # Aggregate VAT per tax rate using Decimal-safe calculation
-    mwst_summary = calculate_mwst_summary(prepared)
-
-    for mwst_satz, summary in mwst_summary.items():
-        m_obj = VerkaufMwst(
-            rechnungs_nr=new_v.rechnungs_nr,
-            mwst_satz=float(mwst_satz),
-            mwst_netto=float(summary["mwst_netto"]),
-            mwst_betrag=float(summary["mwst_betrag"]),
+        # Deposit bookkeeping: the anzahlung row and the original prices of the
+        # zeroed positions / the resolution entry for an open deposit.
+        write_anzahlung(
+            session, anzahlung, new_v.rechnungs_nr, new_v.verkaufsdatum,
+            user_id, commit=False,
         )
-        session.add(m_obj)
 
-    session.commit()
-    session.refresh(new_v)
+        # Aggregate VAT per tax rate using Decimal-safe calculation
+        mwst_summary = calculate_mwst_summary(prepared)
+        for mwst_satz, summary in mwst_summary.items():
+            session.add(VerkaufMwst(
+                rechnungs_nr=new_v.rechnungs_nr,
+                mwst_satz=float(mwst_satz),
+                mwst_netto=float(summary["mwst_netto"]),
+                mwst_betrag=float(summary["mwst_betrag"]),
+            ))
 
-    # Voucher handling: selling article 6 (GUTSCHEIN) creates a new voucher
-    # (mirrors Java Kassieren.maybeInsertIntoGutschein).
-    from ..models import Artikel, Gutschein
-    max_nr = session.exec(select(Gutschein.gutschein_nr)).all()
-    next_nr = (max(max_nr) if max_nr else 199) + 1
-    for d in prepared:
-        art = session.get(Artikel, d.artikel_id) if d.artikel_id is not None else None
-        if art is not None and art.artikel_nr == "GUTSCHEIN":
-            g = Gutschein(
-                gutschein_nr=next_nr,
-                datum=new_v.verkaufsdatum,
-                gutschein_in_vd_id=d.vd_id,
-                einloesung_in_vd_id=None,
-                restbetrag=d.ges_preis if d.ges_preis is not None else 0.0,
-            )
-            g.gutschein_id = None
-            session.add(g)
-            next_nr += 1
-    session.commit()
-
-    # Voucher redemption as a sale position (mirrors Java
-    # Kassieren.maybeInsertEinloesungIntoGutschein): the negative position is
-    # booked with the receipt and reduces the voucher's remaining balance.
-    if verkauf.gutschein_einloesung_nr is not None:
+        # Voucher handling: selling the GUTSCHEIN article creates a new voucher
+        # (mirrors Java Kassieren.maybeInsertIntoGutschein).
         from ..models import Gutschein
-        from ..business.voucher_logic import redeem_voucher
-        einloesung = next(
-            (d for d in prepared if d.artikel_id is not None
-             and session.get(Artikel, d.artikel_id).artikel_nr == "GUTSCHEINEINLOES"),
-            None,
-        )
-        voucher = session.exec(
-            select(Gutschein)
-            .where(Gutschein.gutschein_nr == verkauf.gutschein_einloesung_nr)
-            .order_by(Gutschein.gutschein_id)
-        ).first()
-        if einloesung is None or voucher is None:
-            raise HTTPException(status_code=400, detail="Gutschein not found")
-        redeem_voucher(session, voucher.gutschein_id,
-                       einloesung_in_vd_id=einloesung.vd_id, user_id=user_id)
+        max_nr = session.exec(select(Gutschein.gutschein_nr)).all()
+        next_nr = (max(max_nr) if max_nr else 199) + 1
+        for d in prepared:
+            art = session.get(Artikel, d.artikel_id) if d.artikel_id is not None else None
+            if art is not None and art.artikel_nr == "GUTSCHEIN":
+                g = Gutschein(
+                    gutschein_nr=next_nr,
+                    datum=new_v.verkaufsdatum,
+                    gutschein_in_vd_id=d.vd_id,
+                    einloesung_in_vd_id=None,
+                    restbetrag=d.ges_preis if d.ges_preis is not None else 0.0,
+                )
+                g.gutschein_id = None
+                session.add(g)
+                next_nr += 1
+        session.flush()
 
-    # Cash register side-effect: only cash (non-EC) sales add money to the register
-    # (mirrors Java Kassieren.insertIntoKassenstand, called when ec == false).
+        # Voucher redemption as a sale position (mirrors Java
+        # Kassieren.maybeInsertEinloesungIntoGutschein): the negative position is
+        # booked with the receipt and reduces the voucher's remaining balance.
+        voucher = None
+        einloesung = None
+        if verkauf.gutschein_einloesung_nr is not None:
+            einloesung = next(
+                (d for d in prepared if d.artikel_id is not None
+                 and session.get(Artikel, d.artikel_id).artikel_nr == "GUTSCHEINEINLOES"),
+                None,
+            )
+            voucher = session.exec(
+                select(Gutschein)
+                .where(Gutschein.gutschein_nr == verkauf.gutschein_einloesung_nr)
+                .order_by(Gutschein.gutschein_id)
+            ).first()
+            if einloesung is None or voucher is None:
+                raise HTTPException(status_code=400, detail="Gutschein not found")
+
+        # Keep the voucher / cash-register locks until the single commit, so the
+        # balance read-modify-write stays serialized (the SELECT ... FOR UPDATE
+        # row locks also end at that commit).
+        with ExitStack() as locks:
+            if voucher is not None:
+                locks.enter_context(VOUCHER_LOCK)
+                redeem_voucher(
+                    session, voucher.gutschein_id,
+                    einloesung_in_vd_id=einloesung.vd_id,
+                    user_id=user_id, commit=False, lock=False,
+                )
+            if not verkauf.ec_zahlung:
+                locks.enter_context(KASSENSTAND_LOCK)
+                update_kassenstand_for_sale(
+                    session=session, rechnungs_nr=new_v.rechnungs_nr,
+                    commit=False, lock=False,
+                )
+            session.commit()
+    except Exception:
+        session.rollback()
+        raise
+
+    # Payment handling is pure calculation, no writes.
     ec_warning = None
     change = None
-    total = sum((d.ges_preis or 0) for d in prepared)
     if not verkauf.ec_zahlung:
-        from ..business.cash_register import update_kassenstand_for_sale, process_payment
-        update_kassenstand_for_sale(session=session, rechnungs_nr=new_v.rechnungs_nr)
         change, _ = process_payment(total, ec_zahlung=False, kunde_gibt=verkauf.kunde_gibt)
     else:
         # EC payment threshold check (Java: ecSchwelle = 10.00)
-        from ..business.cash_register import process_payment
         change, ec_warning = process_payment(total, ec_zahlung=True, kunde_gibt=verkauf.kunde_gibt)
 
     result = read_single_verkauf(new_v.rechnungs_nr, session)

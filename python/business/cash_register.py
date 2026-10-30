@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import threading
+from contextlib import nullcontext
 from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Any, Optional
@@ -80,7 +81,12 @@ def update_kassenstand_for_sale(*args, **kwargs) -> Kassenstand:
     entnahme = kwargs.get('entnahme', False)
     kommentar = kwargs.get('kommentar', None)
     buchungsdatum = kwargs.get('buchungsdatum', None)
-    with KASSENSTAND_LOCK:
+    # `commit=False` lets the caller commit the whole sale in one transaction;
+    # it must keep `KASSENSTAND_LOCK` (pass `lock=False` only inside it) so the
+    # read-modify-write stays serialized until that commit.
+    commit = kwargs.get('commit', True)
+    lock = kwargs.get('lock', True)
+    with (KASSENSTAND_LOCK if lock else nullcontext()):
         v = session.get(Verkauf, rechnungs_nr)
         if v is None:
             raise HTTPException(status_code=404, detail="Verkauf not found")
@@ -108,8 +114,10 @@ def update_kassenstand_for_sale(*args, **kwargs) -> Kassenstand:
         )
         new_ks.kassenstand_id = None
         session.add(new_ks)
-        session.commit()
-        session.refresh(new_ks)
+        session.flush()
+        if commit:
+            session.commit()
+            session.refresh(new_ks)
     return new_ks
 
 

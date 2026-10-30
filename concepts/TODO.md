@@ -345,7 +345,7 @@ Audit of `python/` against the Java POS (`../git/src/org/weltladen_bonn/pos/`). 
 
 ### Minor divergences (opportunistic)
 - [ ] Voucher numbering: API uses `MAX(gutschein_nr)` over all rows; Java only counts creation rows (`gutschein_in_vd_id IS NOT NULL`)
-- [ ] `create_verkauf` commits four times (sale, details, VAT, voucher, Kassenstand); wrap the whole sale in one transaction so a failure cannot leave a half-booked receipt
+- [x] `create_verkauf` writes sale, details, VAT, voucher and Kassenstand in one transaction (single commit; the voucher and Kassenstand locks are held until it). A failing write rolls the whole receipt back (`test_failed_sale_rolls_back_everything`)
 - [x] Special articles are detected by documented `artikel_nr` values (`RABATT1`, `RABATT2`, `ANPASSUNG`, `GUTSCHEINEINLOES`, `GUTSCHEIN`) instead of the Java `WindowContent` IDs; they match the production master data
 - [ ] Price-tag export (`PreisschilderExport`, ODT templates) is client-side output like the deferred ODS exports
 

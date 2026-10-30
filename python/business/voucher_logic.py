@@ -9,6 +9,7 @@ current balance is therefore the minimum `restbetrag` of all rows with the same
 from __future__ import annotations
 
 import threading
+from contextlib import nullcontext
 from datetime import datetime, timezone
 from decimal import Decimal, ROUND_HALF_UP
 
@@ -64,6 +65,8 @@ def redeem_voucher(
     restbetrag=None,
     datum=None,
     user_id=None,
+    commit=True,
+    lock=True,
 ) -> Gutschein:
     """Redeem (part of) a voucher and append the new balance row.
 
@@ -71,13 +74,17 @@ def redeem_voucher(
     (`einloesung_in_vd_id`, absolute price), the explicit `betrag`, or the
     requested new `restbetrag`. The amount must be positive and must not exceed
     the current balance; a sale position can only redeem once.
+
+    `commit=False` keeps the new row in the caller's sale transaction; the
+    caller must then hold `VOUCHER_LOCK` (pass `lock=False` only inside it)
+    until its commit so the balance cannot be spent twice.
     """
     original = session.get(Gutschein, gutschein_id)
     if original is None:
         raise HTTPException(status_code=404, detail="Gutschein not found")
     nr = original.gutschein_nr
 
-    with VOUCHER_LOCK:
+    with (VOUCHER_LOCK if lock else nullcontext()):
         session.exec(
             select(Gutschein)
             .where(Gutschein.gutschein_nr == nr)
@@ -156,8 +163,10 @@ def redeem_voucher(
         )
         new_g.gutschein_id = None
         session.add(new_g)
-        session.commit()
-        session.refresh(new_g)
+        session.flush()
+        if commit:
+            session.commit()
+            session.refresh(new_g)
     return new_g
 
 

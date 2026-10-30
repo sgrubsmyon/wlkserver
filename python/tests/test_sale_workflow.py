@@ -603,3 +603,27 @@ def test_variable_price_article_uses_explicit_line_price(session):
     assert len(rows) == 1
     assert rows[0].ges_preis == 12.34
     assert result["verkauf_mwst"][0]["mwst_netto"] == pytest.approx(12.34 / 1.19, abs=0.01)
+
+
+def test_failed_sale_rolls_back_everything(session, monkeypatch):
+    from python.routers.verkauf import create_verkauf as router_create_verkauf
+    from python.models import Kassenstand, VerkaufCreate
+    from python.business import cash_register
+
+    artikel = _seed_artikel(session)
+
+    def boom(**kwargs):
+        raise RuntimeError("kassenstand update failed")
+
+    monkeypatch.setattr(cash_register, "update_kassenstand_for_sale", boom)
+    payload = VerkaufCreate(verkauf_details=[
+        {"artikel_id": artikel.artikel_id, "stueckzahl": 1},
+    ])
+    with pytest.raises(RuntimeError):
+        router_create_verkauf(payload, session, None, None)
+
+    # the sale, its details, the VAT rows and the cash entry are all rolled back
+    assert session.exec(select(Verkauf)).all() == []
+    assert session.exec(select(VerkaufDetails)).all() == []
+    assert session.exec(select(VerkaufMwst)).all() == []
+    assert session.exec(select(Kassenstand)).all() == []
