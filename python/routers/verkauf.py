@@ -172,21 +172,14 @@ def create_verkauf(verkauf: VerkaufCreate, session: SessionDep, credentials: HTT
         # Voucher handling: selling the GUTSCHEIN article creates a new voucher
         # (mirrors Java Kassieren.maybeInsertIntoGutschein).
         from ..models import Gutschein
-        next_nr = next_gutschein_nr(session)
-        for d in prepared:
-            art = session.get(Artikel, d.artikel_id) if d.artikel_id is not None else None
-            if art is not None and art.artikel_nr == "GUTSCHEIN":
-                g = Gutschein(
-                    gutschein_nr=next_nr,
-                    datum=new_v.verkaufsdatum,
-                    gutschein_in_vd_id=d.vd_id,
-                    einloesung_in_vd_id=None,
-                    restbetrag=d.ges_preis if d.ges_preis is not None else 0.0,
-                )
-                g.gutschein_id = None
-                session.add(g)
-                next_nr += 1
-        session.flush()
+        detail_artikel = [
+            (d, session.get(Artikel, d.artikel_id) if d.artikel_id is not None else None)
+            for d in prepared
+        ]
+        creates_voucher = any(
+            art is not None and art.artikel_nr == "GUTSCHEIN"
+            for _, art in detail_artikel
+        )
 
         # Voucher redemption as a sale position (mirrors Java
         # Kassieren.maybeInsertEinloesungIntoGutschein): the negative position is
@@ -195,8 +188,8 @@ def create_verkauf(verkauf: VerkaufCreate, session: SessionDep, credentials: HTT
         einloesung = None
         if verkauf.gutschein_einloesung_nr is not None:
             einloesung = next(
-                (d for d in prepared if d.artikel_id is not None
-                 and session.get(Artikel, d.artikel_id).artikel_nr == "GUTSCHEINEINLOES"),
+                (d for d, art in detail_artikel
+                 if art is not None and art.artikel_nr == "GUTSCHEINEINLOES"),
                 None,
             )
             voucher = session.exec(
@@ -208,11 +201,27 @@ def create_verkauf(verkauf: VerkaufCreate, session: SessionDep, credentials: HTT
                 raise HTTPException(status_code=400, detail="Gutschein not found")
 
         # Keep the voucher / cash-register locks until the single commit, so the
-        # balance read-modify-write stays serialized (the SELECT ... FOR UPDATE
-        # row locks also end at that commit).
+        # counter and balance read-modify-writes stay serialized (the SELECT ...
+        # FOR UPDATE row locks also end at that commit).
         with ExitStack() as locks:
-            if voucher is not None:
+            if creates_voucher or voucher is not None:
                 locks.enter_context(VOUCHER_LOCK)
+            if creates_voucher:
+                next_nr = next_gutschein_nr(session, lock=False)
+                for d, art in detail_artikel:
+                    if art is not None and art.artikel_nr == "GUTSCHEIN":
+                        g = Gutschein(
+                            gutschein_nr=next_nr,
+                            datum=new_v.verkaufsdatum,
+                            gutschein_in_vd_id=d.vd_id,
+                            einloesung_in_vd_id=None,
+                            restbetrag=d.ges_preis if d.ges_preis is not None else 0.0,
+                        )
+                        g.gutschein_id = None
+                        session.add(g)
+                        next_nr += 1
+                session.flush()
+            if voucher is not None:
                 redeem_voucher(
                     session, voucher.gutschein_id,
                     einloesung_in_vd_id=einloesung.vd_id,

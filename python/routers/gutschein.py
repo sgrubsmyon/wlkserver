@@ -83,7 +83,7 @@ def read_single_gutschein(gutschein_id: int, session: SessionDep) -> GutscheinPu
 
 @router.post("/", response_model=GutscheinPublic)
 def create_gutschein(gutschein: GutscheinCreate, session: SessionDep, credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme), _user=Depends(require_user)):
-    from ..business.voucher_logic import next_gutschein_nr
+    from ..business.voucher_logic import VOUCHER_LOCK, next_gutschein_nr
 
     user_id = getattr(gutschein, "user_id", None)
     if user_id is None and credentials is not None and credentials.credentials:
@@ -99,18 +99,19 @@ def create_gutschein(gutschein: GutscheinCreate, session: SessionDep, credential
         vd = session.get(VerkaufDetails, gutschein.einloesung_in_vd_id)
         if not vd:
             raise HTTPException(status_code=400, detail="VerkaufDetails not found")
-    new_g = Gutschein(
-        gutschein_nr=next_gutschein_nr(session),
-        datum=gutschein.datum if gutschein.datum is not None else datetime.now(timezone.utc),
-        gutschein_in_vd_id=gutschein.gutschein_in_vd_id,
-        einloesung_in_vd_id=gutschein.einloesung_in_vd_id,
-        restbetrag=gutschein.restbetrag,
-        user_id=user_id,
-    )
-    new_g.gutschein_id = None
-    session.add(new_g)
-    session.commit()
-    session.refresh(new_g)
+    with VOUCHER_LOCK:
+        new_g = Gutschein(
+            gutschein_nr=next_gutschein_nr(session, lock=False),
+            datum=gutschein.datum if gutschein.datum is not None else datetime.now(timezone.utc),
+            gutschein_in_vd_id=gutschein.gutschein_in_vd_id,
+            einloesung_in_vd_id=gutschein.einloesung_in_vd_id,
+            restbetrag=gutschein.restbetrag,
+            user_id=user_id,
+        )
+        new_g.gutschein_id = None
+        session.add(new_g)
+        session.commit()
+        session.refresh(new_g)
     return GutscheinPublic.model_validate(new_g)
 
 

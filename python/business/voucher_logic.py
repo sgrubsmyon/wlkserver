@@ -16,7 +16,7 @@ from decimal import Decimal, ROUND_HALF_UP
 from fastapi import HTTPException
 from sqlmodel import func, select
 
-from ..models import Gutschein, VerkaufDetails
+from ..models import Gutschein, GutscheinCounter, VerkaufDetails
 from ..utils.validation import ensure_positive
 from .vat_calculator import _to_decimal
 
@@ -43,15 +43,33 @@ def voucher_start_value(session, gutschein_nr: int) -> Decimal:
     return (_to_decimal(value) or Decimal("0")).quantize(CENT, rounding=ROUND_HALF_UP)
 
 
-def next_gutschein_nr(session) -> int:
-    """Next voucher number: `MAX(gutschein_nr) + 1` over all rows, starting at 200.
+def next_gutschein_nr(session, lock: bool = True) -> int:
+    """Next voucher number from the locked counter row, starting at 200.
 
-    The backend assigns the number; clients cannot choose it. The global maximum
-    (not the Java POS' sale-linked maximum) also keeps manually or legacy
-    numbered vouchers from being reused.
+    The single `gutschein_counter` row is read `FOR UPDATE`, so concurrent
+    creators (several cash registers, the standalone endpoint) serialize on it
+    until the caller commits; the number is then assigned exactly once. The
+    counter is seeded from `MAX(gutschein_nr)` when missing (the production
+    migration does this too, so the first call is not a race).
+
+    `lock=False` is for callers already holding `VOUCHER_LOCK` across their
+    commit (sale creation, standalone creation).
     """
-    highest = session.exec(select(func.max(Gutschein.gutschein_nr))).one()
-    return (int(highest) if highest is not None else 199) + 1
+    with (VOUCHER_LOCK if lock else nullcontext()):
+        counter = session.exec(
+            select(GutscheinCounter)
+            .where(GutscheinCounter.id == 1)
+            .with_for_update()
+        ).first()
+        if counter is None:
+            highest = session.exec(select(func.max(Gutschein.gutschein_nr))).one()
+            counter = GutscheinCounter(
+                id=1, last_nr=int(highest) if highest is not None else 199
+            )
+            session.add(counter)
+        counter.last_nr += 1
+        session.flush()
+        return counter.last_nr
 
 
 def _creation_row(session, gutschein_nr: int) -> Gutschein | None:

@@ -165,7 +165,9 @@ to uvicorn. Plain HTTP is only acceptable on a managed, isolated POS VLAN.
 ## Database migration
 
 Run `migrations/02_user_auth/migrate.sh` (as kassenadmin) to create the
-`user`/`anmeldung` tables and add `user_id` columns. Back up first.
+`user`/`anmeldung` tables and add `user_id` columns, then
+`migrations/03_gutschein_counter/migrate.sh` to create and seed the
+`gutschein_counter` row used for server-side voucher numbers. Back up first.
 
 ## Testing
 

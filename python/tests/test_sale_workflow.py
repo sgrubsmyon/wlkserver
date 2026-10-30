@@ -627,3 +627,20 @@ def test_failed_sale_rolls_back_everything(session, monkeypatch):
     assert session.exec(select(VerkaufDetails)).all() == []
     assert session.exec(select(VerkaufMwst)).all() == []
     assert session.exec(select(Kassenstand)).all() == []
+
+
+def test_sale_creates_voucher_with_counter_number(session):
+    from python.routers.verkauf import create_verkauf as router_create_verkauf
+    from python.models import Gutschein, GutscheinCounter, VerkaufCreate
+
+    artikel = _seed_artikel(session, vk_preis=None, variabler_preis=True, artikel_nr="GUTSCHEIN")
+    payload = VerkaufCreate(verkauf_details=[
+        {"artikel_id": artikel.artikel_id, "stueckzahl": 1, "ges_preis": 10.0},
+    ])
+    router_create_verkauf(payload, session, None, None)
+
+    rows = session.exec(select(Gutschein)).all()
+    assert len(rows) == 1
+    assert rows[0].gutschein_nr == 200
+    assert rows[0].restbetrag == 10.0
+    assert session.get(GutscheinCounter, 1).last_nr == 200

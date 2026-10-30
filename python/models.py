@@ -516,6 +516,18 @@ class KassenstandCreate(SQLModel):
 # Gutschein models
 #######################
 
+class GutscheinCounter(SQLModel, table=True):
+    """Highest assigned voucher number (single row, id=1).
+
+    Voucher creation locks this row with `SELECT ... FOR UPDATE`, so concurrent
+    cash registers cannot pick the same `gutschein_nr`.
+    """
+    __tablename__ = "gutschein_counter"
+
+    id: int = Field(default=1, primary_key=True)
+    last_nr: int = Field(nullable=False)
+
+
 class Gutschein(SQLModel, table=True):
     __tablename__ = "gutschein"
 

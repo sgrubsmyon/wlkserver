@@ -5,7 +5,7 @@ from fastapi.testclient import TestClient
 from sqlmodel import select
 
 from python.main import app
-from python.models import Gutschein, Verkauf, VerkaufDetails
+from python.models import Gutschein, GutscheinCounter, Verkauf, VerkaufDetails
 from python.session import get_session
 
 
@@ -214,7 +214,7 @@ def test_ausstehend_shows_reduced_balance(client, session):
     assert row["restbetrag_anfang"] == 10.0
 
 
-def test_create_assigns_gutschein_nr_from_backend(client):
+def test_create_assigns_gutschein_nr_from_backend(client, session):
     r = client.post("/gutschein/", json={"restbetrag": 10.0})
     assert r.status_code == 200
     assert r.json()["gutschein_nr"] == 200
@@ -223,3 +223,12 @@ def test_create_assigns_gutschein_nr_from_backend(client):
     r = client.post("/gutschein/", json={"gutschein_nr": 999, "restbetrag": 5.0})
     assert r.status_code == 200
     assert r.json()["gutschein_nr"] == 201
+    assert session.get(GutscheinCounter, 1).last_nr == 201
+
+
+def test_counter_is_seeded_from_existing_vouchers(client, session):
+    _create_voucher(session, nr=250, value=1.0)
+    r = client.post("/gutschein/", json={"restbetrag": 2.0})
+    assert r.status_code == 200
+    assert r.json()["gutschein_nr"] == 251
+    assert session.get(GutscheinCounter, 1).last_nr == 251
