@@ -10,6 +10,7 @@ from fastapi import HTTPException
 from sqlmodel import Session, select
 
 from ..models import Kassenstand, Verkauf
+from ..session import is_training_mode
 from .vat_calculator import _to_decimal
 EC_THRESHOLD = Decimal("10.00")
 
@@ -119,11 +120,6 @@ def process_payment(total, ec_zahlung=False, kunde_gibt=None):
     warning = ec_payment_threshold_check(t, bool(ec_zahlung))
     change = calculate_change(t, kunde_gibt) if kunde_gibt is not None else Decimal("0.00")
     return change, warning
-
-
-def is_training_mode() -> bool:
-    import os
-    return os.getenv("TRAINING_MODE", "").strip().lower() in ("1", "true", "yes", "on")
 
 
 def last_settlement(session: Session):

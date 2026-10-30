@@ -587,3 +587,19 @@ def test_router_resolves_anzahlung_in_normal_sale(session):
     assert "already resolved" in str(exc.value)
 
 
+
+
+def test_variable_price_article_uses_explicit_line_price(session):
+    from python.routers.verkauf import create_verkauf as router_create_verkauf
+    from python.models import VerkaufCreate
+
+    artikel = _seed_artikel(session, vk_preis=10.0, variabler_preis=True, artikel_nr="VAR")
+    payload = VerkaufCreate(verkauf_details=[
+        {"artikel_id": artikel.artikel_id, "stueckzahl": 2, "ges_preis": 12.34},
+    ])
+    result = router_create_verkauf(payload, session, None, None)
+
+    rows = result["verkauf_details"]
+    assert len(rows) == 1
+    assert rows[0].ges_preis == 12.34
+    assert result["verkauf_mwst"][0]["mwst_netto"] == pytest.approx(12.34 / 1.19, abs=0.01)

@@ -1,9 +1,11 @@
 import os
+from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 
+from .business.training import ensure_training_database
 from .business.vat_calculator import vat_rounding_method
 from .dependencies import require_user
 
@@ -22,7 +24,16 @@ from .routers import (
 
 
 # app = FastAPI(dependencies=[Depends(get_query_token)])
-app = FastAPI()
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # In training mode this creates and seeds the disposable sandbox database.
+    ensure_training_database()
+    yield
+
+
+app = FastAPI(lifespan=lifespan)
 favicon_path = 'assets/favicon.gif'
 
 # Restrict CORS to the configured frontend origins (comma separated, defaults to

@@ -11,9 +11,9 @@ This document outlines the comprehensive implementation plan to complete the Fas
 ## Current Status Summary
 
 ### ✅ Already Implemented
-- **Database Models**: All core tables have SQLModel definitions in `python/models.py` (training tables with core `/training` sale endpoints; `user_id` columns on all 8 transaction tables)
+- **Database Models**: All core tables have SQLModel definitions in `python/models.py` (`user_id` columns on all 8 transaction tables). The Java `training_*` models were removed: training mode now uses a separate sandbox database with the same schema
 - **CRUD Operations**: All planned entities have CRUD functionality, including Bestellung positions (`details` embedded in the order payload) and the Java order types `LM`/`KHW`/`IVT` (default `LM`; `IVT` holds the inventory count)
-- **Business Logic**: Modules under `python/business/` are wired into the main flows (VAT, sale workflow incl. vouchers/discounts and detail validation, storno incl. voucher/installment reversal and kassenstand reversal, cash-register side-effects incl. balance validation, DSFinV-K export, TSE export + settlement TSE metadata best-effort). VAT module and sale workflow are Java-parity checked and fully tested. Remaining gap: #7 real training mode from the 2026-10-28 audit (see "Remaining business-logic gaps").
+- **Business Logic**: Modules under `python/business/` are wired into the main flows (VAT, sale workflow incl. vouchers/discounts and detail validation, storno incl. voucher/installment reversal and kassenstand reversal, cash-register side-effects incl. balance validation, DSFinV-K export, TSE export + settlement TSE metadata best-effort, training sandbox). VAT module and sale workflow are Java-parity checked and fully tested. The 2026-10-28 audit gaps #1-#7 are closed; remaining work is edge-case validation and the untested TSE hardware adapter.
 - **API Structure**: Clean FastAPI structure with proper routing
 - **Auth**: Per-user accounts (bcrypt + JWT), login auditing (readable via admin-only `GET /auth/anmeldungen`), `user_id` attribution on transaction endpoints, SQL migration in `migrations/02_user_auth/`; all data endpoints (reads included) require `require_user`, admin endpoints require role `admin`, login has rate limiting, refresh/logout supported
 
@@ -21,7 +21,7 @@ This document outlines the comprehensive implementation plan to complete the Fas
 - Validate against a real MariaDB instance (tests are SQLite-only)
 - CORS configured in `python/main.py` via `CORS_ORIGINS` (defaults to the SvelteKit dev server); keep the OpenAPI schema stable
 - Add integration tests for complete sales/storno/settlement workflows (coverage target 80% reached)
-- Close the remaining business-logic gap from the 2026-10-28 audit (#7 real training mode; #1-#6 done) - see "Remaining business-logic gaps (2026-10-28 audit)" below
+- All 2026-10-28 audit gaps are closed; the remaining work is validation/edge cases, the untested TSE hardware adapter, and the documentation/production items - see "Business-logic gaps (2026-10-28 audit)" below
 - Complete documentation (migration guide, DB schema reference, docstrings)
 
 > **Note**: The Phase sections below contain the original plan text (some "Current" states are outdated). The authoritative per-endpoint status is in `concepts/TODO.md`; the priority matrix and success criteria below are kept up to date.
@@ -29,9 +29,9 @@ This document outlines the comprehensive implementation plan to complete the Fas
 ### 🔎 Parity audit of remaining low-priority items (2026-10-22)
 See the "Parity Audit" section in `concepts/TODO.md`. The optional per-sale installment lookup, per-date/per-period settlement lookups and the zaehlprotokoll validation were removed as not needed for Java parity; Bestellung positions were the only real functional gap and are now implemented (positions embedded in the order payload). The remaining testing/documentation/production items are quality tasks, not functional gaps.
 
-### 🧩 Remaining business-logic gaps (2026-10-28 audit)
+### 🧩 Business-logic gaps (2026-10-28 audit)
 
-Audit of `python/` against the Java POS (`../git/src/org/weltladen_bonn/pos/`). #1-#6 are done; the only functional gap left is #7 (real training mode). The TSE adapter itself is untested without hardware.
+Audit of `python/` against the Java POS (`../git/src/org/weltladen_bonn/pos/`). All seven functional gaps are closed; the TSE adapter itself is still untested without hardware.
 
 | # | Gap | Java reference | Current API state |
 |---|-----|----------------|-------------------|
@@ -41,7 +41,7 @@ Audit of `python/` against the Java POS (`../git/src/org/weltladen_bonn/pos/`). 
 | 4 | ✅ **Daily settlement invalidates month/year settlements** covering its period | `AbrechnungenTag.deleteAbrechnungIfNeedBe()` called from `insertTagesAbrechnung()` | **Done (2026-10-28)**: `_invalidate_period_settlements` in `abrechnung_tag.py` deletes the covering `abrechnung_monat`/`abrechnung_jahr` rows and their `_mwst` rows after writing the daily settlement; covered by `test_backdated_daily_settlement_reopens_month_and_year` |
 | 5 | ✅ **Zählprotokoll lifecycle**: counting happens before the settlement, is linked to it, previous counts are set `aktiv = FALSE` | `AbrechnungenTag.insertZaehlprotokoll()` / `setZaehlprotokollInactive()` | **Done (2026-10-28)**: `POST /abrechnung/tag` accepts `zaehlprotokoll` and inserts it afterwards via `insert_count_protocol`, which deactivates the previous active count of the settlement; `POST /zaehlprotokoll` still requires an existing settlement |
 | 6 | ✅ **`abrechnung_tag_tse` row** with the TSE status values; `last_tse_sig_counter` stores the counter *after* the export | `AbrechnungenTag.insertTagesAbrechnung()` | **Done (2026-10-30)**: `POST /abrechnung/tag` inserts the row (`tse_id` from `TSE_ID`, status columns NULL without the SEAPI getters), stores the current counter and falls back to the TX-number export |
-| 7 | **Training mode as a mode**: every cashier table access is rerouted to `training_*` | `WindowContent.tableForMode()` | Only `/training` sales; normal endpoints keep writing production tables even with `TRAINING_MODE` set |
+| 7 | ✅ **Training mode as a mode**: every cashier table access is rerouted to `training_*` | `WindowContent.tableForMode()` | **Done (2026-10-30)**: `TRAINING_MODE` + `TRAINING_DB_URL` run the whole instance against a sandbox database (schema from `models.py`, users mirrored, short catalog seeded, `POST /training/reset`); this also sandboxes master-data edits, which the Java `training_*` tables did not. TSE exports / automatic DSFinV-K writes are skipped |
 
 **Minor divergences (fix opportunistically, no phase needed):**
 - Voucher numbering uses `MAX(gutschein_nr)` over all rows (redemption rows included); Java counts only creation rows (`gutschein_in_vd_id IS NOT NULL`).
@@ -50,7 +50,7 @@ Audit of `python/` against the Java POS (`../git/src/org/weltladen_bonn/pos/`). 
 - Special articles are detected by their master-data `artikel_nr` (`RABATT1`, `RABATT2`, `ANPASSUNG`, `GUTSCHEINEINLOES`, `GUTSCHEIN`), which matches the Java `WindowContent` IDs 1, 2, 3, 6, 7 in production.
 - Price-tag export (`PreisschilderExport`, ODT templates) is client-side output like the deferred ODS exports.
 
-Remaining order for the POS MVP: #7 (real training mode). #1-#6 are done. Tracking: `concepts/TODO.md` → "Remaining business-logic gaps".
+All functional audit gaps are done; remaining items are validation/edge cases and the untested TSE adapter. Tracking: `concepts/TODO.md` → "Business-logic gaps".
 
 ---
 
@@ -487,7 +487,7 @@ Details and sources: `docs/VAT_ROUNDING.md`.
 - End-of-day: `end_of_day_procedure` is now a real preview of the open period and is exposed as `GET /abrechnung/tag/vorschau`; `POST /abrechnung/tag` uses the same `aggregate_period`/`open_period_range` helpers, so preview and settlement cannot drift
 - Java parity fix: the settlement **links the current Kassenstand entry** (`AbrechnungenTag.insertTagesAbrechnung` uses the highest `kassenstand_id`) instead of inventing a closing entry. The old auto-entry double-counted cash sales and Entnahmen because the ledger already contains them; the counted cash is recorded as a manual Kassenstand entry before closing
 - Fixed while extracting the shared aggregation: settlements with an explicit `rechnungs_nr_von/bis` crashed on an unset variable, and `storno_summe` now reports the cancelled original amounts positively like Java `prepareStmtStornos`
-- Training mode: the flag is read from `TRAINING_MODE`; the training flow lives in `/training`
+- Training mode: `TRAINING_MODE` + `TRAINING_DB_URL` run the instance against a disposable sandbox database (`python/business/training.py`); TSE exports are skipped
 
 ---
 
@@ -729,7 +729,7 @@ Still missing: none for the planned workflows; new endpoints should keep adding 
 
 - [x] All database tables have corresponding models and endpoints (training tables have core sale endpoints)
 - [x] Bookkeeping integrity: no update/delete endpoints for immutable tables (verkauf, kassenstand, gutschein, anzahlung, abrechnung_tag)
-- [ ] All business logic from Java POS is ported to API (training mode covers sales only; edge-case validation still missing; 2026-10-28 audit gap #7 open, see above)
+- [ ] All business logic from Java POS is ported to API (edge-case validation still missing; 2026-10-28 audit gaps #1-#7 done)
 - [x] Per-user accounts with login auditing and transaction attribution
 - [x] Comprehensive validation and error handling
 - [x] 80%+ test coverage (83%)
@@ -818,7 +818,7 @@ Note: There are deliberately **no** `routers/verkauf_mwst.py` and `routers/verka
 1. **Data Migration**: Existing data can be used as-is (same database schema)
 2. **Functionality Migration**: Port business logic incrementally
 3. **UI Migration**: Frontend can be developed separately using the API
-4. **Training Mode**: Support training mode like in Java POS (separate training_* tables)
+4. **Training Mode**: The API uses a separate sandbox database (`TRAINING_MODE` + `TRAINING_DB_URL`) instead of the Java `training_*` tables, so master-data edits are sandboxed too
 
 ### Backward Compatibility
 - Maintain compatibility with existing database
@@ -834,7 +834,7 @@ Note: There are deliberately **no** `routers/verkauf_mwst.py` and `routers/verka
 3. **Integration tests**: done in `test_integration.py` (workflows, cross-entity effects, concurrent sales)
 4. **Coverage**: target reached; remaining gaps: tse_client.py 44%, users 33%, rabattaktion 33%
 5. **Validation**: done (model constraints + `ensure_*` helpers wired, see TODO "Validation Framework")
-6. **Remaining business logic** (2026-10-28 audit, see above): #7 real training-mode table routing (#1-#6 done)
-7. **Training mode**: extend the `/training` endpoints (storno, settlements, gutschein/anzahlung) if the frontend needs them, and stop normal endpoints from writing production tables while `TRAINING_MODE` is set (#7)
+6. **Remaining business logic** (2026-10-28 audit, see above): none; #1-#7 done
+7. **Training mode**: run a second API instance with `TRAINING_MODE=1` and `TRAINING_DB_URL`; `POST /training/reset` reseeds the sandbox
 8. **Import/Export**: CSV exports for Bestellung and Inventur exist; ODS export is deferred to a later phase (needs an ODS library and the Java templates)
 9. **Documentation**: migration guide (Java POS → API), database schema reference, consistent docstrings, deployment/HTTPS docs (same-origin nginx topology and script automation are documented in Phase 7.4; nginx/systemd artifacts still missing)

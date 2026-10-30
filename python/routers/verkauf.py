@@ -250,29 +250,31 @@ def storno_verkauf(rechnungs_nr: int, session: SessionDep, cash_refund: bool = T
     from ..business.storno_logic import handle_storno_voucher, handle_storno_installment
     handle_storno_voucher(session, original)
     handle_storno_installment(session, original)
-    # TSE transaction handling for storno (best-effort)
-    try:
-        from ..utils.tse_client import tse_client
-        from ..models import TSETransaction
-        signed = tse_client.create_transaction(process_type="Kassenbeleg-Storno", process_data=None, training=False)
-        tse = TSETransaction(
-            transaction_number=signed.get("transaction_number"),
-            rechnungs_nr=storno_sale.rechnungs_nr,
-            training=False,
-            transaction_start=signed.get("transaction_start"),
-            transaction_end=signed.get("transaction_end"),
-            process_type="Kassenbeleg-Storno",
-            signature_counter=signed.get("signature_counter"),
-            signature_base64=signed.get("signature_base64"),
-            tse_error=signed.get("tse_error"),
-            process_data=None,
-            user_id=user_id,
-        )
-        tse.transaction_id = None
-        session.add(tse)
-        session.commit()
-    except Exception:
-        pass
+    # TSE transaction handling for storno (best-effort; no TSE in training mode)
+    from ..business.cash_register import is_training_mode
+    if not is_training_mode():
+        try:
+            from ..utils.tse_client import tse_client
+            from ..models import TSETransaction
+            signed = tse_client.create_transaction(process_type="Kassenbeleg-Storno", process_data=None, training=False)
+            tse = TSETransaction(
+                transaction_number=signed.get("transaction_number"),
+                rechnungs_nr=storno_sale.rechnungs_nr,
+                training=False,
+                transaction_start=signed.get("transaction_start"),
+                transaction_end=signed.get("transaction_end"),
+                process_type="Kassenbeleg-Storno",
+                signature_counter=signed.get("signature_counter"),
+                signature_base64=signed.get("signature_base64"),
+                tse_error=signed.get("tse_error"),
+                process_data=None,
+                user_id=user_id,
+            )
+            tse.transaction_id = None
+            session.add(tse)
+            session.commit()
+        except Exception:
+            pass
     # Cash payout: a cash sale is always refunded in cash; an EC sale too unless the
     # caller says the card was not charged (Java asks this in a dialog).
     payout_cash = (not original.ec_zahlung) or cash_refund

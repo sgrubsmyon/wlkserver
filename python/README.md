@@ -28,7 +28,8 @@ precedence over `.env`. `.env` is git-ignored — never commit secrets.
 | `AUTH_SECRET` | dev placeholder | JWT signing secret — **must** be set in production |
 | `AUTH_TOKEN_TTL` | `3600` | JWT lifetime in seconds |
 | `CORS_ORIGINS` | SvelteKit dev server (`localhost:5173`, `127.0.0.1:5173`) | Comma-separated allowed browser origins |
-| `TRAINING_MODE` | off | `1`/`true`/`yes`/`on` marks the instance as training mode |
+| `TRAINING_MODE` | off | `1`/`true`/`yes`/`on` runs the whole instance against the disposable training database |
+| `TRAINING_DB_URL` | — | SQLAlchemy URL of the training sandbox (e.g. `sqlite:///training.db` or a separate MariaDB database); required when `TRAINING_MODE` is set |
 | `TSE_DEVICE_PATH`, `TSE_LIB_PATH`, `TSE_CLIENT_ID` | unset / `WeltladenKasse` | TSE (cryptovision SE-API) adapter settings |
 | `TSE_ID` | unset | TSE number stored in `abrechnung_tag_tse` (Java `bc.TSE_ID`, used by DSFinV-K) |
 | `VAT_ROUNDING_METHOD` | `horizontal` | Receipt VAT rounding: `horizontal` (per position, Java POS) or `vertical` (per VAT rate, e-invoice compatible). Invalid values abort startup |
@@ -39,6 +40,39 @@ precedence over `.env`. `.env` is git-ignored — never commit secrets.
 is stored in `verkauf_mwst`); existing sales keep their stored amounts. Invoices
 must always use the vertical method (EN 16931 BR-CO-17) — see
 `docs/VAT_ROUNDING.md` for the legal background.
+
+## Training mode
+
+The Java POS only redirects the cashier tables to `training_*` tables; editing
+articles or discount actions there still changes production master data. The API
+instead runs the **whole instance** against a disposable database:
+
+```sh
+TRAINING_MODE=1 TRAINING_DB_URL=sqlite:///training.db fastapi run
+```
+
+On startup the API creates the schema in the sandbox (from `models.py`), mirrors
+the production users (authentication and the `user_id` attributes need them)
+and seeds a short test catalog:
+
+| Article | Purpose |
+|---|---|
+| `T-19`, `T-7`, `T-0` | fixed prices at 19 %, 7 % and 0 % VAT |
+| `T-VAR` | variable price (send `ges_preis` on the sale line) |
+| `T-PFAND` | product group with a deposit; the Pfand line is added automatically |
+| `T-AKTION` | 19 % article with an active 10 % discount action |
+| `RABATT1`, `RABATT2`, `ANPASSUNG`, `ANZAHLUNG`, `ANZAHLAUFLOES`, `GUTSCHEIN`, `GUTSCHEINEINLOES`, `PFAND` | internal articles required by the sale workflows |
+
+Sales, storno, vouchers, installments, counting protocols and all three
+settlements write to the sandbox; `POST /training/reset` (admin only, training
+mode only) clears it and seeds the catalog again. TSE exports and the automatic
+DSFinV-K files are skipped in training mode (the DSFinV-K download endpoint
+still works on sandbox data).
+
+The training instance needs access to the production database for the user
+mirror. Never point `TRAINING_DB_URL` at the production database — startup
+refuses a matching non-SQLite URL. The `training_*` tables of the Java POS are
+not used by the API anymore.
 
 ## DSFinV-K export
 

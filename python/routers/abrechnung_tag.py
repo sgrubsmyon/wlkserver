@@ -25,7 +25,12 @@ from ..models import (
 )
 from ..session import SessionDep
 from ..dependencies import bearer_scheme, require_user
-from ..business.cash_register import aggregate_period, end_of_day_procedure, open_period_range
+from ..business.cash_register import (
+    aggregate_period,
+    end_of_day_procedure,
+    is_training_mode,
+    open_period_range,
+)
 from fastapi.security import HTTPAuthorizationCredentials
 from fastapi import Depends
 
@@ -204,15 +209,16 @@ def create_abrechnung_tag(payload: Optional[AbrechnungTagCreate], session: Sessi
     if prev_sig is None:
         prev_sig = 0
     last_sig = None
-    try:
-        from ..utils.tse_client import tse_client
-        if not tse_client.export_partial(last_excluded_signature_counter=prev_sig):
-            tse_client.export_partial(
-                start_tx_number=_last_settled_tx_number(session, last) + 1
-            )
-        last_sig = tse_client.get_signature_counter()
-    except Exception:
-        logger.exception("TSE export for the Tagesabschluss failed")
+    if not is_training_mode():  # Java: no TSE exports in training mode
+        try:
+            from ..utils.tse_client import tse_client
+            if not tse_client.export_partial(last_excluded_signature_counter=prev_sig):
+                tse_client.export_partial(
+                    start_tx_number=_last_settled_tx_number(session, last) + 1
+                )
+            last_sig = tse_client.get_signature_counter()
+        except Exception:
+            logger.exception("TSE export for the Tagesabschluss failed")
     if p.last_tse_sig_counter is not None:
         last_sig = p.last_tse_sig_counter  # explicit override (scripts/manual export)
 
@@ -261,12 +267,13 @@ def create_abrechnung_tag(payload: Optional[AbrechnungTagCreate], session: Sessi
 
     # DSFinV-K export (Java AbrechnungenTag.writeIntoDSFinVKCSVFiles): written
     # to DSFINVK_EXPORT_DIR when configured, otherwise on demand via
-    # GET /export/dsfinvk/{id}.
-    try:
-        from ..business.dsfinvk_export import write_dsfinvk_export
-        write_dsfinvk_export(session, at.id)
-    except Exception:
-        logger.exception("DSFinV-K export for AbrechnungTag %s failed", at.id)
+    # GET /export/dsfinvk/{id}. Training data never writes production files.
+    if not is_training_mode():
+        try:
+            from ..business.dsfinvk_export import write_dsfinvk_export
+            write_dsfinvk_export(session, at.id)
+        except Exception:
+            logger.exception("DSFinV-K export for AbrechnungTag %s failed", at.id)
 
     # mwst values by ID (Java getAllCurrentMwstValuesByID)
     from ..business.vat_calculator import get_all_current_mwst_values_by_id

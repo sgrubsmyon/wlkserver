@@ -1,18 +1,34 @@
+from datetime import datetime
+
 import pytest
 from fastapi.testclient import TestClient
-from sqlmodel import select
+from sqlalchemy.pool import StaticPool
+from sqlmodel import SQLModel, Session, create_engine, select
 
+from python import session as db
 from python.main import app
 from python.session import get_session
 from python.models import (
-    Artikel, Mwst, Produktgruppe, Lieferant,
-    Kassenstand, TrainingKassenstand, TrainingVerkauf, TrainingVerkaufDetails,
-    TrainingVerkaufMwst, Verkauf,
+    AbrechnungTag,
+    Artikel,
+    Kassenstand,
+    Mwst,
+    Pfand,
+    Produktgruppe,
+    Rabattaktion,
+    User,
+    Verkauf,
+)
+from python.utils.auth import hash_password
+from python.business.training import (
+    SPECIAL_ARTIKEL,
+    TEST_ARTIKEL,
+    seed_catalog,
 )
 
 
 @pytest.fixture
-def client(session):
+def production_client(session):
     app.dependency_overrides[get_session] = lambda: session
     with TestClient(app) as c:
         r = c.post("/auth/login", json={"username": "test", "password": "test"})
@@ -22,103 +38,135 @@ def client(session):
     app.dependency_overrides.clear()
 
 
-def _seed_artikel(session, vk_preis=10.0, mwst_satz=0.19):
-    m = Mwst(mwst_satz=mwst_satz, dsfinvk_ust_schluessel=1)
-    session.add(m)
-    session.commit()
-    session.refresh(m)
-    pg = Produktgruppe(produktgruppen_name="Training PG", mwst_id=m.mwst_id)
-    session.add(pg)
-    session.commit()
-    session.refresh(pg)
-    l = Lieferant(lieferant_name="Training Lieferant")
-    session.add(l)
-    session.commit()
-    session.refresh(l)
-    a = Artikel(
-        artikel_nr="T1", artikel_name="Trainingsartikel",
-        produktgruppen_id=pg.produktgruppen_id, lieferant_id=l.lieferant_id,
-        vk_preis=vk_preis,
+@pytest.fixture
+def sandbox(monkeypatch):
+    """Two engines (production + training) with the training instance active."""
+    production = _engine()
+    training = _engine()
+    with Session(production) as s:
+        s.add(User(
+            username="admin", password_hash=hash_password("admin"),
+            role="admin", active=True,
+        ))
+        s.commit()
+    db._engines.clear()
+    db._engines["production"] = production
+    db._engines["training"] = training
+    monkeypatch.setenv("TRAINING_MODE", "1")
+    monkeypatch.setenv("TRAINING_DB_URL", "sqlite://")
+    with TestClient(app) as client:  # startup creates/mirrors/seeds the sandbox
+        yield client, production, training
+    db._engines.clear()
+
+
+def _engine():
+    engine = create_engine(
+        "sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool
     )
-    session.add(a)
-    session.commit()
-    session.refresh(a)
-    return a
+    SQLModel.metadata.create_all(engine)
+    return engine
 
 
-def test_training_status(client):
-    r = client.get("/training/status")
+def _login(client):
+    r = client.post("/auth/login", json={"username": "admin", "password": "admin"})
     assert r.status_code == 200
-    assert "training_mode" in r.json()
+    client.headers["Authorization"] = "Bearer " + r.json()["access_token"]
 
 
-def test_create_training_sale_writes_only_training_tables(client, session):
-    a = _seed_artikel(session)
-    r = client.post("/training/verkauf", json={
-        "ec_zahlung": False,
-        "verkauf_details": [{"artikel_id": a.artikel_id, "stueckzahl": 2}],
+def _artikel_id(engine, nr):
+    with Session(engine) as session:
+        return session.exec(select(Artikel).where(Artikel.artikel_nr == nr)).one().artikel_id
+
+
+def test_status_without_training_mode(production_client):
+    r = production_client.get("/training/status")
+    assert r.status_code == 200
+    assert r.json() == {"training_mode": False}
+
+
+def test_seed_catalog_covers_pos_aspects():
+    engine = _engine()
+    with Session(engine) as session:
+        seed_catalog(session)
+        seed_catalog(session)  # idempotent
+
+    with Session(engine) as session:
+        rates = {
+            round(float(m.mwst_satz), 2): m.dsfinvk_ust_schluessel
+            for m in session.exec(select(Mwst)).all()
+        }
+        assert rates == {0.0: 6, 0.07: 2, 0.19: 1}
+
+        articles = {a.artikel_nr: a for a in session.exec(select(Artikel)).all()}
+        assert set(SPECIAL_ARTIKEL) <= set(articles)
+        assert set(TEST_ARTIKEL) <= set(articles)
+        assert articles["T-19"].vk_preis == 10.0
+        assert articles["T-19"].variabler_preis is False
+        assert articles["T-VAR"].variabler_preis is True
+
+        pfand = session.exec(select(Pfand)).one()
+        assert pfand.artikel_id == articles["PFAND"].artikel_id
+        group = session.get(Produktgruppe, articles["T-PFAND"].produktgruppen_id)
+        assert group.pfand_id == pfand.pfand_id
+
+        action = session.exec(select(Rabattaktion)).one()
+        assert action.artikel_id == articles["T-AKTION"].artikel_id
+        assert action.rabatt_relativ == 0.10
+        assert action.bis is None
+        assert action.von < datetime.now(action.von.tzinfo)
+
+
+def test_training_mode_sandboxes_sales_storno_and_settlements(sandbox):
+    client, production, training = sandbox
+    _login(client)
+
+    normal_id = _artikel_id(training, "T-19")
+    sale = client.post("/verkauf/", json={
+        "verkauf_details": [{"artikel_id": normal_id, "stueckzahl": 1}],
     })
-    assert r.status_code == 200
-    body = r.json()
-    assert body["rechnungs_nr"] is not None
-    assert body["verkauf_details"][0]["ges_preis"] == 20.0
-    assert float(body["verkauf_mwst"][0]["mwst_satz"]) == 0.19
+    assert sale.status_code == 200
+    nr = sale.json()["rechnungs_nr"]
 
-    # training tables are written ...
-    assert len(session.exec(select(TrainingVerkauf)).all()) == 1
-    assert len(session.exec(select(TrainingVerkaufDetails)).all()) == 1
-    assert len(session.exec(select(TrainingVerkaufMwst)).all()) == 1
-    ks = session.exec(select(TrainingKassenstand)).all()
-    assert len(ks) == 1
-    assert ks[0].neuer_kassenstand == 20.0
-
-    # ... and the real bookkeeping stays untouched
-    assert session.exec(select(Verkauf)).all() == []
-    assert session.exec(select(Kassenstand)).all() == []
-
-
-def test_ec_training_sale_skips_kassenstand(client, session):
-    a = _seed_artikel(session)
-    r = client.post("/training/verkauf", json={
-        "ec_zahlung": True,
-        "verkauf_details": [{"artikel_id": a.artikel_id, "stueckzahl": 1}],
+    variable_id = _artikel_id(training, "T-VAR")
+    variable = client.post("/verkauf/", json={
+        "verkauf_details": [
+            {"artikel_id": variable_id, "stueckzahl": 2, "ges_preis": 12.34},
+        ],
     })
+    assert variable.status_code == 200
+    nr_variable = variable.json()["rechnungs_nr"]
+    detail = client.get(f"/verkauf/{nr_variable}").json()["verkauf_details"][0]
+    assert detail["ges_preis"] == 12.34
+
+    assert client.post(f"/verkauf/{nr}/storno").status_code == 200
+    assert client.post("/abrechnung/tag/", json={}).status_code == 200
+
+    with Session(training) as session:
+        assert len(session.exec(select(Verkauf)).all()) == 3  # sale, variable, storno
+        assert len(session.exec(select(AbrechnungTag)).all()) == 1
+    with Session(production) as session:
+        assert session.exec(select(Verkauf)).all() == []
+        assert session.exec(select(Kassenstand)).all() == []
+
+
+def test_reset_clears_transactions_and_reseeds_catalog(sandbox):
+    client, production, training = sandbox
+    _login(client)
+
+    artikel_id = _artikel_id(training, "T-7")
+    assert client.post("/verkauf/", json={
+        "verkauf_details": [{"artikel_id": artikel_id, "stueckzahl": 1}],
+    }).status_code == 200
+
+    r = client.post("/training/reset")
     assert r.status_code == 200
-    assert session.exec(select(TrainingKassenstand)).all() == []
+    assert r.json() == {"status": "reset"}
 
-
-def test_training_sale_listing(client, session):
-    a = _seed_artikel(session)
-    client.post("/training/verkauf", json={
-        "verkauf_details": [{"artikel_id": a.artikel_id, "stueckzahl": 1}],
-    })
-    r = client.get("/training/verkauf")
-    assert r.status_code == 200
-    assert len(r.json()) == 1
-    nr = r.json()[0]["rechnungs_nr"]
-
-    r = client.get(f"/training/verkauf/{nr}")
-    assert r.status_code == 200
-    assert r.json()["rechnungs_nr"] == nr
-
-    r = client.get("/training/verkauf/99999")
-    assert r.status_code == 404
-
-
-def test_training_sale_rejects_zero_stueckzahl(client, session):
-    a = _seed_artikel(session)
-    r = client.post("/training/verkauf", json={
-        "verkauf_details": [{"artikel_id": a.artikel_id, "stueckzahl": 0}],
-    })
-    assert r.status_code == 400
-    assert session.exec(select(TrainingVerkauf)).all() == []
-
-
-def test_training_sale_requires_auth(session):
-    app.dependency_overrides[get_session] = lambda: session
-    try:
-        with TestClient(app) as c:
-            r = c.post("/training/verkauf", json={})
-            assert r.status_code == 401
-    finally:
-        app.dependency_overrides.clear()
+    with Session(training) as session:
+        assert session.exec(select(Verkauf)).all() == []
+        assert session.exec(select(AbrechnungTag)).all() == []
+        assert len(session.exec(select(Artikel)).all()) == (
+            len(SPECIAL_ARTIKEL) + len(TEST_ARTIKEL)
+        )
+    with Session(production) as session:
+        assert session.exec(select(Verkauf)).all() == []

@@ -326,14 +326,20 @@ def build_sale_details(session, verkauf) -> list[VerkaufDetails]:
         qty = Decimal(str(stueckzahl))
         mwst_satz = _mwst_of(artikel) if artikel is not None else 0.0
 
-        unit = Decimal("0")
-        if (artikel is not None and not getattr(artikel, "variabler_preis", False)
-                and artikel.vk_preis is not None):
-            unit = Decimal(str(artikel.vk_preis))
+        explicit = data.get("ges_preis")
+        if explicit is not None:
+            total = Decimal(str(explicit)).quantize(CENT, rounding=ROUND_HALF_UP)
+            unit = total / qty if qty else Decimal("0")
+        else:
+            unit = Decimal("0")
+            if (artikel is not None and not getattr(artikel, "variabler_preis", False)
+                    and artikel.vk_preis is not None):
+                unit = Decimal(str(artikel.vk_preis))
+            total = (unit * qty).quantize(CENT, rounding=ROUND_HALF_UP)
         line = VerkaufDetails(
             position=next_position(),
             stueckzahl=stueckzahl,
-            ges_preis=float((unit * qty).quantize(CENT, rounding=ROUND_HALF_UP)),
+            ges_preis=float(total),
             mwst_satz=mwst_satz,
             artikel_id=artikel_id,
             rabatt_id=None,
@@ -344,7 +350,7 @@ def build_sale_details(session, verkauf) -> list[VerkaufDetails]:
         if artikel is not None and stueckzahl > 0:
             aktionen = _active_rabattaktionen(session, artikel, data.get("rabatt_id"))
             if aktionen:
-                _, reductions = _apply_rabattaktionen(artikel.vk_preis, stueckzahl, aktionen)
+                _, reductions = _apply_rabattaktionen(unit, stueckzahl, aktionen)
                 for rabatt, reduction in reductions:
                     if reduction > 0:
                         rows.append(_aux_line(_special_artikel(session, "rabatt"), stueckzahl,
