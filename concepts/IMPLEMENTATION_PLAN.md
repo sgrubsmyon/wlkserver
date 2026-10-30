@@ -44,7 +44,7 @@ Audit of `python/` against the Java POS (`../git/src/org/weltladen_bonn/pos/`). 
 | 7 | ✅ **Training mode as a mode**: every cashier table access is rerouted to `training_*` | `WindowContent.tableForMode()` | **Done (2026-10-30)**: `TRAINING_MODE` + `TRAINING_DB_URL` run the whole instance against a sandbox database (schema from `models.py`, users mirrored, short catalog seeded, `POST /training/reset`); this also sandboxes master-data edits, which the Java `training_*` tables did not. TSE exports / automatic DSFinV-K writes are skipped |
 
 **Minor divergences (fix opportunistically, no phase needed):**
-- Voucher numbering uses `MAX(gutschein_nr)` over all rows (redemption rows included); Java counts only creation rows (`gutschein_in_vd_id IS NOT NULL`).
+- ✅ Voucher numbering: `gutschein_nr` is assigned by the backend (`MAX + 1` over all rows) for sale-created and standalone vouchers; clients cannot pass a number. (Java filters to sale-linked rows, but redemption rows carry that link as well, so the practical difference is only manually/legacy numbered vouchers.)
 - ✅ `create_verkauf` writes sale, details, VAT, voucher and Kassenstand in one transaction (single commit, locks held until it); a failing write rolls the receipt back.
 - Receipt-level discount ("Rabatt auf Rechnung", one RABATT line per VAT rate) is available as `rechnung_rabatt_relativ` on `POST /verkauf/` (done).
 - Special articles are detected by their master-data `artikel_nr` (`RABATT1`, `RABATT2`, `ANPASSUNG`, `GUTSCHEINEINLOES`, `GUTSCHEIN`), which matches the Java `WindowContent` IDs 1, 2, 3, 6, 7 in production.

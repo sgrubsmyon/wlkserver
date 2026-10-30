@@ -539,7 +539,7 @@ class GutscheinPublic(SQLModel):
 
 
 class GutscheinCreate(SQLModel):
-    gutschein_nr: int
+    # `gutschein_nr` is assigned by the backend (MAX + 1), never by the client.
     datum: datetime | None = None
     gutschein_in_vd_id: int | None = None
     einloesung_in_vd_id: int | None = None

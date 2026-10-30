@@ -344,7 +344,7 @@ Audit of `python/` against the Java POS (`../git/src/org/weltladen_bonn/pos/`). 
 - Refs: `WindowContent.tableForMode()`, `MainWindow.isInTrainingMode()`. Implementation: `python/session.py` (engine selection), `python/business/training.py` (schema, user mirror, seed, reset), `python/routers/training.py` (status/reset), startup hook in `python/main.py`; tests in `python/tests/test_training.py`
 
 ### Minor divergences (opportunistic)
-- [ ] Voucher numbering: API uses `MAX(gutschein_nr)` over all rows; Java only counts creation rows (`gutschein_in_vd_id IS NOT NULL`)
+- [x] Voucher numbering: the backend assigns `gutschein_nr = MAX(gutschein_nr) + 1` over all rows for both the sale flow and `POST /gutschein` (`business/voucher_logic.next_gutschein_nr`); clients can no longer pass a number. The global maximum is kept deliberately: production has no manual vouchers with `gutschein_in_vd_id IS NULL` and number >= 200, so it behaves like Java there while also protecting legacy/manual numbers (the Java filter only excludes rows not linked to a sale position; redemption rows carry the link too)
 - [x] `create_verkauf` writes sale, details, VAT, voucher and Kassenstand in one transaction (single commit; the voucher and Kassenstand locks are held until it). A failing write rolls the whole receipt back (`test_failed_sale_rolls_back_everything`)
 - [x] Special articles are detected by documented `artikel_nr` values (`RABATT1`, `RABATT2`, `ANPASSUNG`, `GUTSCHEINEINLOES`, `GUTSCHEIN`) instead of the Java `WindowContent` IDs; they match the production master data
 - [ ] Price-tag export (`PreisschilderExport`, ODT templates) is client-side output like the deferred ODS exports

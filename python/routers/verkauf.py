@@ -131,7 +131,7 @@ def create_verkauf(verkauf: VerkaufCreate, session: SessionDep, credentials: HTT
         process_payment,
         update_kassenstand_for_sale,
     )
-    from ..business.voucher_logic import VOUCHER_LOCK, redeem_voucher
+    from ..business.voucher_logic import VOUCHER_LOCK, next_gutschein_nr, redeem_voucher
 
     new_v = Verkauf(
         verkaufsdatum=datetime.now(timezone.utc),
@@ -172,8 +172,7 @@ def create_verkauf(verkauf: VerkaufCreate, session: SessionDep, credentials: HTT
         # Voucher handling: selling the GUTSCHEIN article creates a new voucher
         # (mirrors Java Kassieren.maybeInsertIntoGutschein).
         from ..models import Gutschein
-        max_nr = session.exec(select(Gutschein.gutschein_nr)).all()
-        next_nr = (max(max_nr) if max_nr else 199) + 1
+        next_nr = next_gutschein_nr(session)
         for d in prepared:
             art = session.get(Artikel, d.artikel_id) if d.artikel_id is not None else None
             if art is not None and art.artikel_nr == "GUTSCHEIN":

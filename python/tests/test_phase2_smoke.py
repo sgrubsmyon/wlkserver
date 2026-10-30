@@ -30,8 +30,9 @@ def test_kassenstand_crud(client):
 
 
 def test_gutschein_crud(client):
-    r = client.post("/gutschein/", json={"gutschein_nr": 1, "restbetrag": 10.0})
+    r = client.post("/gutschein/", json={"restbetrag": 10.0})
     assert r.status_code == 200
+    assert r.json()["gutschein_nr"] == 200
     gid = r.json()["gutschein_id"]
     r = client.get(f"/gutschein/{gid}")
     assert r.status_code == 200

@@ -43,6 +43,17 @@ def voucher_start_value(session, gutschein_nr: int) -> Decimal:
     return (_to_decimal(value) or Decimal("0")).quantize(CENT, rounding=ROUND_HALF_UP)
 
 
+def next_gutschein_nr(session) -> int:
+    """Next voucher number: `MAX(gutschein_nr) + 1` over all rows, starting at 200.
+
+    The backend assigns the number; clients cannot choose it. The global maximum
+    (not the Java POS' sale-linked maximum) also keeps manually or legacy
+    numbered vouchers from being reused.
+    """
+    highest = session.exec(select(func.max(Gutschein.gutschein_nr))).one()
+    return (int(highest) if highest is not None else 199) + 1
+
+
 def _creation_row(session, gutschein_nr: int) -> Gutschein | None:
     return session.exec(
         select(Gutschein)
@@ -174,5 +185,6 @@ __all__ = [
     "VOUCHER_LOCK",
     "voucher_balance",
     "voucher_start_value",
+    "next_gutschein_nr",
     "redeem_voucher",
 ]
