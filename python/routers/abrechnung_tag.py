@@ -1,4 +1,5 @@
 import logging
+import os
 from datetime import datetime, timezone, date
 from typing import Annotated, Optional
 
@@ -15,8 +16,10 @@ from ..models import (
     AbrechnungTagCreate,
     AbrechnungTagMwst,
     AbrechnungTagMwstPublic,
+    AbrechnungTagTse,
     Kassenstand,
     KassenstandCreate,
+    TSETransaction,
     Verkauf,
     VerkaufMwst,
 )
@@ -37,6 +40,36 @@ logger = logging.getLogger(__name__)
 
 def _last_tag(session: SessionDep):
     return session.exec(select(AbrechnungTag).order_by(AbrechnungTag.id.desc())).first()
+
+
+def _configured_tse_id() -> int | None:
+    """`bc.TSE_ID` of the Java POS: the TSE number stored in `abrechnung_tag_tse`."""
+    value = os.getenv("TSE_ID")
+    if not value:
+        return None
+    try:
+        return int(value)
+    except ValueError:
+        return None
+
+
+def _last_settled_tx_number(session: SessionDep, last: AbrechnungTag | None) -> int:
+    """TX number of the previous settlement's last receipt (Java `previousLastTxNumber`).
+
+    Used as the start of the fallback export by transaction number. Java also
+    returns 1 when the lookup is empty (which then starts at TX 2); we start at
+    TX 1 instead so no transaction is skipped.
+    """
+    if last is None:
+        return 0
+    row = session.exec(
+        select(TSETransaction)
+        .where(TSETransaction.rechnungs_nr == last.rechnungs_nr_bis)
+        .order_by(TSETransaction.transaction_id.desc())
+    ).first()
+    if row is None or row.transaction_number is None:
+        return 0
+    return row.transaction_number
 
 
 def _invalidate_period_settlements(session: SessionDep, zeitpunkt: datetime) -> None:
@@ -160,18 +193,28 @@ def create_abrechnung_tag(payload: Optional[AbrechnungTagCreate], session: Sessi
         ks_id = last_ks.kassenstand_id if last_ks is not None else None
 
     # Automatic incremental TSE export (best-effort), mirroring Java
-    # AbrechnungenTag.exportTSELog(): partial export by signature counter
-    # since the previous settlement, with fallback by TX number.
+    # AbrechnungenTag.exportTSELog(): partial export by signature counter since
+    # the previous settlement, falling back to the TX-number range when that
+    # yields nothing. The counter stored on the settlement is the one *after*
+    # the export (Java `lastSigCounter = tse.getSignatureCounter()`), which is
+    # where the next settlement continues.
     prev_sig = p.last_tse_sig_counter
     if prev_sig is None and last is not None:
         prev_sig = last.last_tse_sig_counter
     if prev_sig is None:
         prev_sig = 0
+    last_sig = None
     try:
         from ..utils.tse_client import tse_client
-        tse_client.export_partial(last_excluded_signature_counter=prev_sig)
+        if not tse_client.export_partial(last_excluded_signature_counter=prev_sig):
+            tse_client.export_partial(
+                start_tx_number=_last_settled_tx_number(session, last) + 1
+            )
+        last_sig = tse_client.get_signature_counter()
     except Exception:
-        pass
+        logger.exception("TSE export for the Tagesabschluss failed")
+    if p.last_tse_sig_counter is not None:
+        last_sig = p.last_tse_sig_counter  # explicit override (scripts/manual export)
 
     at = AbrechnungTag(
         z_kasse_id=p.z_kasse_id or "1",
@@ -180,7 +223,7 @@ def create_abrechnung_tag(payload: Optional[AbrechnungTagCreate], session: Sessi
         kassenstand_id=ks_id,
         rechnungs_nr_von=von,
         rechnungs_nr_bis=bis,
-        last_tse_sig_counter=p.last_tse_sig_counter if p.last_tse_sig_counter is not None else prev_sig,
+        last_tse_sig_counter=last_sig,
         user_id=user_id,
     )
     at.id = None
@@ -197,6 +240,13 @@ def create_abrechnung_tag(payload: Optional[AbrechnungTagCreate], session: Sessi
             bar_brutto=vals["bar"],
         )
         session.add(row)
+    session.commit()
+
+    # One TSE status row per settlement (Java AbrechnungenTag.insertTagesAbrechnung
+    # always inserts it, with NULL status columns when the TSE is not operational).
+    # The serial/algo/certificate columns need the SEAPI status getters, which the
+    # adapter does not wrap yet.
+    session.add(AbrechnungTagTse(id=at.id, tse_id=_configured_tse_id()))
     session.commit()
 
     # A backdated daily settlement reopens its month and year.

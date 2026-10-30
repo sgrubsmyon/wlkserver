@@ -3,7 +3,7 @@
 > **Sync note**: This document and `concepts/IMPLEMENTATION_PLAN.md` must be kept in sync. When implementation progress changes, update both files so new sessions without prior memory see a consistent status.
 
 > **Last Updated**: 2026-10-28  
-> **Status**: Phases 1-5 implemented at router level (TSE export adapter untested without hardware); main Phase 6/7 flows wired (see "Business Logic Wiring Gaps" for what remains); **2026-10-28 audit: #1 DSFinV-K export, #2 sale auxiliary lines, #3 Anzahlung split, #4 month/year invalidation and #5 Zählprotokoll lifecycle are done (see "Remaining business-logic gaps"); remaining #6 `abrechnung_tag_tse`/sig counter and #7 real training mode, plus minor divergences**; auth enforced on all endpoints (admin role for admin operations); parity audit of the remaining low-priority endpoints done and resolved (see "Parity Audit"), Bestellung positions + date filter implemented; bar_brutto aggregation matches Java; sale workflow (validation, automatic discounts, all four modes, Pfand/RABATT/Aufschlag/Gutschein-Einlösung positions, Anzahlung creation/resolution), storno (payment-mode parity, cash payout, settlement lock, rollback, attribution), cash register (payment, balance validation, end-of-day preview) complete; validation framework finished (model constraints + `ensure_*` helpers in use); voucher redemption uses the Java balance calculation; search/filter/pagination/sorting finished for all list endpoints; Bestellung CSV import supports positions; Bestellung/Inventur CSV export added (ODS deferred); CORS configured; core `/training` endpoints; integration tests incl. concurrency; same-origin nginx deployment and script automation documented as planned; VAT module Java-parity checked, 100% tested, rounding method configurable; test coverage 90%
+> **Status**: Phases 1-5 implemented at router level (TSE export adapter untested without hardware); main Phase 6/7 flows wired (see "Business Logic Wiring Gaps" for what remains); **2026-10-28 audit: #1 DSFinV-K export, #2 sale auxiliary lines, #3 Anzahlung split, #4 month/year invalidation, #5 Zählprotokoll lifecycle and #6 `abrechnung_tag_tse`/signature counter are done (see "Remaining business-logic gaps"); remaining #7 real training mode, plus minor divergences**; auth enforced on all endpoints (admin role for admin operations); parity audit of the remaining low-priority endpoints done and resolved (see "Parity Audit"), Bestellung positions + date filter implemented; bar_brutto aggregation matches Java; sale workflow (validation, automatic discounts, all four modes, Pfand/RABATT/Aufschlag/Gutschein-Einlösung positions, Anzahlung creation/resolution), storno (payment-mode parity, cash payout, settlement lock, rollback, attribution), cash register (payment, balance validation, end-of-day preview) complete; validation framework finished (model constraints + `ensure_*` helpers in use); voucher redemption uses the Java balance calculation; search/filter/pagination/sorting finished for all list endpoints; Bestellung CSV import supports positions; Bestellung/Inventur CSV export added (ODS deferred); CORS configured; core `/training` endpoints; integration tests incl. concurrency; same-origin nginx deployment and script automation documented as planned; VAT module Java-parity checked, 100% tested, rounding method configurable; test coverage 90%
 
 ---
 
@@ -149,7 +149,7 @@
 - [x] Stornos/retouren handled in mwst + bar aggregation; entnahmen subtracted from closing balance (step 5)
 - [x] Full Java aggregation parity (storno/retouren reporting in abrechnung response) - items 5-8
 - [x] kassenstand entry validation during Tagesabschluss (provided `kassenstand_id` must exist)
-- [ ] Open: `abrechnung_tag_tse` row (see "Remaining business-logic gaps" #6)
+- [x] TSE status row written by `POST /abrechnung/tag`; remaining open item: training mode (#7)
 
 - [x] **Abrechnung Monat** - models + router + smoke tests
 - [x] GET /abrechnung/monat
@@ -292,7 +292,7 @@
 
 ## 🔴 HIGH PRIORITY - Remaining business-logic gaps (2026-10-28 audit)
 
-Audit of `python/` against the Java POS (`../git/src/org/weltladen_bonn/pos/`). None of these is TSE hardware; #6 is TSE-adjacent but pure logic/DB. `concepts/IMPLEMENTATION_PLAN.md` mirrors this list with the full Java references.
+Audit of `python/` against the Java POS (`../git/src/org/weltladen_bonn/pos/`). #1-#6 are done; the only functional gap left is #7 (real training mode). The TSE adapter itself is untested without hardware. `concepts/IMPLEMENTATION_PLAN.md` mirrors this list with the full Java references.
 
 ### #1 DSFinV-K export ✅ Done (2026-10-30)
 - [x] Export the DSFinV-K modules the Java POS writes on every Tagesabschluss: `Stamm_Abschluss`/`Orte`/`Kassen`/`Terminals`/`Agenturen`/`USt`/`TSE`, `Z_GV_Typ` (Anfangsbestand, Umsatz, Pfand, PfandRückzahlung, Rabatt, Aufschlag, MehrzweckgutscheinKauf/-Einlösung) and `TSE_Transaktionen`, plus `index.xml` and the DTD (`python/business/dsfinvk_export.py`, column order and CSV formatting parsed from the official `index.xml`)
@@ -328,11 +328,12 @@ Audit of `python/` against the Java POS (`../git/src/org/weltladen_bonn/pos/`). 
 - A `POST /zaehlprotokoll` without `abrechnung_tag_id` returns `400` (the nested field in the settlement payload is optional and its id is ignored)
 - Refs: `AbrechnungenTag.insertZaehlprotokoll()`, `setZaehlprotokollInactive()`. Implementation: `python/business/count_protocol.py`, `python/routers/zaehlprotokoll.py`, `python/routers/abrechnung_tag.py`
 
-### #6 `abrechnung_tag_tse` + TSE signature counter
-- [ ] Insert one `AbrechnungTagTse` row per settlement (all TSE columns nullable when no device is present), as `insertTagesAbrechnung` always does
-- [ ] Store the signature counter *after* the export (the current TSE counter), not the previous value; today `POST /abrechnung/tag` persists the previous counter, so the next settlement re-exports the same range
-- [ ] Add the TX-number fallback (`previousLastTxNumber`) of `exportTSELog()`
-- Refs: `AbrechnungenTag.insertTagesAbrechnung()`, `exportTSELog()`. Targets: `python/routers/abrechnung_tag.py`, `python/utils/tse_client.py`
+### #6 `abrechnung_tag_tse` + TSE signature counter ✅ Done (2026-10-30)
+- [x] Insert one `AbrechnungTagTse` row per settlement (all TSE status columns nullable when no device is present), as `insertTagesAbrechnung` always does; `tse_id` comes from the `TSE_ID` env var (Java `bc.TSE_ID`)
+- [x] Store the signature counter *after* the export (the current TSE counter, `tse_client.get_signature_counter()`), not the previous value; an explicit `last_tse_sig_counter` in the request still overrides both the export start and the stored value for scripts/manual exports. Without a TSE the counter stays `NULL` (Java `lastSigCounter = null`), so nothing is re-exported
+- [x] Add the TX-number fallback of `exportTSELog()`: when the sig-counter export returns no data, export from the previous settlement's last TX number + 1 (`_last_settled_tx_number`; starts at TX 1 instead of Java's TX 2 when no previous TX exists)
+- TSE status columns (`tse_serial`, `tse_sig_algo`, `tse_time_format`, `tse_pd_encoding`, `tse_public_key`, certificate parts) stay `NULL` until the SEAPI status getters are wrapped in `tse_client`; the DSFinV-K `tse.csv` already reads the row
+- Refs: `AbrechnungenTag.insertTagesAbrechnung()`, `exportTSELog()`. Implementation: `python/routers/abrechnung_tag.py`; tests in `python/tests/test_abrechnung_tag.py` (row, current counter, no-TSE `NULL`, explicit override, TX fallback)
 
 ### #7 Training mode as a real mode
 - [ ] `TRAINING_MODE` must reroute every cashier table like `WindowContent.tableForMode()`: `verkauf`, `verkauf_details`, `verkauf_mwst`, `kassenstand`, `gutschein`, `anzahlung`, `anzahlung_details`, `zaehlprotokoll`, `zaehlprotokoll_details`, `abrechnung_tag(_mwst/_tse)`, `abrechnung_monat(_mwst)`, `abrechnung_jahr(_mwst)`; or reject production writes while the flag is set
@@ -499,8 +500,8 @@ The remaining imported items are quality/production tasks, tracked below.
 
 ### Business Logic Status
 - **Business Logic Ported**: CRUD + settlement aggregation + VAT/sale-workflow/storno/cash-register modules wired into the endpoints; VAT module is Java-parity checked and fully tested
-- **Business Logic NOT wired**: TSE hardware (adapter untested); training mode covers sales only; audit #6 `abrechnung_tag_tse`/sig counter and #7 real training mode open (see "Remaining business-logic gaps")
-- **Remaining Java logic**: `abrechnung_tag_tse`/sig counter, real training mode; plus validation/edge cases
+- **Business Logic NOT wired**: TSE hardware (adapter untested); audit #7 real training mode open (see "Remaining business-logic gaps")
+- **Remaining Java logic**: real training mode; plus validation/edge cases
 
 ### Testing Status
 - **Test Files**: 24 (incl. dedicated tests for abrechnung_monat/jahr, tse, sale_workflow, storno_logic, import_export)
@@ -515,7 +516,7 @@ The remaining imported items are quality/production tasks, tracked below.
 3. **Integration tests**: done in `test_integration.py` (workflows, cross-entity effects, concurrent sales)
 4. **Coverage**: target 80%+ reached; remaining gaps: tse_client.py 44%, users 33%, rabattaktion 33%
 5. **Validation**: done (model constraints + `ensure_*` helpers wired, see Validation Framework)
-6. **Remaining business logic** (order: #6 `abrechnung_tag_tse`/sig counter, #7 training mode; #1-#5 done) - see "Remaining business-logic gaps (2026-10-28 audit)"
+6. **Remaining business logic** (#7 real training mode; #1-#6 done) - see "Remaining business-logic gaps (2026-10-28 audit)"
 7. **Training mode**: extend the `/training` endpoints (storno, settlements, gutschein/anzahlung) if the frontend needs them, and stop normal endpoints from writing production tables while `TRAINING_MODE` is set (#7)
 8. **Import/Export**: CSV exports for Bestellung and Inventur exist; ODS export is deferred to a later phase (see "Phase 7" above)
 9. **Documentation**: migration guide (Java POS → API), database schema reference, consistent docstrings, deployment/HTTPS docs

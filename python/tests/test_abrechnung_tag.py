@@ -189,3 +189,90 @@ def test_backdated_daily_settlement_reopens_month_and_year(client, session):
     # after recreating the month, the year is due again
     assert client.post("/abrechnung/monat/", json={"monat": "2026-08"}).status_code == 200
     assert client.get("/abrechnung/jahr/offen").json() == [2026]
+
+
+def test_settlement_writes_abrechnung_tag_tse_row(client, session, monkeypatch):
+    from python.models import AbrechnungTagTse
+
+    monkeypatch.setenv("TSE_ID", "7")
+    a = _seed_artikel(session)
+    client.post("/verkauf/", json={
+        "verkauf_details": [{"artikel_id": a.artikel_id, "stueckzahl": 1}],
+    })
+    r = client.post("/abrechnung/tag/", json={})
+    assert r.status_code == 200
+
+    row = session.get(AbrechnungTagTse, r.json()["id"])
+    assert row is not None
+    assert row.tse_id == 7
+    # status columns stay NULL while the SEAPI status getters are not wrapped
+    assert row.tse_serial is None
+    assert row.tse_cert_i is None
+
+
+def test_settlement_stores_current_tse_signature_counter(client, session, monkeypatch):
+    from python.utils.tse_client import tse_client
+
+    monkeypatch.setattr(tse_client, "get_signature_counter", lambda: 99)
+    a = _seed_artikel(session)
+    client.post("/verkauf/", json={
+        "verkauf_details": [{"artikel_id": a.artikel_id, "stueckzahl": 1}],
+    })
+    r = client.post("/abrechnung/tag/", json={})
+    assert r.status_code == 200
+    tag = client.get(f"/abrechnung/tag/{r.json()['id']}").json()
+    assert tag["last_tse_sig_counter"] == 99
+
+
+def test_settlement_without_tse_stores_no_signature_counter(client, session):
+    a = _seed_artikel(session)
+    client.post("/verkauf/", json={
+        "verkauf_details": [{"artikel_id": a.artikel_id, "stueckzahl": 1}],
+    })
+    r = client.post("/abrechnung/tag/", json={})
+    assert r.status_code == 200
+    tag = client.get(f"/abrechnung/tag/{r.json()['id']}").json()
+    assert tag["last_tse_sig_counter"] is None
+
+
+def test_tse_export_falls_back_to_tx_number(client, session, monkeypatch):
+    from python.models import TSETransaction
+    from python.utils.tse_client import tse_client
+
+    calls = []
+    monkeypatch.setattr(tse_client, "export_partial", lambda **kwargs: calls.append(kwargs) or b"")
+    a = _seed_artikel(session)
+
+    first_nr = client.post("/verkauf/", json={
+        "verkauf_details": [{"artikel_id": a.artikel_id, "stueckzahl": 1}],
+    }).json()["rechnungs_nr"]
+    assert client.post("/abrechnung/tag/", json={}).status_code == 200
+    calls.clear()
+
+    session.add(TSETransaction(
+        transaction_number=41, rechnungs_nr=first_nr, training=False,
+        transaction_start="2026-01-01T12:00:00.000+01:00",
+        process_type="Kassenbeleg-V1",
+    ))
+    session.commit()
+    client.post("/verkauf/", json={
+        "verkauf_details": [{"artikel_id": a.artikel_id, "stueckzahl": 1}],
+    })
+    assert client.post("/abrechnung/tag/", json={}).status_code == 200
+
+    assert calls[0] == {"last_excluded_signature_counter": 0}
+    assert calls[1] == {"start_tx_number": 42}
+
+
+def test_settlement_accepts_explicit_signature_counter_override(client, session, monkeypatch):
+    from python.utils.tse_client import tse_client
+
+    monkeypatch.setattr(tse_client, "get_signature_counter", lambda: 99)
+    a = _seed_artikel(session)
+    client.post("/verkauf/", json={
+        "verkauf_details": [{"artikel_id": a.artikel_id, "stueckzahl": 1}],
+    })
+    r = client.post("/abrechnung/tag/", json={"last_tse_sig_counter": 5})
+    assert r.status_code == 200
+    tag = client.get(f"/abrechnung/tag/{r.json()['id']}").json()
+    assert tag["last_tse_sig_counter"] == 5

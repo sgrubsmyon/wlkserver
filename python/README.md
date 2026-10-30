@@ -30,6 +30,7 @@ precedence over `.env`. `.env` is git-ignored — never commit secrets.
 | `CORS_ORIGINS` | SvelteKit dev server (`localhost:5173`, `127.0.0.1:5173`) | Comma-separated allowed browser origins |
 | `TRAINING_MODE` | off | `1`/`true`/`yes`/`on` marks the instance as training mode |
 | `TSE_DEVICE_PATH`, `TSE_LIB_PATH`, `TSE_CLIENT_ID` | unset / `WeltladenKasse` | TSE (cryptovision SE-API) adapter settings |
+| `TSE_ID` | unset | TSE number stored in `abrechnung_tag_tse` (Java `bc.TSE_ID`, used by DSFinV-K) |
 | `VAT_ROUNDING_METHOD` | `horizontal` | Receipt VAT rounding: `horizontal` (per position, Java POS) or `vertical` (per VAT rate, e-invoice compatible). Invalid values abort startup |
 | `DSFINVK_EXPORT_DIR` | unset | Directory for the DSFinV-K ZIP written after every Tagesabschluss; unset means on-demand only |
 | `DSFINVK_<KEY>` | see below | DSFinV-K Stammdaten (`Z_KASSE_ID`, `TAXONOMIE_VERSION`, `NAME`, `STRASSE`, `PLZ`, `ORT`, `LAND`, `STNR`, `USTID`, `LOC_*`, `KASSE_*`, `TERMINAL_*`) |
