@@ -348,6 +348,7 @@ Audit of `python/` against the Java POS (`../git/src/org/weltladen_bonn/pos/`). 
 - [x] `create_verkauf` writes sale, details, VAT, voucher and Kassenstand in one transaction (single commit; the voucher and Kassenstand locks are held until it). A failing write rolls the whole receipt back (`test_failed_sale_rolls_back_everything`)
 - [x] Special articles are detected by documented `artikel_nr` values (`RABATT1`, `RABATT2`, `ANPASSUNG`, `GUTSCHEINEINLOES`, `GUTSCHEIN`) instead of the Java `WindowContent` IDs; they match the production master data
 - [x] Edge-case validation (2026-10-31): `POST /verkauf/` rejects a cash sale whose `kunde_gibt` is below the total (negative change), a client-set `storno_von` (stornos only via `POST /verkauf/{rechnungs_nr}/storno`, mirroring `HeutigeRechnungen.insertStornoIntoVerkauf`) and `gutschein_einloesung_betrag` without `gutschein_einloesung_nr` (was silently ignored). Attribution now always comes from the token: the payload `user_id` field of `VerkaufCreate` can no longer book a receipt for another user. Invalid `von`/`bis` dates on `GET /verkauf/` and `GET /bestellung/` are a `422` instead of a `500` (typed as `datetime` like `/kassenstand`). Covered by `test_sale_rejects_invalid_edge_cases` in `tests/test_integration.py`
+- [x] Kassenstand reset suggestion (2026-10-31): `POST /kassenstand/zuruecksetzen/vorschau` returns the Java `KassenstandZuruecksetzenDialog` suggestion (`bc.sollMuenzKassenstand`/`sollScheinKassenstand` from `SOLL_MUENZ_KASSENSTAND`/`SOLL_SCHEIN_KASSENSTAND`). Instead of Java's two branches it reports both buckets as signed changes plus a signed `tausch` (notes↔coins), derived as `tausch = min(-need_notes, ceil_note(need_coins))` / `-floor_note(min(need_notes, -need_coins))`, so an under-filled drawer (negative `entnahme`) with a wrong coin/note split is covered and the target (100 € notes / 50 € coins) is always reached. Unknown denominations are a `400`, missing ones count zero (Java NPEs). Client guide: `docs/KASSENSTAND_UND_ABRECHNUNG.md`; tests in `tests/test_kassenstand.py` (fixtures + property test over drawer states)
 - [ ] Price-tag export (`PreisschilderExport`, ODT templates) is client-side output like the deferred ODS exports
 
 ## 🟢 LOW PRIORITY - Utilities and Enhancements
@@ -386,7 +387,7 @@ Audit of `python/` against the Java POS (`../git/src/org/weltladen_bonn/pos/`). 
 
 ## 📚 Documentation Tasks
 
-- [ ] API Documentation Enhancement - `docs/API.md` and auto-generated `/docs` exist; endpoint reference still incomplete
+- [ ] API Documentation Enhancement - `docs/API.md` and auto-generated `/docs` exist; the Kassenstand and Abrechnung flow (incl. JSON examples) is documented in `docs/KASSENSTAND_UND_ABRECHNUNG.md`, the remaining endpoint reference is still incomplete
 - [ ] Code Documentation - docstrings are inconsistent across routers/business modules
 - [ ] Migration Documentation - guide for switching from the Java POS to the API is missing
 - [ ] Setup and Deployment - dev/prod start, auth and HTTPS are in `python/README.md`; a complete deployment guide (TLS, service unit, backup) is missing. The planned same-origin nginx topology and the script-automation rules are documented in `concepts/IMPLEMENTATION_PLAN.md` (Phase 7.4) and in the Production Readiness section here; the nginx/systemd artifacts are not written yet.

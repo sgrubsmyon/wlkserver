@@ -29,10 +29,13 @@ Every endpoint except `POST /auth/login` requires
 - `/artikel`, `/lieferant`, `/produktgruppe`, `/rabattaktion` — master data (CRUD)
 - `/mwst`, `/pfand` — VAT rates and deposits (admin-only write)
 - `/verkauf` — sales (create, read, storno)
-- `/kassenstand` — cash register balance
+- `/kassenstand` — cash register balance; `POST /kassenstand/zuruecksetzen/vorschau`
+  suggests how to count the drawer down to its target stock
 - `/gutschein` — vouchers
 - `/anzahlung` — installment payments
 - `/abrechnung/tag`, `/abrechnung/monat`, `/abrechnung/jahr` — settlements
+  (detailed guide with request/response examples:
+  [`docs/KASSENSTAND_UND_ABRECHNUNG.md`](KASSENSTAND_UND_ABRECHNUNG.md))
 - `/zaehlprotokoll` — counting protocols
 - `/bestellung` — orders incl. positions (details)
 - `/tse` — TSE transactions and exports

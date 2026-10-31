@@ -1,11 +1,12 @@
 """Cash register (Kasse/Kassenstand) business logic."""
 from __future__ import annotations
 
+import os
 import threading
 from contextlib import nullcontext
 from datetime import datetime, timezone
-from decimal import Decimal
-from typing import Any, Optional
+from decimal import Decimal, InvalidOperation, ROUND_CEILING, ROUND_FLOOR
+from typing import Any, Mapping, Optional
 
 from fastapi import HTTPException
 from sqlmodel import Session, select
@@ -14,6 +15,18 @@ from ..models import Kassenstand, Verkauf
 from ..session import is_training_mode
 from .vat_calculator import _to_decimal
 EC_THRESHOLD = Decimal("10.00")
+
+CENT = Decimal("0.01")
+# Euro denominations, Java `BaseClass.muenz_werte`/`schein_werte`.
+COIN_DENOMINATIONS = (
+    Decimal("0.01"), Decimal("0.02"), Decimal("0.05"), Decimal("0.10"),
+    Decimal("0.20"), Decimal("0.50"), Decimal("1.00"), Decimal("2.00"),
+)
+NOTE_DENOMINATIONS = (
+    Decimal("5.00"), Decimal("10.00"), Decimal("20.00"),
+    Decimal("50.00"), Decimal("100.00"), Decimal("200.00"),
+)
+SMALLEST_NOTE = NOTE_DENOMINATIONS[0]
 
 # Balance updates are read-modify-write; serialize them in this process and lock
 # the balance row on databases that support SELECT ... FOR UPDATE (MariaDB).
@@ -67,6 +80,84 @@ def validate_balance_change(alter, neuer, entnahme: bool = False) -> Decimal:
         if new < 0:
             raise HTTPException(status_code=400, detail="Entnahme exceeds the current Kassenstand")
     return new
+
+
+def drawer_targets() -> tuple[Decimal, Decimal]:
+    """Configured target drawer stock in coins and notes (EUR).
+
+    Mirrors `bc.sollMuenzKassenstand` / `bc.sollScheinKassenstand` of the Java
+    config (`SOLL_MUENZ_KASSENSTAND`, `SOLL_SCHEIN_KASSENSTAND`, 50/100 by default).
+    """
+    def read(name: str, default: str) -> Decimal:
+        raw = os.getenv(name, default)
+        try:
+            value = Decimal(str(raw).strip())
+        except InvalidOperation:
+            raise ValueError(f"Invalid {name} {raw!r}; expected an amount in EUR")
+        if value < 0 or value % CENT:
+            raise ValueError(f"Invalid {name} {raw!r}; expected a non-negative cent amount")
+        return value
+
+    return read("SOLL_MUENZ_KASSENSTAND", "50.00"), read("SOLL_SCHEIN_KASSENSTAND", "100.00")
+
+
+def _whole_notes(amount: Decimal, rounding: str) -> Decimal:
+    return (amount / SMALLEST_NOTE).to_integral_value(rounding=rounding) * SMALLEST_NOTE
+
+
+def kassenstand_reset_suggestion(counts: Mapping[Decimal, int]) -> dict:
+    """How to bring the counted cash drawer back to its target stock.
+
+    Mirrors `KassenstandZuruecksetzenDialog.showHeader` of the Java POS, but
+    derives both buckets instead of branching on the sign of the net difference,
+    so an under-filled drawer (negative `entnahme`) with a wrong coin/note split
+    is covered as well.
+
+    `counts` maps denomination -> counted pieces (missing denominations count 0).
+    `tausch` is the amount moved between the buckets: positive = notes to coins,
+    negative = coins to notes. `scheine_delta` / `muenzen_delta` are the remaining
+    signed changes of each bucket: positive = take from the spare-change till,
+    negative = remove from the drawer. Applying `tausch` first and then both
+    deltas always ends at the target stock.
+    """
+    unknown = set(counts) - set(COIN_DENOMINATIONS) - set(NOTE_DENOMINATIONS)
+    if unknown:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unknown denomination(s): {', '.join(sorted(str(u) for u in unknown))}",
+        )
+    soll_muenzen, soll_scheine = drawer_targets()
+    coins = sum((wert * counts.get(wert, 0) for wert in COIN_DENOMINATIONS), Decimal("0"))
+    notes = sum((wert * counts.get(wert, 0) for wert in NOTE_DENOMINATIONS), Decimal("0"))
+
+    # Per-bucket needs: positive = add, negative = remove.
+    need_notes = soll_scheine - notes
+    need_coins = soll_muenzen - coins
+    tausch = Decimal("0")
+    if need_notes <= 0 <= need_coins:
+        # notes over, coins short: only whole notes can be exchanged, the cents
+        # remainder stays a coin removal
+        tausch = min(-need_notes, _whole_notes(need_coins, ROUND_CEILING))
+    elif need_notes >= 0 >= need_coins:
+        # notes short, coins over: the exchanged notes come from the spare till,
+        # but the coins handed over must exist in the drawer
+        tausch = -_whole_notes(min(need_notes, -need_coins), ROUND_FLOOR)
+
+    soll = soll_scheine + soll_muenzen
+    counted = notes + coins
+    cent = lambda value: value.quantize(CENT)
+    return {
+        "soll_scheine": cent(soll_scheine),
+        "soll_muenzen": cent(soll_muenzen),
+        "soll_kassenstand": cent(soll),
+        "gezaehlt_scheine": cent(notes),
+        "gezaehlt_muenzen": cent(coins),
+        "gezaehlt_kassenstand": cent(counted),
+        "entnahme": cent(counted - soll),
+        "tausch": cent(tausch),
+        "scheine_delta": cent(need_notes + tausch),
+        "muenzen_delta": cent(need_coins - tausch),
+    }
 
 
 def update_kassenstand_for_sale(*args, **kwargs) -> Kassenstand:
@@ -289,6 +380,8 @@ __all__ = [
     "ec_payment_threshold_check",
     "update_kassenstand_for_sale",
     "validate_balance_change",
+    "drawer_targets",
+    "kassenstand_reset_suggestion",
     "is_training_mode",
     "last_settlement",
     "open_period_range",

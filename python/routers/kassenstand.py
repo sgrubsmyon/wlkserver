@@ -1,10 +1,14 @@
 from datetime import datetime, timezone
+from decimal import Decimal
 from typing import Annotated, Optional
 
 from fastapi import APIRouter, HTTPException, Query
 from sqlmodel import select
 
-from ..models import Kassenstand, KassenstandPublic, KassenstandCreate, Verkauf
+from ..models import (
+    Kassenstand, KassenstandCreate, KassenstandPublic, Verkauf,
+    ZaehlprotokollDetailsCreate,
+)
 from ..session import SessionDep
 from ..dependencies import bearer_scheme, require_user
 from fastapi.security import HTTPAuthorizationCredentials
@@ -55,6 +59,25 @@ def read_single_kassenstand(kassenstand_id: int, session: SessionDep) -> Kassens
     if not ks:
         raise HTTPException(status_code=404, detail="Kassenstand not found")
     return KassenstandPublic.model_validate(ks)
+
+
+@router.post("/zuruecksetzen/vorschau")
+def read_kassenstand_reset_suggestion(details: list[ZaehlprotokollDetailsCreate]) -> dict:
+    """Suggestion for bringing the counted drawer back to its target stock.
+
+    Read-only: takes the count in the same shape as the `zaehlprotokoll` detail
+    rows of `POST /abrechnung/tag`. The reset itself is the manual
+    `POST /kassenstand/` entry, exactly like the Java dialogue's
+    `insertIntoKassenstand`.
+    """
+    from ..business.cash_register import kassenstand_reset_suggestion
+
+    counts: dict[Decimal, int] = {}
+    for d in details:
+        key = Decimal(str(d.einheit))
+        counts[key] = counts.get(key, 0) + d.anzahl
+    # money as JSON numbers, like the other endpoints
+    return {key: float(value) for key, value in kassenstand_reset_suggestion(counts).items()}
 
 
 @router.post("/", response_model=KassenstandPublic)

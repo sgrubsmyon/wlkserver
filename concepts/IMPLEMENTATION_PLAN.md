@@ -48,6 +48,7 @@ Audit of `python/` against the Java POS (`../git/src/org/weltladen_bonn/pos/`). 
 - ✅ `create_verkauf` writes sale, details, VAT, voucher and Kassenstand in one transaction (single commit, locks held until it); a failing write rolls the receipt back.
 - ✅ Receipt-level discount ("Rabatt auf Rechnung", one RABATT line per VAT rate) is available as `rechnung_rabatt_relativ` on `POST /verkauf/` (done).
 - ✅ Special articles are detected by their master-data `artikel_nr` (`RABATT1`, `RABATT2`, `ANPASSUNG`, `ANZAHLUNG`, `ANZAHLAUFLOES`, `GUTSCHEINEINLOES`, `GUTSCHEIN`), which matches the Java `WindowContent` IDs 1, 2, 3, 4, 5, 6, 7 in production.
+- ✅ Kassenstand reset suggestion: `POST /kassenstand/zuruecksetzen/vorschau` (`business/cash_register.kassenstand_reset_suggestion`) mirrors `KassenstandZuruecksetzenDialog.showHeader` with the targets from `SOLL_MUENZ_KASSENSTAND`/`SOLL_SCHEIN_KASSENSTAND`. It derives both buckets as signed changes plus a signed notes↔coins `tausch` instead of Java's two sign branches, so under-filled drawers are covered; the client guide is `docs/KASSENSTAND_UND_ABRECHNUNG.md`.
 - Price-tag export (`PreisschilderExport`, ODT templates) is client-side output like the deferred ODS exports.
 
 All functional audit gaps and the edge-case validation pass are done; the remaining item is the untested TSE adapter. Tracking: `concepts/TODO.md` → "Business-logic gaps".
