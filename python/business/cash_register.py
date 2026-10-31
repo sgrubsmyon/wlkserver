@@ -14,6 +14,7 @@ from ..models import (
     Kassenstand,
     Verkauf,
 )
+from ..repositories import latest_kassenstand, open_receipt_range, sales_between
 from .. import config
 from .vat_calculator import _to_decimal
 EC_THRESHOLD = Decimal("10.00")
@@ -44,7 +45,7 @@ def _resolve(a, b):
 
 
 def get_current_kassenstand(session: Session) -> Optional[Kassenstand]:
-    return session.exec(select(Kassenstand).order_by(Kassenstand.kassenstand_id.desc())).first()
+    return latest_kassenstand(session)
 
 
 def get_current_balance(session: Session) -> Decimal:
@@ -187,11 +188,7 @@ def update_kassenstand_for_sale(*args, **kwargs) -> Kassenstand:
         for d in (v.verkauf_details or []):
             if d.ges_preis is not None:
                 total += _to_decimal(d.ges_preis) or Decimal("0")
-        last = session.exec(
-            select(Kassenstand)
-            .order_by(Kassenstand.kassenstand_id.desc())
-            .with_for_update()
-        ).first()
+        last = latest_kassenstand(session, for_update=True)
         alter = _to_decimal(last.neuer_kassenstand) if last is not None else Decimal("0")
         alter = alter or Decimal("0")
         neuer = (alter + total).quantize(Decimal("0.01"))
@@ -230,16 +227,7 @@ def last_settlement(session: Session):
 def open_period_range(session: Session):
     """Receipt-number range since the last Tagesabschluss (None if no open sales)."""
     last = last_settlement(session)
-    last_bis = last.rechnungs_nr_bis if last is not None else 0
-    first_sale = session.exec(
-        select(Verkauf).where(Verkauf.rechnungs_nr > last_bis).order_by(Verkauf.rechnungs_nr)
-    ).first()
-    if first_sale is None:
-        return None
-    last_sale = session.exec(
-        select(Verkauf).where(Verkauf.rechnungs_nr > last_bis).order_by(Verkauf.rechnungs_nr.desc())
-    ).first()
-    return first_sale.rechnungs_nr, last_sale.rechnungs_nr
+    return open_receipt_range(session, last.rechnungs_nr_bis if last is not None else 0)
 
 
 def aggregate_period(session: Session, von: int, bis: int) -> dict:
@@ -249,9 +237,7 @@ def aggregate_period(session: Session, von: int, bis: int) -> dict:
     `bar_brutto` from the detail prices of cash (non-EC) receipts only, plus the
     separate storno (original amounts) and retouren reporting.
     """
-    sales = session.exec(
-        select(Verkauf).where(Verkauf.rechnungs_nr >= von, Verkauf.rechnungs_nr <= bis)
-    ).all()
+    sales = sales_between(session, von, bis)
 
     stornoed_numbers = {v.storno_von for v in sales if v.storno_von is not None}
     storno_summe = 0.0

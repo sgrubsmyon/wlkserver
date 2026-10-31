@@ -22,6 +22,7 @@ from ..models import (
 from ..schemas import (
     VerkaufDetailsCreate,
 )
+from ..repositories import voucher_rows
 from .cash_register import (
     EC_THRESHOLD,
     KASSENSTAND_LOCK,
@@ -699,11 +700,7 @@ def create_sale(session: Session, payload, user_id=None):
                  if art is not None and art.artikel_nr == "GUTSCHEINEINLOES"),
                 None,
             )
-            voucher = session.exec(
-                select(Gutschein)
-                .where(Gutschein.gutschein_nr == payload.gutschein_einloesung_nr)
-                .order_by(Gutschein.gutschein_id)
-            ).first()
+            voucher = next(iter(voucher_rows(session, payload.gutschein_einloesung_nr)), None)
             if einloesung is None or voucher is None:
                 raise DomainError(detail="Gutschein not found")
 

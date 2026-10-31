@@ -14,6 +14,7 @@ from ..models import (
     VerkaufDetails,
     VerkaufMwst,
 )
+from ..repositories import storno_of
 from .vat_calculator import _to_decimal
 
 
@@ -23,7 +24,7 @@ def can_storno(verkauf: Verkauf, session: Optional[Session] = None) -> tuple[boo
     if getattr(verkauf, "storno_von", None) is not None:
         return False, "Cannot storno a storno"
     if session is not None:
-        existing = session.exec(select(Verkauf).where(Verkauf.storno_von == verkauf.rechnungs_nr)).first()
+        existing = storno_of(session, verkauf.rechnungs_nr)
         if existing is not None:
             return False, "This Verkauf already has a storno"
         settled = session.exec(
@@ -170,9 +171,7 @@ def handle_storno_installment(session: Session, original: Verkauf, commit: bool 
     ).all()
     # Find the storno sale created for original
     from ..models import Verkauf
-    storno_sale = session.exec(
-        select(Verkauf).where(Verkauf.storno_von == original.rechnungs_nr)
-    ).first()
+    storno_sale = storno_of(session, original.rechnungs_nr)
     target_nr = storno_sale.rechnungs_nr if storno_sale is not None else original.rechnungs_nr
     for a in open_anz:
         new_a = Anzahlung(

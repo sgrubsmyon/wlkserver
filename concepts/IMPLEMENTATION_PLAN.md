@@ -647,7 +647,7 @@ Target layering: router (HTTP, auth, serialization) → service/use case (orches
 - [x] **4. Split tables from schemas** (2026-10-31): `python/models.py` is now the package `python/models/` — `tables.py` holds the `table=True` classes and their column bases (plus `BESTELLUNG_TYPEN` and the UTC datetime listeners), `__init__.py` re-exports them, so `from ..models import Artikel` still works. The 58 DTOs moved to `python/schemas/__init__.py` (`Public`/`Create`/`Update`/`Details`/`Einloesen`…), which imports the column bases from `models.tables` — one direction only, no cycle. All routers/business modules/tests import DTOs from `..schemas`. Response assembly is centralised in `python/schemas/serializers.py`: `verkauf_public(row, include_details, include_mwst)` replaces the three copies of the `model_dump()`/`update={artikel_name…}` block in `routers/verkauf.py`.
 - [x] **5. Shared list helper** (2026-10-31): `python/utils/pagination.py` `paginate(session, selection, offset, limit, *order_by)` replaces the duplicated `offset`/`limit`/`order_by` tails in all 18 list endpoints (single- and multi-column sorting; the master-data lists pass no order).
 - [x] **6. Settings module** (2026-10-31): `python/config.py` is the only module that reads environment variables (`env()` for the keyed groups plus named accessors: `training_mode`, `database_url`, `training_db_url`, `auth_secret`, `auth_token_ttl`, `cors_origins`, `tse_id`, `tse_lib_path`, `tse_device_path`, `tse_client_id`, `dsfinvk_export_dir`). It also owns the single `load_dotenv()` call (previously both `session.py` and `dependencies.py`). `session.py`, `main.py`, `utils/auth.py`, `utils/tse_client.py` and the business modules now import it; values stay read-on-access, so tests/scripts can still change them at runtime.
-- [ ] **7. Repository layer only where it pays**: a `repositories/`/`dao.py` for queries used by several services (sales in range, open Kassenstand, voucher family) — not a wrapper around every CRUD call.
+- [x] **7. Repository layer only where it pays** (2026-10-31): `python/repositories/__init__.py` holds just the queries that more than one service needs — `latest_kassenstand(for_update=…)` (balance read / `/kassenstand/aktuell` / settlement link), `open_receipt_range(after_nr)` (first+last receipt in one query instead of two), `sales_between(von, bis)` (settlement aggregation and DSFinV-K `Umsatz`), `voucher_rows(nr, for_update=…)` (redemption lock and the sale flow's creation row) and `storno_of(nr)` (storno duplicate check and installment reversal). Everything else stays a plain `session.get`/`select` in its service — no per-table repository classes.
 - [ ] **8. Test re-alignment**: domain/service tests without `TestClient` (needs steps 1-3; those purely business-level tests exist already), HTTP tests kept as contract tests.
 
 Steps 1-3 are what "proper separation of concerns" means for the success criteria; 4-5 (and the optional 6-8) are hygiene.
@@ -784,6 +784,8 @@ python/
 ├── schemas/                   # API schemas (Public/Create/Update/Details)
 │   ├── __init__.py
 │   └── serializers.py         # response assembly (e.g. `verkauf_public`)
+├── repositories/              # Read queries shared by several services
+│   └── __init__.py
 ├── business/                  # Business logic modules
 │   ├── __init__.py
 │   ├── errors.py              # NEW: DomainError/NotFoundError (mapped to HTTP in main.py)

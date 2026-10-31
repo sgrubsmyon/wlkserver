@@ -19,6 +19,7 @@ from ..dependencies import bearer_scheme, require_user
 from fastapi.security import HTTPAuthorizationCredentials
 from fastapi import Depends
 from ..utils.pagination import paginate
+from ..repositories import latest_kassenstand
 
 router = APIRouter(
     prefix="/kassenstand",
@@ -49,9 +50,7 @@ def read_kassenstaende(
 
 @router.get("/aktuell")
 def read_kassenstand_aktuell(session: SessionDep) -> KassenstandPublic | None:
-    ks = session.exec(
-        select(Kassenstand).order_by(Kassenstand.kassenstand_id.desc())
-    ).first()
+    ks = latest_kassenstand(session)
     if not ks:
         return None
     return KassenstandPublic.model_validate(ks)

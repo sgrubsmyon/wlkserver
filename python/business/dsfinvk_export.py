@@ -36,8 +36,8 @@ from ..models import (
     Mwst,
     Pfand,
     TSETransaction,
-    Verkauf,
 )
+from ..repositories import sales_between
 from .sale_workflow import SPECIAL_ARTIKEL
 from .vat_calculator import _to_decimal
 
@@ -367,12 +367,7 @@ def build_dsfinvk_files(session: Session, abrechnung_tag_id: int) -> dict[str, b
         zero_rate.dsfinvk_ust_schluessel if zero_rate is not None else None,
     ))
 
-    sales = session.exec(
-        select(Verkauf).where(
-            Verkauf.rechnungs_nr >= at.rechnungs_nr_von,
-            Verkauf.rechnungs_nr <= at.rechnungs_nr_bis,
-        )
-    ).all()
+    sales = sales_between(session, at.rechnungs_nr_von, at.rechnungs_nr_bis)
 
     umsatz: dict[Decimal, list[Decimal]] = {}
     for sale in sales:

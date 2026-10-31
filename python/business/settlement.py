@@ -23,6 +23,7 @@ from ..schemas import (
     AbrechnungTagPublic,
 )
 from ..config import tse_id, training_mode
+from ..repositories import latest_kassenstand
 from .cash_register import aggregate_period, open_period_range
 from .count_protocol import insert_count_protocol
 from .errors import DomainError
@@ -145,9 +146,7 @@ def create_daily_settlement(
     if ks_id is not None and not session.get(Kassenstand, ks_id):
         raise DomainError(detail="Kassenstand not found")
     if ks_id is None:
-        last_ks = session.exec(
-            select(Kassenstand).order_by(Kassenstand.kassenstand_id.desc())
-        ).first()
+        last_ks = latest_kassenstand(session)
         ks_id = last_ks.kassenstand_id if last_ks is not None else None
 
     prev_sig = p.last_tse_sig_counter

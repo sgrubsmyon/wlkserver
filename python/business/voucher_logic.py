@@ -21,6 +21,7 @@ from ..models import (
     GutscheinCounter,
     VerkaufDetails,
 )
+from ..repositories import voucher_rows
 from ..utils.validation import ensure_positive
 from .vat_calculator import _to_decimal
 
@@ -118,12 +119,7 @@ def redeem_voucher(
     nr = original.gutschein_nr
 
     with (VOUCHER_LOCK if lock else nullcontext()):
-        session.exec(
-            select(Gutschein)
-            .where(Gutschein.gutschein_nr == nr)
-            .order_by(Gutschein.gutschein_id)
-            .with_for_update()
-        ).all()
+        voucher_rows(session, nr, for_update=True)
 
         vd = None
         if einloesung_in_vd_id is not None:
