@@ -11,7 +11,10 @@ from typing import Any, Mapping, Optional
 from .errors import DomainError, NotFoundError
 from sqlmodel import Session, select
 
-from ..models import Kassenstand, Verkauf
+from ..models import (
+    Kassenstand,
+    Verkauf,
+)
 from ..session import is_training_mode
 from .vat_calculator import _to_decimal
 EC_THRESHOLD = Decimal("10.00")

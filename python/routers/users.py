@@ -3,7 +3,12 @@ from typing import Annotated, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlmodel import select
 
-from ..models import User, UserPublic, UserCreate, UserUpdate
+from ..models import User
+from ..schemas import (
+    UserPublic,
+    UserCreate,
+    UserUpdate,
+)
 from ..session import SessionDep
 from ..dependencies import require_admin
 from ..utils.auth import hash_password

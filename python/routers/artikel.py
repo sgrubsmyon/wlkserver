@@ -7,7 +7,16 @@ from sqlmodel import select
 
 # from ..dependencies import get_token_header
 
-from ..models import Artikel, ArtikelPublic, ArtikelCreate, ArtikelUpdate, Lieferant, Produktgruppe
+from ..models import (
+    Artikel,
+    Lieferant,
+    Produktgruppe,
+)
+from ..schemas import (
+    ArtikelPublic,
+    ArtikelCreate,
+    ArtikelUpdate,
+)
 from ..session import SessionDep
 
 

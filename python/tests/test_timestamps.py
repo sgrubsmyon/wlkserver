@@ -4,9 +4,15 @@ from datetime import datetime, timezone, timedelta
 from sqlmodel import select
 
 from python.models import (
-    Artikel, ArtikelCreate, Lieferant, Produktgruppe,
-    Rabattaktion, RabattaktionCreate,
+    Artikel,
+    Lieferant,
+    Produktgruppe,
+    Rabattaktion,
     Verkauf,
+)
+from python.schemas import (
+    ArtikelCreate,
+    RabattaktionCreate,
 )
 from python.routers.artikel import create_artikel
 from python.routers.rabattaktion import create_rabattaktion

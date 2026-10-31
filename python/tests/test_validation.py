@@ -4,7 +4,11 @@ from datetime import datetime, timedelta, timezone
 from fastapi import HTTPException
 from pydantic import ValidationError
 
-from python.models import ArtikelCreate, RabattaktionCreate, ZaehlprotokollDetailsCreate
+from python.schemas import (
+    ArtikelCreate,
+    RabattaktionCreate,
+    ZaehlprotokollDetailsCreate,
+)
 from python.routers.rabattaktion import create_rabattaktion
 from python.utils.csv_import import import_artikel_from_csv
 from python.utils.validation import ensure_non_negative, ensure_positive, ensure_range

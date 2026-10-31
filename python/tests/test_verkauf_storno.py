@@ -7,7 +7,11 @@ from sqlmodel import select
 
 from python.main import app
 from python.routers.verkauf import storno_verkauf, read_single_verkauf
-from python.models import Verkauf, VerkaufDetails, VerkaufMwst
+from python.models import (
+    Verkauf,
+    VerkaufDetails,
+    VerkaufMwst,
+)
 from python.session import get_session
 
 
@@ -68,7 +72,7 @@ def test_storno_creates_inverted_entries(session):
 
 def test_create_verkauf_rejects_zero_stueckzahl(session):
     from python.routers.verkauf import create_verkauf
-    from python.models import VerkaufCreate
+    from python.schemas import VerkaufCreate
     payload = VerkaufCreate(verkauf_details=[{"artikel_id": 1, "stueckzahl": 0}])
     with pytest.raises(DomainError) as exc:
         create_verkauf(payload, session, None)
@@ -183,7 +187,11 @@ def test_storno_is_attributed_to_user(session):
 
 def test_storno_rolls_back_receipt_voucher_and_cash_on_failure(session, monkeypatch):
     from python.business import cash_register
-    from python.models import Artikel, Gutschein, Kassenstand
+    from python.models import (
+        Artikel,
+        Gutschein,
+        Kassenstand,
+    )
 
     # sale of a GUTSCHEIN article: its storno cancels the voucher, so the
     # rollback has to cover the storno receipt, the voucher row and the payout

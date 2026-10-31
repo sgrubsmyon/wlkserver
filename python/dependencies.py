@@ -5,7 +5,10 @@ from dotenv import load_dotenv
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
-from .models import Anmeldung, User
+from .models import (
+    Anmeldung,
+    User,
+)
 from .session import SessionDep
 from .utils.auth import decode_token
 

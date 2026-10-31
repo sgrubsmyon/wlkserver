@@ -11,7 +11,10 @@ from datetime import datetime, timezone
 
 from sqlmodel import select
 
-from ..models import Zaehlprotokoll, ZaehlprotokollDetails
+from ..models import (
+    Zaehlprotokoll,
+    ZaehlprotokollDetails,
+)
 
 
 def insert_count_protocol(session, abrechnung_tag_id: int, payload, user_id=None, commit=True):

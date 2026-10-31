@@ -5,7 +5,12 @@ from fastapi.testclient import TestClient
 from sqlmodel import select
 
 from python.main import app
-from python.models import Gutschein, GutscheinCounter, Verkauf, VerkaufDetails
+from python.models import (
+    Gutschein,
+    GutscheinCounter,
+    Verkauf,
+    VerkaufDetails,
+)
 from python.session import get_session
 
 

@@ -11,7 +11,7 @@ This document outlines the comprehensive implementation plan to complete the Fas
 ## Current Status Summary
 
 ### ✅ Already Implemented
-- **Database Models**: All core tables have SQLModel definitions in `python/models.py` (`user_id` columns on all 8 transaction tables). The Java `training_*` models were removed: training mode now uses a separate sandbox database with the same schema
+- **Database Models**: All core tables have SQLModel definitions in `python/models/tables.py` (`user_id` columns on all 8 transaction tables). The Java `training_*` models were removed: training mode now uses a separate sandbox database with the same schema
 - **CRUD Operations**: All planned entities have CRUD functionality, including Bestellung positions (`details` embedded in the order payload) and the Java order types `LM`/`KHW`/`IVT` (default `LM`; `IVT` holds the inventory count)
 - **Business Logic**: Modules under `python/business/` are wired into the main flows (VAT, sale workflow incl. vouchers/discounts and detail validation, storno incl. voucher/installment reversal and kassenstand reversal, cash-register side-effects incl. balance validation, DSFinV-K export, TSE export + settlement TSE metadata best-effort, training sandbox). VAT module and sale workflow are Java-parity checked and fully tested. The 2026-10-28 audit gaps #1-#7 are closed, as is the edge-case validation pass (2026-10-31); remaining work is the untested TSE hardware adapter.
 - **API Structure**: Clean FastAPI structure with proper routing
@@ -41,7 +41,7 @@ Audit of `python/` against the Java POS (`../git/src/org/weltladen_bonn/pos/`). 
 | 4 | ✅ **Daily settlement invalidates month/year settlements** covering its period | `AbrechnungenTag.deleteAbrechnungIfNeedBe()` called from `insertTagesAbrechnung()` | **Done (2026-10-28)**: `_invalidate_period_settlements` in `abrechnung_tag.py` deletes the covering `abrechnung_monat`/`abrechnung_jahr` rows and their `_mwst` rows after writing the daily settlement; covered by `test_backdated_daily_settlement_reopens_month_and_year` |
 | 5 | ✅ **Zählprotokoll lifecycle**: counting happens before the settlement, is linked to it, previous counts are set `aktiv = FALSE` | `AbrechnungenTag.insertZaehlprotokoll()` / `setZaehlprotokollInactive()` | **Done (2026-10-28)**: `POST /abrechnung/tag` accepts `zaehlprotokoll` and inserts it afterwards via `insert_count_protocol`, which deactivates the previous active count of the settlement; `POST /zaehlprotokoll` still requires an existing settlement |
 | 6 | ✅ **`abrechnung_tag_tse` row** with the TSE status values; `last_tse_sig_counter` stores the counter *after* the export | `AbrechnungenTag.insertTagesAbrechnung()` | **Done (2026-10-30)**: `POST /abrechnung/tag` inserts the row (`tse_id` from `TSE_ID`, status columns NULL without the SEAPI getters), stores the current counter and falls back to the TX-number export |
-| 7 | ✅ **Training mode as a mode**: every cashier table access is rerouted to `training_*` | `WindowContent.tableForMode()` | **Done (2026-10-30)**: `TRAINING_MODE` + `TRAINING_DB_URL` run the whole instance against a sandbox database (schema from `models.py`, users mirrored, short catalog seeded, `POST /training/reset`); this also sandboxes master-data edits, which the Java `training_*` tables did not. TSE exports / automatic DSFinV-K writes are skipped |
+| 7 | ✅ **Training mode as a mode**: every cashier table access is rerouted to `training_*` | `WindowContent.tableForMode()` | **Done (2026-10-30)**: `TRAINING_MODE` + `TRAINING_DB_URL` run the whole instance against a sandbox database (schema from `models/tables.py`, users mirrored, short catalog seeded, `POST /training/reset`); this also sandboxes master-data edits, which the Java `training_*` tables did not. TSE exports / automatic DSFinV-K writes are skipped |
 
 **Minor divergences (fix opportunistically, no phase needed):**
 - ✅ Voucher numbering: `gutschein_nr` is assigned by the backend (`business/voucher_logic.next_gutschein_nr`) for sale-created and standalone vouchers; the single `gutschein_counter` row (`migrations/03_gutschein_counter/`) is locked `FOR UPDATE` until commit, so concurrent creators cannot pick the same number. Clients cannot pass a number. (Java filters to sale-linked rows, but redemption rows carry that link too, so the practical difference is only manually/legacy numbered vouchers.)
@@ -128,7 +128,7 @@ All functional audit gaps and the edge-case validation pass are done; the remain
 - Kassenstand table must be updated as part of the AbrechnungTag process (see below)
 
 **Files to create:**
-- `python/models.py` - Add Kassenstand models
+- `python/models/tables.py` - Add Kassenstand models
 - `python/routers/kassenstand.py` - Create + Read endpoints (CR, no U and no D)
 - `tests/test_kassenstand.py` - Tests for kassenstand functionality
 
@@ -159,7 +159,7 @@ All functional audit gaps and the edge-case validation pass are done; the remain
 - Balance tracking and validation
 
 **Files to create:**
-- `python/models.py` - Add Gutschein models
+- `python/models/tables.py` - Add Gutschein models
 - `python/routers/gutschein.py` - Create + Read endpoints + redemption logic (no update, no delete)
 
 **Status: ✅ Done (2026-10-26).** Redemption logic lives in
@@ -211,7 +211,7 @@ All functional audit gaps and the edge-case validation pass are done; the remain
 - Integration with sales workflow in `../git/src/org/weltladen_bonn/pos/kasse/Kassieren.java`
 
 **Files to create:**
-- `python/models.py` - Add Anzahlung and AnzahlungDetails models
+- `python/models/tables.py` - Add Anzahlung and AnzahlungDetails models
 - `python/routers/anzahlung.py` - Create + Read endpoints + resolution logic (no update, no delete)
 
 **Status: ✅ Done.** CR/R + open/resolved lists are in `python/routers/anzahlung.py`; the sale integration (VAT split, zeroing, `anzahlung_details`, resolution positions) is in `python/business/sale_workflow.py` (`apply_anzahlung`/`write_anzahlung`) and covered by `python/tests/test_sale_workflow.py`.
@@ -241,7 +241,7 @@ All functional audit gaps and the edge-case validation pass are done; the remain
 - TSE integration (see Phase 5.1: the Tagesabschluss triggers a partial TSE export by signature counter, with fallback by TX number)
 
 **Files to create:**
-- `python/models.py` - Add AbrechnungTag, AbrechnungTagMwst, AbrechnungTagTse models
+- `python/models/tables.py` - Add AbrechnungTag, AbrechnungTagMwst, AbrechnungTagTse models
 - `python/routers/abrechnung_tag.py` - Create + Read endpoints
 
 ### 3.2 Abrechnung Monat (Monthly Settlement)
@@ -264,7 +264,7 @@ All functional audit gaps and the edge-case validation pass are done; the remain
 **Note - DELETE grant**: The SQL user has DELETE grant on `kasse.abrechnung_monat` (and `abrechnung_monat_mwst`). Checked in the Java code: `AbrechnungenTag.deleteAbrechnungIfNeedBe()` (lines 1004-1006, 1322 in `AbrechnungenTag.java`) deletes an existing monthly/yearly settlement for a period before recreating it (i.e. redoing a settlement, e.g. after a correction). This is why the DELETE grant exists. The API therefore only needs DELETE as an internal step of re-running `POST /abrechnung/monat` (delete existing + recreate, in one transaction), not as a standalone endpoint.
 
 **Files to create:**
-- `python/models.py` - Add AbrechnungMonat, AbrechnungMonatMwst models
+- `python/models/tables.py` - Add AbrechnungMonat, AbrechnungMonatMwst models
 - `python/routers/abrechnung_monat.py` - Create + Read endpoints (+ internal delete-and-recreate)
 
 ### 3.3 Abrechnung Jahr (Yearly Settlement)
@@ -285,7 +285,7 @@ All functional audit gaps and the edge-case validation pass are done; the remain
 **Note - DELETE grant**: Same as for the monthly settlement: the SQL user has DELETE grant on `kasse.abrechnung_jahr` (and `abrechnung_jahr_mwst`), used by `AbrechnungenTag.deleteAbrechnungIfNeedBe()` to delete an existing yearly settlement before recreating it. DELETE is only needed as an internal step of re-running `POST /abrechnung/jahr`, not as a standalone endpoint.
 
 **Files to create:**
-- `python/models.py` - Add AbrechnungJahr, AbrechnungJahrMwst models
+- `python/models/tables.py` - Add AbrechnungJahr, AbrechnungJahrMwst models
 - `python/routers/abrechnung_jahr.py` - Create + Read endpoints (+ internal delete-and-recreate)
 
 ---
@@ -310,7 +310,7 @@ All functional audit gaps and the edge-case validation pass are done; the remain
 - `../git/src/org/weltladen_bonn/pos/kasse/ZaehlprotokollDialog.java` - Counting protocol creation
 
 **Files to create:**
-- `python/models.py` - Add Zaehlprotokoll, ZaehlprotokollDetails models
+- `python/models/tables.py` - Add Zaehlprotokoll, ZaehlprotokollDetails models
 - `python/routers/zaehlprotokoll.py` - Create, Read, Update endpoints (CRU, no D)
 
 **Status: ✅ Done.** The lifecycle is wired into `POST /abrechnung/tag` (`zaehlprotokoll` payload) and `insert_count_protocol` deactivates previous active counts of a settlement; `POST /zaehlprotokoll` remains for an existing settlement.
@@ -337,7 +337,7 @@ All functional audit gaps and the edge-case validation pass are done; the remain
 - `../git/src/org/weltladen_bonn/pos/besteller/BestellAnzeige.java` - Order display
 
 **Files to create:**
-- `python/models.py` - Add Bestellung, BestellungDetails models
+- `python/models/tables.py` - Add Bestellung, BestellungDetails models
 - `python/routers/bestellung.py` - CRUD endpoints
 
 ---
@@ -379,7 +379,7 @@ The export endpoints return the generated `.tar` file as a file download (in Jav
 - Fallback if wrapping the C API proves impractical: run the existing Java SEAPI in a small Java helper (CLI or thin HTTP service) - works, but requires running a JVM on the server.
 
 **Files to create:**
-- `python/models.py` - Add TSETransaction model
+- `python/models/tables.py` - Add TSETransaction model
 - `python/routers/tse.py` - TSE transaction + export endpoints
 - `python/utils/tse_client.py` - Adapter module wrapping the TSE C API (ctypes/cffi)
 
@@ -567,7 +567,7 @@ Details and sources: `docs/VAT_ROUNDING.md`.
 - `python/routers/auth.py` - Authentication endpoints (login, logout, token refresh)
 - `python/routers/users.py` - Admin-only user management endpoints
 - `python/dependencies.py` - Dependency for authorization checks
-- `python/models.py` - Add User and Anmeldung models (new tables) + `user_id` columns on transaction tables
+- `python/models/tables.py` - Add User and Anmeldung models (new tables) + `user_id` columns on transaction tables
 - `python/utils/auth.py` - Authentication utilities (password hashing, token generation)
 - SQL migration script (new `user`/`anmeldung` tables + `user_id` columns) in `../git/mysql/`
 
@@ -635,7 +635,7 @@ The `routers/` + `business/` split exists, but the layers still leak. Findings (
 | Domain layer speaks HTTP | `HTTPException` in `business/*` (fixed in step 1) |
 | Domain layer owns SQL | `sqlmodel.select` / `Session` in `business/*` |
 | Transaction control and side effects in routers | several `commit()` per endpoint, file writes, imports inside function bodies |
-| No schema/table boundary | `models.py` mixes ORM tables with `Public`/`Create`/`Update` DTOs; routers hand-shape dicts |
+| No schema/table boundary | `models.py` mixed ORM tables with `Public`/`Create`/`Update` DTOs; routers hand-shaped dicts (**fixed in step 4**) |
 | Duplicated query logic | `offset`/`limit`/`order_by` + filter blocks copied in 18 places |
 | Config scattered | `os.environ` reads in `session.py`, `vat_calculator.py`, `cash_register.py`, `dsfinvk_export.py` |
 
@@ -644,7 +644,8 @@ Target layering: router (HTTP, auth, serialization) → service/use case (orches
 - [x] **1. Domain errors instead of HTTP errors**: `python/business/errors.py` (`DomainError` = 400, `NotFoundError` = 404) replaces `fastapi.HTTPException` in `cash_register`, `sale_workflow`, `storno_logic`, `voucher_logic`, `dsfinvk_export`; `main.py` registers one handler that maps them to `{"detail": ...}` with the original status codes, so API behaviour is unchanged. Tests for those modules now expect `DomainError`.
 - [x] **2. Thin routers** (2026-10-31): the flows moved out of the endpoints into use cases — `sale_workflow.create_sale` (sale + positions + VAT + voucher + Anzahlung + Kassenstand in one transaction, returns `(verkauf, change, ec_warning)`), `storno_logic.storno_sale` (transaction, TSE signing), `business/settlement.py` `create_daily_settlement` (period, TSE export, TSE status row, month/year invalidation, count protocol, DSFinV-K write, response values) plus `last_settlement`/`invalidate_period_settlements`. `POST /verkauf/`, `POST /verkauf/{nr}/storno` and `POST /abrechnung/tag` now parse → call → serialize; the token decode/deprecated `bearer_scheme` handling in `abrechnung_tag` and `gutschein` is gone (the use case gets `user_id` from `require_user`). `POST /gutschein/{id}/einloesen` already delegated to `voucher_logic.redeem_voucher`.
 - [x] **3. One transaction per use case** (2026-10-31): the sale and storno use cases already booked everything in one transaction; the daily settlement now does too — `create_daily_settlement` flushes between its steps (settlement row, VAT rows, TSE status row, month/year invalidation, count protocol) and commits once, rolling back on failure, so no partial settlement can exist (`test_failed_settlement_rolls_back_everything`). `count_protocol.insert_count_protocol` and `settlement.invalidate_period_settlements` no longer commit internally (`commit=False` / caller-owned). `POST /abrechnung/monat|jahr` (delete-and-recreate) also commit once at the end instead of per step. Note: explicit `with session.begin():` blocks are not usable here — the auth dependency has already autobegun the request's session transaction, so the codebase uses the explicit flush/commit/rollback pattern. The storno's TSE row remains a separate best-effort commit after the receipt transaction (the signature needs the committed receipt number).
-- [ ] **4. Split tables from schemas**: `models/tables.py` (ORM) + `schemas/` (Public/Create/Update/Details), response objects built in one place instead of per-endpoint `model_dump()` assembly.
+- [x] **4. Split tables from schemas** (2026-10-31): `python/models.py` is now the package `python/models/` — `tables.py` holds the `table=True` classes and their column bases (plus `BESTELLUNG_TYPEN` and the UTC datetime listeners), `__init__.py` re-exports them, so `from ..models import Artikel` still works. The 58 DTOs moved to `python/schemas/__init__.py` (`Public`/`Create`/`Update`/`Details`/`Einloesen`…), which imports the column bases from `models.tables` — one direction only, no cycle. All routers/business modules/tests import DTOs from `..schemas`. Response assembly is centralised in `python/schemas/serializers.py`: `verkauf_public(row, include_details, include_mwst)` replaces the three copies of the `model_dump()`/`update={artikel_name…}` block in `routers/verkauf.py`.
+- [ ] **5. Shared list helper**: one pagination/sort/filter helper replacing the 18 duplicated blocks.
 - [ ] **5. Shared list helper**: one pagination/sort/filter helper replacing the 18 duplicated blocks.
 - [ ] **6. Settings module**: single place for env vars; modules import settings instead of reading `os.environ` at call time.
 - [ ] **7. Repository layer only where it pays**: a `repositories/`/`dao.py` for queries used by several services (sales in range, open Kassenstand, voucher family) — not a wrapper around every CRUD call.
@@ -777,7 +778,12 @@ python/
 ├── __init__.py
 ├── main.py                    # FastAPI app setup
 ├── session.py                 # Database session management
-├── models.py                  # All SQLModel definitions (incl. new User, Anmeldung models)
+├── models/                    # ORM tables only (SQLModel `table=True` + column bases)
+│   ├── __init__.py            # re-exports the table classes
+│   └── tables.py
+├── schemas/                   # API schemas (Public/Create/Update/Details)
+│   ├── __init__.py
+│   └── serializers.py         # response assembly (e.g. `verkauf_public`)
 ├── business/                  # Business logic modules
 │   ├── __init__.py
 │   ├── errors.py              # NEW: DomainError/NotFoundError (mapped to HTTP in main.py)

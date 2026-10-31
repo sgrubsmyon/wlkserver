@@ -20,7 +20,7 @@
 
 ## 🏗️ Core Infrastructure & Existing Functionality
 
-### Database Models (python/models.py)
+### Database Models (python/models/tables.py)
 - [x] Lieferant models (Base, Table, Public, Update)
 - [x] MwSt models (Base, Table, Public, Create, Update)
 - [x] Pfand models (Table, Public, Create, Update)
@@ -81,7 +81,7 @@
 - [x] PATCH /mwst/{mwst_id} - Update VAT rate - **ADMIN ONLY**
 - [x] DELETE /mwst/{mwst_id} - Delete VAT rate (with constraints check) - **ADMIN ONLY**
 - [x] Add authentication/authorization dependency (admin role required)
-- [x] `MwstBase.mwst_satz` has `ge=0, le=1` constraint (models.py line 48) - done
+- [x] `MwstBase.mwst_satz` has `ge=0, le=1` constraint (`models/tables.py`) - done
 
 - [x] **Pfand Admin-Only CRUD Completion** - `python/routers/pfand.py`
 - [x] POST /pfand - Create new deposit item - **ADMIN ONLY**
@@ -111,7 +111,7 @@
 (no /kassenstand/letzte endpoint needed; /kassenstand/aktuell covers it)
 - [x] `update_kassenstand_for_sale` wired into sale creation + storno (cash only) - Phase 6 (step 1)
 - [x] Advanced business logic (balance validation) - `validate_balance_change` rejects Entnahmen that increase the balance or exceed it; wired into POST /kassenstand
-- [x] Non-negative validation on `neuer_kassenstand` enforced via `ge=0` model constraint (models.py line 472)
+- [x] Non-negative validation on `neuer_kassenstand` enforced via `ge=0` model constraint (`models/tables.py`)
 
 - [x] **Gutschein** - models + router + smoke tests
 - [x] GET /gutschein
@@ -336,7 +336,7 @@ Audit of `python/` against the Java POS (`../git/src/org/weltladen_bonn/pos/`). 
 - Refs: `AbrechnungenTag.insertTagesAbrechnung()`, `exportTSELog()`. Implementation: `python/routers/abrechnung_tag.py`; tests in `python/tests/test_abrechnung_tag.py` (row, current counter, no-TSE `NULL`, explicit override, TX fallback)
 
 ### #7 Training mode as a real mode ✅ Done (2026-10-30)
-- [x] `TRAINING_MODE` now runs the whole API instance against a disposable training database (`TRAINING_DB_URL`), created from `models.py` on startup and seeded with a short catalog (`python/business/training.py`). This is stricter than the Java `tableForMode()` rerouting: every table - transactions *and* master data - is sandboxed, so editing articles/discounts/Pfand/VAT/orders in training cannot touch production
+- [x] `TRAINING_MODE` now runs the whole API instance against a disposable training database (`TRAINING_DB_URL`), created from `models/tables.py` on startup and seeded with a short catalog (`python/business/training.py`). This is stricter than the Java `tableForMode()` rerouting: every table - transactions *and* master data - is sandboxed, so editing articles/discounts/Pfand/VAT/orders in training cannot touch production
 - [x] Production users are mirrored into the sandbox on startup and on reset (authentication + `user_id` foreign keys); `POST /training/reset` (admin, training mode only) clears the sandbox and reseeds
 - [x] Seeded catalog covers the POS test cases: 0/7/19 % VAT, fixed and variable prices, a deposit article + a product group with Pfand, the special discount/voucher/deposit articles, and one active 10 % discount action. Variable-price sales use the new `VerkaufDetailsCreate.ges_preis` line total
 - [x] TSE exports and the automatic DSFinV-K file writes are skipped in training, and the storno TSE transaction is not signed; the DSFinV-K download endpoint still works on sandbox data
@@ -392,8 +392,8 @@ The `routers/` + `business/` split exists, but the layers still leak. Full findi
 - [x] **1. Domain errors instead of HTTP errors** (2026-10-31): `python/business/errors.py` (`DomainError` = 400, `NotFoundError` = 404) replaces `fastapi.HTTPException` in `cash_register.py`, `sale_workflow.py`, `storno_logic.py`, `voucher_logic.py`, `dsfinvk_export.py`; `main.py` maps them to `{"detail": ...}` with the same status codes, so API behaviour is unchanged. Tests for those modules expect `DomainError`
 - [x] **2. Thin routers** (2026-10-31): `POST /verkauf/`, `POST /verkauf/{nr}/storno` and `POST /abrechnung/tag` now only parse → call → serialize. New use cases: `sale_workflow.create_sale`, `storno_logic.storno_sale`, `business/settlement.py` (`create_daily_settlement`, `last_settlement`, `invalidate_period_settlements`). The `bearer_scheme`/`decode_token` detour in `abrechnung_tag.py` and `gutschein.py` is gone (the use case gets `user_id` from `require_user`); `POST /gutschein/{id}/einloesen` already delegated to `voucher_logic.redeem_voucher`
 - [x] **3. One transaction per use case** (2026-10-31): `create_daily_settlement` flushes between its steps (settlement row, VAT rows, TSE status row, month/year invalidation, count protocol) and commits once with rollback on failure — no partial settlement (`test_failed_settlement_rolls_back_everything`). `insert_count_protocol` and `invalidate_period_settlements` no longer commit internally; `POST /abrechnung/monat|jahr` also commit once. Explicit `with session.begin():` is not usable because `require_user` has already autobegun the request transaction, so the pattern is flush/commit/rollback. The storno's TSE row stays a separate best-effort commit (the signature needs the committed receipt number)
-- [ ] **4. Split tables from schemas**: `models/tables.py` (ORM) + `schemas/` (Public/Create/Update/Details); response objects built in one place instead of per-endpoint `model_dump()` assembly
-- [ ] **5. Shared list helper**: one pagination/sort/filter helper replacing the duplicated `offset`/`limit`/`order_by` blocks in 18 places
+- [x] **4. Split tables from schemas** (2026-10-31): `python/models.py` became the package `python/models/` (`tables.py` = `table=True` classes + column bases + `BESTELLUNG_TYPEN` + UTC datetime listeners, `__init__.py` re-exports them) and `python/schemas/__init__.py` holds the 58 DTOs (one-way import: schemas → models.tables). Routers/business/tests import DTOs from `..schemas`. Response assembly is centralised in `python/schemas/serializers.py` (`verkauf_public`) instead of three copies of the `model_dump()`/article-merge block in `routers/verkauf.py`
+- [ ] **5. Shared list helper**: one pagination/sort/filter helper replacing the duplicate `offset`/`limit`/`order_by` tails in 18 places
 - [ ] **6. Settings module**: env vars read once (currently `os.environ` in `session.py`, `vat_calculator.py`, `cash_register.py`, `dsfinvk_export.py`)
 - [ ] **7. Repository layer only where it pays**: queries used by several services (sales in range, open Kassenstand, voucher family) — not a wrapper around every CRUD call
 - [ ] **8. Test re-alignment**: domain/service tests without `TestClient`, HTTP tests kept as contract tests
@@ -469,7 +469,7 @@ The remaining imported items are quality/production tasks, tracked below.
 
 - [ ] **Integration against a real MariaDB** - tests use in-memory SQLite only, which does not enforce foreign keys and ignores `UNSIGNED`/`YEAR`/`TIMESTAMP` semantics. Needs a smoke run against `../git/mysql/generateDB.sql` with both the `mitarbeiter` and `kassenadmin` grants (especially: `bestellung` composite PK/`AUTO_INCREMENT`, delete order of parent/child rows, timezone round-trips, DECIMAL rounding).
 - [x] **Frontend readiness** - CORS is configured in `python/main.py` (`CORS_ORIGINS` env var, defaults to the SvelteKit dev server on port 5173); `GET /bestellung` has a date filter. Keep the OpenAPI schema stable for the generated client.
-- [x] **Training mode** - `TRAINING_MODE` + `TRAINING_DB_URL` run the whole API instance against a disposable sandbox database (schema created from `models.py`, production users mirrored, short catalog seeded, `POST /training/reset` clears and reseeds). Every table is sandboxed, including master-data edits, which the Java POS `training_*` tables did not cover. TSE exports and automatic DSFinV-K writes are skipped (audit #7).
+- [x] **Training mode** - `TRAINING_MODE` + `TRAINING_DB_URL` run the whole API instance against a disposable sandbox database (schema created from `models/tables.py`, production users mirrored, short catalog seeded, `POST /training/reset` clears and reseeds). Every table is sandboxed, including master-data edits, which the Java POS `training_*` tables did not cover. TSE exports and automatic DSFinV-K writes are skipped (audit #7).
 - [ ] **Deployment** - setup, HTTPS and auth are documented in `python/README.md`; a migration guide and a DB schema reference are still missing.
 - [ ] **Same-origin deployment behind nginx (planned, deferred)** - frontend and API served from one origin: nginx serves the SvelteKit build at `/`, proxies `/api/` to FastAPI on `127.0.0.1:8000` (Uvicorn `--root-path /api`), terminates TLS with the internal CA and blocks plain HTTP. CORS then only matters for the Vite dev server via `CORS_ORIGINS`. Still to be written: nginx site config, systemd units, backup procedure.
 - [ ] **Script automation (planned)** - future cron/scripts (price changes, supplier article imports, settlement creation) call the API over the same-origin nginx URL; CORS is irrelevant for them. They authenticate via `POST /auth/login` with a dedicated service account (visible in the `anmeldung` audit), verify the internal CA, re-login on `401`, and check state (`GET /abrechnung/monat/offen`, `GET /abrechnung/jahr/offen`) before creating because `POST`s are not idempotent. Kassenstand writes require a single API worker (process lock) or rely on `SELECT ... FOR UPDATE` in MariaDB.

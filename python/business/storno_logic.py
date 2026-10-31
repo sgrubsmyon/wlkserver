@@ -8,7 +8,12 @@ from typing import Any, Optional
 from .errors import DomainError, NotFoundError
 from sqlmodel import Session, select
 
-from ..models import AbrechnungTag, Verkauf, VerkaufDetails, VerkaufMwst
+from ..models import (
+    AbrechnungTag,
+    Verkauf,
+    VerkaufDetails,
+    VerkaufMwst,
+)
 from .vat_calculator import _to_decimal
 
 
@@ -126,7 +131,10 @@ def create_storno(*args, **kwargs):
 def handle_storno_voucher(session: Session, original: Verkauf, commit: bool = True) -> None:
     """Reverse voucher side-effects caused by the sale (best-effort)."""
     from datetime import datetime, timezone
-    from ..models import Gutschein, VerkaufDetails
+    from ..models import (
+        Gutschein,
+        VerkaufDetails,
+    )
     from sqlmodel import select
     vd_ids = [d.vd_id for d in (original.verkauf_details or []) if d.vd_id is not None]
     if not vd_ids:

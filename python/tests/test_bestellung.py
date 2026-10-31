@@ -3,7 +3,10 @@ from fastapi.testclient import TestClient
 from sqlmodel import select
 
 from python.main import app
-from python.models import Artikel, BestellungDetails
+from python.models import (
+    Artikel,
+    BestellungDetails,
+)
 from python.session import get_session
 
 

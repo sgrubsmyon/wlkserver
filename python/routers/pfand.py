@@ -7,7 +7,16 @@ from sqlmodel import select
 # from ..dependencies import get_token_header
 
 from ..dependencies import require_admin
-from ..models import Artikel, Pfand, PfandPublic, PfandCreate, PfandUpdate, Produktgruppe
+from ..models import (
+    Artikel,
+    Pfand,
+    Produktgruppe,
+)
+from ..schemas import (
+    PfandPublic,
+    PfandCreate,
+    PfandUpdate,
+)
 from ..session import SessionDep
 
 

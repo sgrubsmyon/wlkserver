@@ -5,7 +5,14 @@ from sqlmodel import select
 
 # from ..dependencies import get_token_header
 
-from ..models import Lieferant, LieferantPublic, LieferantBase, LieferantUpdate
+from ..models import (
+    Lieferant,
+    LieferantBase,
+)
+from ..schemas import (
+    LieferantPublic,
+    LieferantUpdate,
+)
 from ..session import SessionDep
 
 

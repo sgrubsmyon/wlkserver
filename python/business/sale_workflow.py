@@ -17,8 +17,10 @@ from ..models import (
     Rabattaktion,
     Verkauf,
     VerkaufDetails,
-    VerkaufDetailsCreate,
     VerkaufMwst,
+)
+from ..schemas import (
+    VerkaufDetailsCreate,
 )
 from .cash_register import (
     EC_THRESHOLD,

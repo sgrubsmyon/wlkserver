@@ -4,7 +4,12 @@ from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
 from fastapi.responses import Response
 from sqlmodel import Session, select
 
-from ..models import Artikel, Bestellung, BestellungDetails, AbrechnungTag
+from ..models import (
+    Artikel,
+    Bestellung,
+    BestellungDetails,
+    AbrechnungTag,
+)
 from ..session import SessionDep
 from ..utils.csv_import import import_artikel_from_csv, import_bestellung_from_csv
 from ..utils.csv_export import (

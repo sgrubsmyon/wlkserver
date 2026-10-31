@@ -42,7 +42,12 @@ def test_preview_without_sales(client):
 
 
 def _seed_artikel(session, vk_preis=10.0, mwst_satz=0.19):
-    from python.models import Artikel, Lieferant, Mwst, Produktgruppe
+    from python.models import (
+        Artikel,
+        Lieferant,
+        Mwst,
+        Produktgruppe,
+    )
 
     m = Mwst(mwst_satz=mwst_satz, dsfinvk_ust_schluessel=1)
     session.add(m)
@@ -97,7 +102,11 @@ def test_preview_before_and_after_settlement(client, session):
 
 def test_preview_counts_storno_and_retoure(client, session):
     from datetime import datetime, timezone
-    from python.models import Verkauf, VerkaufDetails, VerkaufMwst
+    from python.models import (
+        Verkauf,
+        VerkaufDetails,
+        VerkaufMwst,
+    )
 
     r = client.post("/verkauf/", json={})
     assert r.status_code == 200
@@ -197,10 +206,12 @@ def test_failed_settlement_rolls_back_everything(client, session, monkeypatch):
     from python.business import settlement
     from python.models import (
         AbrechnungTag,
-        AbrechnungTagCreate,
         AbrechnungTagMwst,
         AbrechnungTagTse,
         Zaehlprotokoll,
+    )
+    from python.schemas import (
+        AbrechnungTagCreate,
     )
 
     a = _seed_artikel(session)

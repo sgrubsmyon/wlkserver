@@ -7,7 +7,16 @@ from sqlmodel import select
 
 # from ..dependencies import get_token_header
 
-from ..models import Artikel, Produktgruppe, Rabattaktion, RabattaktionPublic, RabattaktionCreate, RabattaktionUpdate
+from ..models import (
+    Artikel,
+    Produktgruppe,
+    Rabattaktion,
+)
+from ..schemas import (
+    RabattaktionPublic,
+    RabattaktionCreate,
+    RabattaktionUpdate,
+)
 from ..session import SessionDep
 from ..utils.validation import ensure_non_negative, ensure_positive, ensure_range
 

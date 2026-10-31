@@ -51,7 +51,7 @@ instead runs the **whole instance** against a disposable database:
 TRAINING_MODE=1 TRAINING_DB_URL=sqlite:///training.db fastapi run
 ```
 
-On startup the API creates the schema in the sandbox (from `models.py`), mirrors
+On startup the API creates the schema in the sandbox (from `models/tables.py`), mirrors
 the production users (authentication and the `user_id` attributes need them)
 and seeds a short test catalog:
 

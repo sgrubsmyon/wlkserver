@@ -5,7 +5,12 @@ import pytest
 from fastapi.testclient import TestClient
 from python.main import app
 from python.models import (
-    Artikel, Lieferant, Mwst, Produktgruppe, Rabattaktion, User,
+    Artikel,
+    Lieferant,
+    Mwst,
+    Produktgruppe,
+    Rabattaktion,
+    User,
 )
 from python.session import get_session
 from python.utils.auth import hash_password

@@ -8,7 +8,14 @@ from fastapi.responses import Response
 from pydantic import BaseModel
 from sqlmodel import select
 
-from ..models import TSETransaction, TSETransactionPublic, TSETransactionCreate, Verkauf
+from ..models import (
+    TSETransaction,
+    Verkauf,
+)
+from ..schemas import (
+    TSETransactionPublic,
+    TSETransactionCreate,
+)
 from ..session import SessionDep
 from ..utils.tse_client import tse_client
 from ..dependencies import bearer_scheme, require_user

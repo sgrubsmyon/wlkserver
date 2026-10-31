@@ -9,7 +9,12 @@ from typing import Any, List
 from fastapi import HTTPException
 from sqlmodel import Session
 
-from ..models import BESTELLUNG_TYPEN, Artikel, Bestellung, BestellungDetails
+from ..models import (
+    BESTELLUNG_TYPEN,
+    Artikel,
+    Bestellung,
+    BestellungDetails,
+)
 from .validation import ensure_non_negative, ensure_range
 
 

@@ -4,8 +4,17 @@ from decimal import Decimal
 from sqlmodel import select
 
 from python.models import (
-    Artikel, Produktgruppe, Lieferant, Mwst, Rabattaktion,
-    Verkauf, VerkaufDetails, VerkaufDetailsCreate, VerkaufMwst,
+    Artikel,
+    Produktgruppe,
+    Lieferant,
+    Mwst,
+    Rabattaktion,
+    Verkauf,
+    VerkaufDetails,
+    VerkaufMwst,
+)
+from python.schemas import (
+    VerkaufDetailsCreate,
 )
 from python.business.sale_workflow import (
     validate_detail,
@@ -401,7 +410,7 @@ def test_validate_detail_rejects_unknown_rabatt(session):
 
 def test_router_applies_discount_as_separate_rabatt_line(session):
     from python.routers.verkauf import create_verkauf as router_create_verkauf
-    from python.models import VerkaufCreate
+    from python.schemas import VerkaufCreate
 
     artikel = _seed_artikel(session, vk_preis=10.0)
     _seed_artikel(session, artikel_nr="RABATT1", vk_preis=None)
@@ -419,7 +428,8 @@ def test_router_applies_discount_as_separate_rabatt_line(session):
 
 def test_router_adds_pfand_and_price_adjustment_lines(session):
     from python.routers.verkauf import create_verkauf as router_create_verkauf
-    from python.models import VerkaufCreate, Pfand
+    from python.models import Pfand
+    from python.schemas import VerkaufCreate
 
     mwst = _seed_mwst(session, mwst_satz=0.19)
     lieferant = _seed_lieferant(session)
@@ -466,7 +476,7 @@ def test_router_adds_pfand_and_price_adjustment_lines(session):
 
 def test_router_receipt_discount_one_line_per_vat_rate(session):
     from python.routers.verkauf import create_verkauf as router_create_verkauf
-    from python.models import VerkaufCreate
+    from python.schemas import VerkaufCreate
 
     a = _seed_artikel(session, mwst_satz=0.19, vk_preis=10.0, artikel_nr="A1")
     b = _seed_artikel(session, mwst_satz=0.07, vk_preis=20.0, artikel_nr="A2")
@@ -488,7 +498,8 @@ def test_router_receipt_discount_one_line_per_vat_rate(session):
 
 def test_router_redeems_voucher_as_sale_position(session):
     from python.routers.verkauf import create_verkauf as router_create_verkauf
-    from python.models import VerkaufCreate, Gutschein
+    from python.models import Gutschein
+    from python.schemas import VerkaufCreate
 
     artikel = _seed_artikel(session, vk_preis=20.0)
     _seed_artikel(session, artikel_nr="GUTSCHEINEINLOES", vk_preis=None, mwst_satz=0.07)
@@ -513,7 +524,12 @@ def test_router_redeems_voucher_as_sale_position(session):
 
 def test_router_creates_anzahlung_with_vat_split(session):
     from python.routers.verkauf import create_verkauf as router_create_verkauf
-    from python.models import VerkaufCreate, Anzahlung, AnzahlungDetails, Kassenstand
+    from python.models import (
+        Anzahlung,
+        AnzahlungDetails,
+        Kassenstand,
+    )
+    from python.schemas import VerkaufCreate
 
     a = _seed_artikel(session, mwst_satz=0.19, vk_preis=10.0, artikel_nr="A1")
     b = _seed_artikel(session, mwst_satz=0.07, vk_preis=20.0, artikel_nr="A2")
@@ -547,7 +563,8 @@ def test_router_creates_anzahlung_with_vat_split(session):
 
 def test_router_resolves_anzahlung_in_normal_sale(session):
     from python.routers.verkauf import create_verkauf as router_create_verkauf
-    from python.models import VerkaufCreate, Anzahlung
+    from python.models import Anzahlung
+    from python.schemas import VerkaufCreate
 
     a = _seed_artikel(session, mwst_satz=0.19, vk_preis=10.0, artikel_nr="A1")
     b = _seed_artikel(session, mwst_satz=0.07, vk_preis=20.0, artikel_nr="A2")
@@ -591,7 +608,7 @@ def test_router_resolves_anzahlung_in_normal_sale(session):
 
 def test_variable_price_article_uses_explicit_line_price(session):
     from python.routers.verkauf import create_verkauf as router_create_verkauf
-    from python.models import VerkaufCreate
+    from python.schemas import VerkaufCreate
 
     artikel = _seed_artikel(session, vk_preis=10.0, variabler_preis=True, artikel_nr="VAR")
     payload = VerkaufCreate(verkauf_details=[
@@ -607,7 +624,8 @@ def test_variable_price_article_uses_explicit_line_price(session):
 
 def test_failed_sale_rolls_back_everything(session, monkeypatch):
     from python.routers.verkauf import create_verkauf as router_create_verkauf
-    from python.models import Kassenstand, VerkaufCreate
+    from python.models import Kassenstand
+    from python.schemas import VerkaufCreate
     from python.business import sale_workflow
 
     artikel = _seed_artikel(session)
@@ -631,7 +649,11 @@ def test_failed_sale_rolls_back_everything(session, monkeypatch):
 
 def test_sale_creates_voucher_with_counter_number(session):
     from python.routers.verkauf import create_verkauf as router_create_verkauf
-    from python.models import Gutschein, GutscheinCounter, VerkaufCreate
+    from python.models import (
+        Gutschein,
+        GutscheinCounter,
+    )
+    from python.schemas import VerkaufCreate
 
     artikel = _seed_artikel(session, vk_preis=None, variabler_preis=True, artikel_nr="GUTSCHEIN")
     payload = VerkaufCreate(verkauf_details=[

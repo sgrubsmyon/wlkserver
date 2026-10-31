@@ -5,7 +5,12 @@ from sqlmodel import select
 
 # from ..dependencies import get_token_header
 
-from ..models import Produktgruppe, ProduktgruppePublic, ProduktgruppeCreate, ProduktgruppeUpdate
+from ..models import Produktgruppe
+from ..schemas import (
+    ProduktgruppePublic,
+    ProduktgruppeCreate,
+    ProduktgruppeUpdate,
+)
 from ..session import SessionDep
 
 

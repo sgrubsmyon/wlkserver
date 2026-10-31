@@ -16,7 +16,11 @@ from decimal import Decimal, ROUND_HALF_UP
 from .errors import DomainError, NotFoundError
 from sqlmodel import func, select
 
-from ..models import Gutschein, GutscheinCounter, VerkaufDetails
+from ..models import (
+    Gutschein,
+    GutscheinCounter,
+    VerkaufDetails,
+)
 from ..utils.validation import ensure_positive
 from .vat_calculator import _to_decimal
 

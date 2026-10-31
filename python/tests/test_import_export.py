@@ -153,7 +153,11 @@ def test_export_bestellung_csv(client, session):
 
 
 def test_export_inventur_csv(client, session):
-    from python.models import Mwst, Produktgruppe, Lieferant
+    from python.models import (
+        Mwst,
+        Produktgruppe,
+        Lieferant,
+    )
 
     m = Mwst(mwst_satz=0.19, dsfinvk_ust_schluessel=1)
     session.add(m)

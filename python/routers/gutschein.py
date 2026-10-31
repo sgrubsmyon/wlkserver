@@ -4,7 +4,15 @@ from typing import Annotated, Optional
 from fastapi import APIRouter, HTTPException, Query
 from sqlmodel import select, func
 
-from ..models import Gutschein, GutscheinPublic, GutscheinCreate, GutscheinEinloesen, VerkaufDetails
+from ..models import (
+    Gutschein,
+    VerkaufDetails,
+)
+from ..schemas import (
+    GutscheinPublic,
+    GutscheinCreate,
+    GutscheinEinloesen,
+)
 from ..session import SessionDep
 from ..dependencies import require_user
 from fastapi import Depends

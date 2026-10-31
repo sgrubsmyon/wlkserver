@@ -4,7 +4,15 @@ from fastapi.testclient import TestClient
 
 from python.main import app
 from python.session import get_session
-from python.models import Artikel, Pfand, PfandCreate, PfandUpdate, Produktgruppe
+from python.models import (
+    Artikel,
+    Pfand,
+    Produktgruppe,
+)
+from python.schemas import (
+    PfandCreate,
+    PfandUpdate,
+)
 from python.routers.pfand import create_pfand, update_pfand, delete_pfand, read_pfands
 
 

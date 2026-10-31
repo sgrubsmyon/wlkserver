@@ -6,11 +6,12 @@ from sqlmodel import select
 
 from ..models import (
     Verkauf,
+)
+from ..schemas import (
     VerkaufPublic,
     VerkaufCreate,
-    VerkaufMwstPublic,
-    VerkaufDetailsPublic,
 )
+from ..schemas.serializers import verkauf_public
 from ..session import SessionDep
 from ..dependencies import require_user
 from ..models import User
@@ -46,26 +47,10 @@ def read_verkaeufe(
     verkaeufe = session.exec(
         selection.offset(offset).limit(limit).order_by(Verkauf.verkaufsdatum.desc() if desc else Verkauf.verkaufsdatum)
     ).all()
-    # return verkaeufe
-
-    results = []
-    for v in verkaeufe:
-        v_obj = VerkaufPublic.model_validate(v).model_dump()
-        if include_details:
-            details = []
-            for d in v.verkauf_details or []:
-                d_obj = VerkaufDetailsPublic.model_validate(d, update={
-                    "artikel_name": d.artikel.artikel_name if d.artikel else None,
-                    "artikel_kurzname": d.artikel.kurzname if d.artikel else None,
-                    "artikel_vk_preis": d.artikel.vk_preis if d.artikel else None,
-                })
-                details.append(d_obj)
-            v_obj["verkauf_details"] = details
-        if include_mwst:
-            mwsts = [VerkaufMwstPublic.model_validate(m).model_dump() for m in (v.verkauf_mwst or [])]
-            v_obj["verkauf_mwst"] = mwsts
-        results.append(v_obj)
-    return results
+    return [
+        verkauf_public(v, include_details=include_details, include_mwst=include_mwst)
+        for v in verkaeufe
+    ]
 
 
 @router.get("/{rechnungs_nr}")
@@ -78,18 +63,7 @@ def read_single_verkauf(
     v = session.get(Verkauf, rechnungs_nr)
     if not v:
         raise HTTPException(status_code=404, detail="Verkauf not found")
-    v_obj = VerkaufPublic.model_validate(v).model_dump()
-    if include_details:
-        v_obj["verkauf_details"] = [
-            VerkaufDetailsPublic.model_validate(d, update={
-                "artikel_name": d.artikel.artikel_name if d.artikel else None,
-                "artikel_kurzname": d.artikel.kurzname if d.artikel else None,
-                "artikel_vk_preis": d.artikel.vk_preis if d.artikel else None,
-            }) for d in (v.verkauf_details or [])
-        ]
-    if include_mwst:
-        v_obj["verkauf_mwst"] = [VerkaufMwstPublic.model_validate(m).model_dump() for m in (v.verkauf_mwst or [])]
-    return v_obj
+    return verkauf_public(v, include_details=include_details, include_mwst=include_mwst)
 
 
 @router.post("/", response_model=VerkaufPublic)

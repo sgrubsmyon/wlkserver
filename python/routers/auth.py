@@ -7,7 +7,14 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlmodel import select
 
 from ..dependencies import require_admin, require_user
-from ..models import Anmeldung, AnmeldungPublic, User, UserPublic
+from ..models import (
+    Anmeldung,
+    User,
+)
+from ..schemas import (
+    AnmeldungPublic,
+    UserPublic,
+)
 from ..session import SessionDep
 from ..utils.auth import verify_password, create_token, decode_token
 

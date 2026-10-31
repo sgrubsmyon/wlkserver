@@ -3,7 +3,16 @@ from datetime import datetime, timezone
 from python.business.errors import DomainError
 from sqlmodel import select
 
-from python.models import Verkauf, VerkaufDetails, VerkaufMwst, Gutschein, Anzahlung, Artikel, Produktgruppe, Lieferant
+from python.models import (
+    Verkauf,
+    VerkaufDetails,
+    VerkaufMwst,
+    Gutschein,
+    Anzahlung,
+    Artikel,
+    Produktgruppe,
+    Lieferant,
+)
 from python.business.storno_logic import (
     can_storno,
     validate_storno,

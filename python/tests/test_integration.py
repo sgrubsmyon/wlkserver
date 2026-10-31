@@ -9,7 +9,13 @@ from sqlmodel import Session, SQLModel, create_engine, select
 
 from python.main import app
 from python.models import (
-    Artikel, Kassenstand, Lieferant, Mwst, Produktgruppe, Verkauf, User,
+    Artikel,
+    Kassenstand,
+    Lieferant,
+    Mwst,
+    Produktgruppe,
+    Verkauf,
+    User,
 )
 from python.session import get_session
 from python.utils.auth import hash_password

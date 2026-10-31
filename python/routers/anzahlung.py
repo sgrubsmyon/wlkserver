@@ -6,14 +6,16 @@ from sqlmodel import select
 
 from ..models import (
     Anzahlung,
+    AnzahlungDetails,
+    Verkauf,
+    VerkaufDetails,
+)
+from ..schemas import (
     AnzahlungPublic,
     AnzahlungCreate,
-    AnzahlungDetails,
     AnzahlungDetailsPublic,
     AnzahlungDetailsCreate,
     AnzahlungAufloesen,
-    Verkauf,
-    VerkaufDetails,
 )
 from ..session import SessionDep
 from ..dependencies import bearer_scheme, require_user

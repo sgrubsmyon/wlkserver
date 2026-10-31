@@ -5,7 +5,15 @@ from pydantic import ValidationError
 
 from python.main import app
 from python.session import get_session
-from python.models import Mwst, MwstCreate, MwstUpdate, Produktgruppe, User
+from python.models import (
+    Mwst,
+    Produktgruppe,
+    User,
+)
+from python.schemas import (
+    MwstCreate,
+    MwstUpdate,
+)
 from python.routers.mwst import create_mwst, update_mwst, delete_mwst, read_mwsts
 from python.utils.auth import hash_password
 

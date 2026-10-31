@@ -3,7 +3,10 @@ from fastapi.testclient import TestClient
 from sqlmodel import select
 
 from python.main import app
-from python.models import Anmeldung, User
+from python.models import (
+    Anmeldung,
+    User,
+)
 from python.routers import auth as auth_router
 from python.session import get_session
 from python.utils.auth import hash_password, verify_password, create_token, decode_token

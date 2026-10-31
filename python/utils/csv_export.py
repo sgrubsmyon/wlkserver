@@ -8,7 +8,13 @@ from typing import Any
 
 from sqlmodel import Session, select
 
-from ..models import Artikel, AbrechnungTag, AbrechnungTagMwst, Bestellung, BestellungDetails
+from ..models import (
+    Artikel,
+    AbrechnungTag,
+    AbrechnungTagMwst,
+    Bestellung,
+    BestellungDetails,
+)
 from ..business.vat_calculator import calculate_vat, _to_decimal
 
 

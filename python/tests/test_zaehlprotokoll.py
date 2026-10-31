@@ -36,7 +36,10 @@ def test_crud(client):
 
 def test_count_is_submitted_with_the_settlement(client, session):
     from sqlmodel import select
-    from python.models import Zaehlprotokoll, ZaehlprotokollDetails
+    from python.models import (
+        Zaehlprotokoll,
+        ZaehlprotokollDetails,
+    )
 
     client.post("/verkauf/", json={})
     r = client.post("/abrechnung/tag/", json={
