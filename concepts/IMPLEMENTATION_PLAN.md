@@ -13,7 +13,7 @@ This document outlines the comprehensive implementation plan to complete the Fas
 ### ✅ Already Implemented
 - **Database Models**: All core tables have SQLModel definitions in `python/models/tables.py` (`user_id` columns on all 8 transaction tables). The Java `training_*` models were removed: training mode now uses a separate sandbox database with the same schema
 - **CRUD Operations**: All planned entities have CRUD functionality, including Bestellung positions (`details` embedded in the order payload) and the Java order types `LM`/`KHW`/`IVT` (default `LM`; `IVT` holds the inventory count)
-- **Business Logic**: Modules under `python/business/` are wired into the main flows (VAT, sale workflow incl. vouchers/discounts and detail validation, storno incl. voucher/installment reversal and kassenstand reversal, cash-register side-effects incl. balance validation, DSFinV-K export, TSE export + settlement TSE metadata best-effort, training sandbox). VAT module and sale workflow are Java-parity checked and fully tested. The 2026-10-28 audit gaps #1-#7 are closed, as is the edge-case validation pass (2026-10-31); remaining work is the untested TSE hardware adapter.
+- **Business Logic**: Modules under `python/business/` are wired into the main flows (VAT, sale workflow incl. vouchers/discounts and detail validation, storno incl. voucher/installment reversal and kassenstand reversal, cash-register side-effects incl. balance validation, DSFinV-K export, TSE export + settlement TSE metadata best-effort, training sandbox). VAT module and sale workflow are Java-parity checked and fully tested. The 2026-10-28 audit gaps #1-#7 are closed, as is the edge-case validation pass (2026-10-31); remaining work is the untested TSE hardware adapter and the missing sale-side TSE signing (see 5.1).
 - **API Structure**: Clean FastAPI structure with proper routing
 - **Auth**: Per-user accounts (bcrypt + JWT), login auditing (readable via admin-only `GET /auth/anmeldungen`), `user_id` attribution on transaction endpoints, SQL migration in `migrations/02_user_auth/`; all data endpoints (reads included) require `require_user`, admin endpoints require role `admin`, login has rate limiting, refresh/logout supported
 
@@ -21,7 +21,7 @@ This document outlines the comprehensive implementation plan to complete the Fas
 - Validate against a real MariaDB instance (tests are SQLite-only)
 - CORS configured in `python/main.py` via `CORS_ORIGINS` (defaults to the SvelteKit dev server); keep the OpenAPI schema stable
 - Add integration tests for complete sales/storno/settlement workflows (coverage target 80% reached)
-- All 2026-10-28 audit gaps and the edge-case validation pass are closed; the remaining work is the untested TSE hardware adapter and the documentation/production items - see "Business-logic gaps (2026-10-28 audit)" below
+- All 2026-10-28 audit gaps and the edge-case validation pass are closed; the remaining work is the untested TSE hardware adapter, the missing sale-side TSE signing, and the documentation/production items - see "Business-logic gaps (2026-10-28 audit)" below
 - Complete documentation (migration guide, DB schema reference, docstrings)
 
 > **Note**: The Phase sections below contain the original plan text (some "Current" states are outdated). The authoritative per-endpoint status is in `concepts/TODO.md`; the priority matrix and success criteria below are kept up to date.
@@ -31,7 +31,7 @@ See the "Parity Audit" section in `concepts/TODO.md`. The optional per-sale inst
 
 ### 🧩 Business-logic gaps (2026-10-28 audit)
 
-Audit of `python/` against the Java POS (`../git/src/org/weltladen_bonn/pos/`). All seven functional gaps are closed; the TSE adapter itself is still untested without hardware.
+Audit of `python/` against the Java POS (`../git/src/org/weltladen_bonn/pos/`). All seven functional gaps are closed; the TSE adapter itself is still untested without hardware. Sale-side TSE signing was not part of this audit and remains open (see 5.1).
 
 | # | Gap | Java reference | Current API state |
 |---|-----|----------------|-------------------|
@@ -51,7 +51,7 @@ Audit of `python/` against the Java POS (`../git/src/org/weltladen_bonn/pos/`). 
 - ✅ Kassenstand reset suggestion: `POST /kassenstand/zuruecksetzen/vorschau` (`business/cash_register.kassenstand_reset_suggestion`) mirrors `KassenstandZuruecksetzenDialog.showHeader` with the targets from `SOLL_MUENZ_KASSENSTAND`/`SOLL_SCHEIN_KASSENSTAND`. It derives both buckets as signed changes plus a signed notes↔coins `tausch` instead of Java's two sign branches, so under-filled drawers are covered; the client guide is `docs/KASSENSTAND_UND_ABRECHNUNG.md`.
 - Price-tag export (`PreisschilderExport`, ODT templates) is client-side output like the deferred ODS exports.
 
-All functional audit gaps and the edge-case validation pass are done; the remaining item is the untested TSE adapter. Tracking: `concepts/TODO.md` → "Business-logic gaps".
+All functional audit gaps and the edge-case validation pass are done; the remaining item is the untested TSE adapter plus the sale-side signing gap (5.1). Tracking: `concepts/TODO.md` → "Business-logic gaps".
 
 ---
 
@@ -365,6 +365,8 @@ All functional audit gaps and the edge-case validation pass are done; the remain
 The export endpoints return the generated `.tar` file as a file download (in Java the file is written to a local export directory, e.g. `tse_export_<date>_Sig_from_X_to_Y.tar`).
 
 **Automatic export during daily settlement**: The Tagesabschluss (Phase 3.1) automatically performs an incremental partial TSE export by signature counter (since the previous settlement), with a fallback by TX number - see `AbrechnungenTag.exportTSELog()` (lines 1097-1145 in `AbrechnungenTag.java`). This integration must be part of the `POST /abrechnung/tag` process.
+
+**Still open (2026-11-01): sale-side signing.** `sale_workflow.create_sale` never calls `tse_client`; only `storno_logic.storno_sale` and the generic `POST /tse/transaction` write `tse_transaction` rows. Java wraps every sale in one TSE transaction: `Kassieren.java:1814` `tse.startTransaction()` when the first item is added, `:2148` `tse.finishTransaction(rechnungsNr, steuer_*, zahlungen)` with the process type `Kassenbeleg-V1` and process data `Beleg^<VAT totals>^<payments>` (`WeltladenTSE.java:1871`). Training mode signs the same way with `training = TRUE` and the `AVTraining^` prefix; since those signatures consume real TSE transaction numbers and signature counters, the training sandbox has to be a persistent database and the DSFinV-K `TSE_Transaktionen` export must exclude `training = TRUE` (the Java query at `DSFinVKCSV.java:921` only filters by time window).
 
 **Business logic from Java:**
 - `../git/src/org/weltladen_bonn/pos/kasse/WeltladenTSE.java` - Complete TSE integration (incl. all export/delete methods)
