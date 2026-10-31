@@ -1,7 +1,6 @@
 """Authorization dependencies."""
 from typing import Annotated
 
-from dotenv import load_dotenv
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
@@ -11,8 +10,6 @@ from .models import (
 )
 from .session import SessionDep
 from .utils.auth import decode_token
-
-load_dotenv()
 
 bearer_scheme = HTTPBearer(auto_error=False)
 

@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import logging
-import os
 from datetime import datetime, timezone
 
 from sqlmodel import Session, select
@@ -23,9 +22,10 @@ from ..schemas import (
     AbrechnungTagCreate,
     AbrechnungTagPublic,
 )
-from .cash_register import aggregate_period, is_training_mode, open_period_range
+from ..config import tse_id, training_mode
+from .cash_register import aggregate_period, open_period_range
 from .count_protocol import insert_count_protocol
-from .errors import DomainError, NotFoundError
+from .errors import DomainError
 from .vat_calculator import get_all_current_mwst_values_by_id
 
 logger = logging.getLogger(__name__)
@@ -37,13 +37,7 @@ def last_settlement(session: Session) -> AbrechnungTag | None:
 
 def _configured_tse_id() -> int | None:
     """`bc.TSE_ID` of the Java POS: the TSE number stored in `abrechnung_tag_tse`."""
-    value = os.getenv("TSE_ID")
-    if not value:
-        return None
-    try:
-        return int(value)
-    except ValueError:
-        return None
+    return tse_id()
 
 
 def _last_settled_tx_number(session: Session, last: AbrechnungTag | None) -> int:
@@ -100,7 +94,7 @@ def _export_tse_log(session: Session, last: AbrechnungTag | None, prev_sig: int)
     export (Java `lastSigCounter = tse.getSignatureCounter()`), which is where the
     next settlement continues.
     """
-    if is_training_mode():  # Java: no TSE exports in training mode
+    if training_mode():  # Java: no TSE exports in training mode
         return None
     try:
         from ..utils.tse_client import tse_client
@@ -213,7 +207,7 @@ def create_daily_settlement(
     # DSFinV-K export (Java AbrechnungenTag.writeIntoDSFinVKCSVFiles): written
     # to DSFINVK_EXPORT_DIR when configured, otherwise on demand via
     # GET /export/dsfinvk/{id}. Training data never writes production files.
-    if not is_training_mode():
+    if not training_mode():
         try:
             from .dsfinvk_export import write_dsfinvk_export
 

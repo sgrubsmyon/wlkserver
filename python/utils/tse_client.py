@@ -9,13 +9,15 @@ hardware and may need adjustments.
 import ctypes
 import os
 
+from .. import config
+
 _LIB_PATHS = [
-    os.getenv("TSE_LIB_PATH"),
+    config.tse_lib_path(),
     os.path.join(os.path.dirname(__file__), "..", "..", "assets", "SE-API-C", "bin", "libse-api-c.so"),
     "libse-api-c.so",
 ]
 
-CLIENT_ID = os.getenv("TSE_CLIENT_ID", "WeltladenKasse").encode("utf-8")
+CLIENT_ID = config.tse_client_id()
 
 
 class SeStartTransactionResult(ctypes.Structure):
@@ -108,7 +110,7 @@ class TSEClient:
         self.lib = _load_library()
         self.initialized = False
         self.opened = False
-        self.device_path = os.getenv("TSE_DEVICE_PATH")
+        self.device_path = config.tse_device_path()
 
     def _ensure_open(self):
         if self.opened:

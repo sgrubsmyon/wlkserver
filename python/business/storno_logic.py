@@ -204,9 +204,9 @@ def storno_sale(
     """
     from .cash_register import (
         KASSENSTAND_LOCK,
-        is_training_mode,
         update_kassenstand_for_sale,
     )
+    from ..config import training_mode
     from .voucher_logic import VOUCHER_LOCK
 
     original = session.get(Verkauf, rechnungs_nr)
@@ -239,7 +239,7 @@ def storno_sale(
 
     # TSE transaction for the storno (best-effort, no TSE in training mode).
     # Signed after the commit: the signature needs the receipt number.
-    if not is_training_mode():
+    if not training_mode():
         try:
             from ..models import TSETransaction
             from ..utils.tse_client import tse_client

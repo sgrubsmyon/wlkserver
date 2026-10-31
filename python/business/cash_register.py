@@ -1,7 +1,6 @@
 """Cash register (Kasse/Kassenstand) business logic."""
 from __future__ import annotations
 
-import os
 import threading
 from contextlib import nullcontext
 from datetime import datetime, timezone
@@ -15,7 +14,7 @@ from ..models import (
     Kassenstand,
     Verkauf,
 )
-from ..session import is_training_mode
+from .. import config
 from .vat_calculator import _to_decimal
 EC_THRESHOLD = Decimal("10.00")
 
@@ -92,7 +91,7 @@ def drawer_targets() -> tuple[Decimal, Decimal]:
     config (`SOLL_MUENZ_KASSENSTAND`, `SOLL_SCHEIN_KASSENSTAND`, 50/100 by default).
     """
     def read(name: str, default: str) -> Decimal:
-        raw = os.getenv(name, default)
+        raw = config.env(name, default)
         try:
             value = Decimal(str(raw).strip())
         except InvalidOperation:
@@ -384,7 +383,6 @@ __all__ = [
     "validate_balance_change",
     "drawer_targets",
     "kassenstand_reset_suggestion",
-    "is_training_mode",
     "last_settlement",
     "open_period_range",
     "aggregate_period",

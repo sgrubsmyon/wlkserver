@@ -17,7 +17,6 @@ from __future__ import annotations
 
 import io
 import logging
-import os
 import xml.etree.ElementTree as ET
 import zipfile
 from dataclasses import dataclass
@@ -41,6 +40,8 @@ from ..models import (
 )
 from .sale_workflow import SPECIAL_ARTIKEL
 from .vat_calculator import _to_decimal
+
+from .. import config
 
 logger = logging.getLogger(__name__)
 
@@ -134,7 +135,7 @@ def _schema() -> dict[str, _Table]:
 
 
 def _config() -> dict[str, str]:
-    return {key: os.getenv("DSFINVK_" + key, _DEFAULTS.get(key, "")) for key in _CONFIG_KEYS}
+    return {key: config.env("DSFINVK_" + key, _DEFAULTS.get(key, "")) for key in _CONFIG_KEYS}
 
 
 def _format_number(value, accuracy: int, table: _Table) -> str:
@@ -472,7 +473,7 @@ def export_dsfinvk(session: Session, abrechnung_tag_id: int) -> bytes:
 
 def write_dsfinvk_export(session: Session, abrechnung_tag_id: int) -> Path | None:
     """Write the archive to `DSFINVK_EXPORT_DIR` (no-op when unset)."""
-    directory = os.getenv("DSFINVK_EXPORT_DIR")
+    directory = config.dsfinvk_export_dir()
     if not directory:
         return None
     target = Path(directory)

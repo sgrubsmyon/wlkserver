@@ -32,7 +32,8 @@ from ..models import (
     Rabattaktion,
     User,
 )
-from ..session import get_engine, get_production_engine, is_training_mode
+from ..config import training_mode
+from ..session import get_engine, get_production_engine
 
 logger = logging.getLogger(__name__)
 
@@ -176,7 +177,7 @@ def mirror_users(session: Session, production_engine: Engine) -> None:
 
 def ensure_training_database() -> None:
     """Create and seed the sandbox when this instance runs in training mode."""
-    if not is_training_mode():
+    if not training_mode():
         return
     engine = get_engine()
     production = get_production_engine()

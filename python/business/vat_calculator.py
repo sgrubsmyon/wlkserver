@@ -1,8 +1,9 @@
 """VAT (MwSt) calculation and aggregation helpers."""
-import os
 from decimal import Decimal, ROUND_HALF_UP
 from collections import OrderedDict
 from typing import Any, Iterable, Mapping, Optional
+
+from .. import config
 
 
 CENT = Decimal("0.01")
@@ -19,7 +20,7 @@ VAT_ROUNDING_METHODS = (HORIZONTAL, VERTICAL)
 
 def vat_rounding_method() -> str:
     """Configured rounding method for receipts (`VAT_ROUNDING_METHOD`)."""
-    method = os.getenv("VAT_ROUNDING_METHOD", HORIZONTAL).strip().lower()
+    method = (config.env("VAT_ROUNDING_METHOD", HORIZONTAL) or "").strip().lower()
     if method not in VAT_ROUNDING_METHODS:
         raise ValueError(
             f"Invalid VAT_ROUNDING_METHOD {method!r}; expected one of {VAT_ROUNDING_METHODS}"

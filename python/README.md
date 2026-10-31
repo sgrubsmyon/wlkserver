@@ -18,13 +18,15 @@ pytest -q
 ## Configuration
 
 Unlike the Java POS (`config.properties`), the Python API is configured through
-**environment variables**. `python-dotenv` loads an optional `python/.env` file
-at import time (`session.py`, `dependencies.py`); real environment variables take
-precedence over `.env`. `.env` is git-ignored — never commit secrets.
+**environment variables**. Every variable is read in one place, `python/config.py`
+(which also loads the optional `python/.env` via `python-dotenv`); real environment
+variables take precedence over `.env`. Values are read on access, not cached, so a
+changed variable applies without a restart (except the DB engine, which is created
+once). `.env` is git-ignored — never commit secrets.
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `DBHOST`, `DBNAME`, `DBUSER`, `DBPASS` | — | MariaDB connection used by `session.py` |
+| `DBHOST`, `DBNAME`, `DBUSER`, `DBPASS` | — | MariaDB connection used by `session.py` (`config.database_url()`) |
 | `AUTH_SECRET` | dev placeholder | JWT signing secret — **must** be set in production |
 | `AUTH_TOKEN_TTL` | `3600` | JWT lifetime in seconds |
 | `CORS_ORIGINS` | SvelteKit dev server (`localhost:5173`, `127.0.0.1:5173`) | Comma-separated allowed browser origins |

@@ -1,7 +1,6 @@
 """Authentication utilities (bcrypt + PyJWT)."""
 from __future__ import annotations
 
-import os
 import secrets
 import time
 from typing import Any, Optional
@@ -9,8 +8,10 @@ from typing import Any, Optional
 import bcrypt
 import jwt
 
-TOKEN_SECRET = os.getenv("AUTH_SECRET", os.getenv("SECRET_KEY", "dev-secret-change-me-please-set-AUTH_SECRET-in-env"))
-TOKEN_TTL = int(os.getenv("AUTH_TOKEN_TTL", "3600"))
+from .. import config
+
+TOKEN_SECRET = config.auth_secret()
+TOKEN_TTL = config.auth_token_ttl()
 
 ALGO = "HS256"
 

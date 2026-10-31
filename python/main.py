@@ -1,4 +1,3 @@
-import os
 from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, Request
@@ -6,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 
 from .business.errors import DomainError
+from . import config
 from .business.training import ensure_training_database
 from .business.vat_calculator import vat_rounding_method
 from .dependencies import require_user
@@ -46,14 +46,9 @@ async def domain_error_handler(request: Request, exc: DomainError):
 
 # Restrict CORS to the configured frontend origins (comma separated, defaults to
 # the SvelteKit dev server). Set CORS_ORIGINS in production.
-cors_origins = [
-    origin.strip()
-    for origin in os.getenv("CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173").split(",")
-    if origin.strip()
-]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=cors_origins,
+    allow_origins=config.cors_origins(),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

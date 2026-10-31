@@ -10,7 +10,8 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from ..business.training import reset_training_data
 from ..dependencies import require_admin, require_user
-from ..session import SessionDep, get_production_engine, is_training_mode
+from ..config import training_mode
+from ..session import SessionDep, get_production_engine
 
 router = APIRouter(
     prefix="/training",
@@ -21,13 +22,13 @@ router = APIRouter(
 
 @router.get("/status")
 def training_status(_user=Depends(require_user)) -> dict:
-    return {"training_mode": is_training_mode()}
+    return {"training_mode": training_mode()}
 
 
 @router.post("/reset")
 def reset_training(session: SessionDep, _user=Depends(require_admin)) -> dict:
     """Clear the sandbox and seed the test catalog again (training mode only)."""
-    if not is_training_mode():
+    if not training_mode():
         raise HTTPException(status_code=400, detail="Not running in training mode")
     reset_training_data(session, get_production_engine())
     return {"status": "reset"}
