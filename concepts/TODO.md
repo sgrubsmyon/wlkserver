@@ -2,8 +2,8 @@
 
 > **Sync note**: This document and `concepts/IMPLEMENTATION_PLAN.md` must be kept in sync. When implementation progress changes, update both files so new sessions without prior memory see a consistent status.
 
-> **Last Updated**: 2026-10-28  
-> **Status**: Phases 1-5 implemented at router level (TSE export adapter untested without hardware); main Phase 6/7 flows wired (see "Business Logic Wiring Gaps" for what remains); **all 2026-10-28 audit gaps #1-#7 are done (DSFinV-K export, sale auxiliary lines, Anzahlung split, month/year invalidation, Zählprotokoll lifecycle, `abrechnung_tag_tse`/signature counter, training sandbox database), see "Business-logic gaps"; minor divergences remain**; auth enforced on all endpoints (admin role for admin operations); parity audit of the remaining low-priority endpoints done and resolved (see "Parity Audit"), Bestellung positions + date filter implemented; bar_brutto aggregation matches Java; sale workflow (validation, automatic discounts, all four modes, Pfand/RABATT/Aufschlag/Gutschein-Einlösung positions, Anzahlung creation/resolution), storno (payment-mode parity, cash payout, settlement lock, rollback, attribution), cash register (payment, balance validation, end-of-day preview) complete; validation framework finished (model constraints + `ensure_*` helpers in use); voucher redemption uses the Java balance calculation; search/filter/pagination/sorting finished for all list endpoints; Bestellung CSV import supports positions; Bestellung/Inventur CSV export added (ODS deferred); CORS configured; core `/training` endpoints; integration tests incl. concurrency; same-origin nginx deployment and script automation documented as planned; VAT module Java-parity checked, 100% tested, rounding method configurable; test coverage 90%
+> **Last Updated**: 2026-10-31  
+> **Status**: Phases 1-5 implemented at router level (TSE export adapter untested without hardware); main Phase 6/7 flows wired (see "Business Logic Wiring Gaps" for what remains); **all 2026-10-28 audit gaps #1-#7 are done (DSFinV-K export, sale auxiliary lines, Anzahlung split, month/year invalidation, Zählprotokoll lifecycle, `abrechnung_tag_tse`/signature counter, training sandbox database), see "Business-logic gaps"; edge-case validation pass done (2026-10-31), only the client-side price-tag export remains as a minor divergence**; auth enforced on all endpoints (admin role for admin operations); parity audit of the remaining low-priority endpoints done and resolved (see "Parity Audit"), Bestellung positions + date filter implemented; bar_brutto aggregation matches Java; sale workflow (validation, automatic discounts, all four modes, Pfand/RABATT/Aufschlag/Gutschein-Einlösung positions, Anzahlung creation/resolution), storno (payment-mode parity, cash payout, settlement lock, rollback, attribution), cash register (payment, balance validation, end-of-day preview) complete; validation framework finished (model constraints + `ensure_*` helpers in use); voucher redemption uses the Java balance calculation; search/filter/pagination/sorting finished for all list endpoints; Bestellung CSV import supports positions; Bestellung/Inventur CSV export added (ODS deferred); CORS configured; core `/training` endpoints; integration tests incl. concurrency; same-origin nginx deployment and script automation documented as planned; VAT module Java-parity checked, 100% tested, rounding method configurable; test coverage 90%
 
 ---
 
@@ -347,6 +347,7 @@ Audit of `python/` against the Java POS (`../git/src/org/weltladen_bonn/pos/`). 
 - [x] Voucher numbering: `gutschein_nr` is assigned by the backend for both the sale flow and `POST /gutschein`; clients can no longer pass a number. The single `gutschein_counter` row (`migrations/03_gutschein_counter/`) is seeded from `MAX(gutschein_nr)` and locked with `SELECT ... FOR UPDATE` until the transaction commits (`business/voucher_logic.next_gutschein_nr`), so concurrent creators cannot pick the same number. The global maximum is kept (production has no null-linked vouchers >= 200; the Java filter only excludes rows not linked to a sale position)
 - [x] `create_verkauf` writes sale, details, VAT, voucher and Kassenstand in one transaction (single commit; the voucher and Kassenstand locks are held until it). A failing write rolls the whole receipt back (`test_failed_sale_rolls_back_everything`)
 - [x] Special articles are detected by documented `artikel_nr` values (`RABATT1`, `RABATT2`, `ANPASSUNG`, `GUTSCHEINEINLOES`, `GUTSCHEIN`) instead of the Java `WindowContent` IDs; they match the production master data
+- [x] Edge-case validation (2026-10-31): `POST /verkauf/` rejects a cash sale whose `kunde_gibt` is below the total (negative change), a client-set `storno_von` (stornos only via `POST /verkauf/{rechnungs_nr}/storno`, mirroring `HeutigeRechnungen.insertStornoIntoVerkauf`) and `gutschein_einloesung_betrag` without `gutschein_einloesung_nr` (was silently ignored). Attribution now always comes from the token: the payload `user_id` field of `VerkaufCreate` can no longer book a receipt for another user. Invalid `von`/`bis` dates on `GET /verkauf/` and `GET /bestellung/` are a `422` instead of a `500` (typed as `datetime` like `/kassenstand`). Covered by `test_sale_rejects_invalid_edge_cases` in `tests/test_integration.py`
 - [ ] Price-tag export (`PreisschilderExport`, ODT templates) is client-side output like the deferred ODS exports
 
 ## 🟢 LOW PRIORITY - Utilities and Enhancements
@@ -463,7 +464,7 @@ The remaining imported items are quality/production tasks, tracked below.
 
 - [x] Most database tables have corresponding models and endpoints (Phase 1-5)
 - [x] All database tables have models (training tables now have core sale endpoints)
-- [ ] All business logic from Java POS ported (Phase 6) - main flows wired, see "Business Logic Wiring Gaps" and "Business-logic gaps (2026-10-28 audit)"
+- [ ] All business logic from Java POS ported (Phase 6) - all 2026-10-28 audit gaps (#1-#7) and the edge-case validation pass are done; open are the ODS export (`Tages-/Monats-/Jahresabrechnung.ods`, `Bestellvorlage_*.ods`, `Inventur.ods`), the client-side Preisschilder export and the untested TSE hardware adapter
 - [x] Comprehensive validation and error handling (Phase 7) - model constraints + wired `ensure_*` helpers (see Validation Framework)
 - [x] Per-user accounts with login auditing (Phase 7.4) - models + endpoints + migration + enforcement complete
 - [x] Transaction attribution via user_id (all 8 transaction tables have the column; populated from token where present) (step 4 follow-up)
@@ -503,7 +504,7 @@ The remaining imported items are quality/production tasks, tracked below.
 ### Business Logic Status
 - **Business Logic Ported**: CRUD + settlement aggregation + VAT/sale-workflow/storno/cash-register modules wired into the endpoints; VAT module is Java-parity checked and fully tested
 - **Business Logic NOT wired**: TSE hardware (adapter untested)
-- **Remaining Java logic**: validation/edge cases; the audit gaps #1-#7 are closed
+- **Remaining Java logic**: only the untested TSE hardware adapter and the client-side ODS/Preisschilder exports; audit gaps #1-#7 and the edge-case validation pass are closed
 
 ### Testing Status
 - **Test Files**: 24 (incl. dedicated tests for abrechnung_monat/jahr, tse, sale_workflow, storno_logic, import_export)
@@ -518,11 +519,11 @@ The remaining imported items are quality/production tasks, tracked below.
 3. **Integration tests**: done in `test_integration.py` (workflows, cross-entity effects, concurrent sales)
 4. **Coverage**: target 80%+ reached; remaining gaps: tse_client.py 44%, users 33%, rabattaktion 33%
 5. **Validation**: done (model constraints + `ensure_*` helpers wired, see Validation Framework)
-6. **Remaining business logic**: none from the 2026-10-28 audit; the remaining items are validation/edge cases and the untested TSE hardware adapter (see "Business-logic gaps")
+6. **Remaining business logic**: none from the 2026-10-28 audit and none from the edge-case validation pass; only the untested TSE hardware adapter remains (see "Business-logic gaps")
 7. **Training mode**: the sandbox database covers every operation; run a second API instance with `TRAINING_MODE=1` and `TRAINING_DB_URL` for it
 8. **Import/Export**: CSV exports for Bestellung and Inventur exist; ODS export is deferred to a later phase (see "Phase 7" above)
 9. **Documentation**: migration guide (Java POS → API), database schema reference, consistent docstrings, deployment/HTTPS docs
 
 ---
 
-*This TODO list reflects the current implementation state as of 2026-10-28 (completeness check against IMPLEMENTATION_PLAN.md).*
+*This TODO list reflects the current implementation state as of 2026-10-31 (completeness check against IMPLEMENTATION_PLAN.md).*

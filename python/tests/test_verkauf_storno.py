@@ -71,7 +71,7 @@ def test_create_verkauf_rejects_zero_stueckzahl(session):
     from python.models import VerkaufCreate
     payload = VerkaufCreate(verkauf_details=[{"artikel_id": 1, "stueckzahl": 0}])
     with pytest.raises(HTTPException) as exc:
-        create_verkauf(payload, session, None, None)
+        create_verkauf(payload, session, None)
     assert exc.value.status_code == 400
     # no empty sale row must be left behind
     assert session.exec(select(Verkauf)).all() == []

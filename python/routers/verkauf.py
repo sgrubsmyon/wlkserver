@@ -1,9 +1,9 @@
 from contextlib import ExitStack
 from datetime import datetime, timezone
+from decimal import Decimal
 from typing import Annotated, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.security import HTTPAuthorizationCredentials
 from sqlmodel import select
 
 from ..models import (
@@ -20,7 +20,7 @@ from ..models import (
     # VerkaufDetailsCreate,
 )
 from ..session import SessionDep
-from ..dependencies import bearer_scheme, require_user
+from ..dependencies import require_user
 from ..models import User
 from ..business.vat_calculator import calculate_vat
 from ..business.sale_workflow import (
@@ -40,8 +40,8 @@ router = APIRouter(
 @router.get("/")
 def read_verkaeufe(
     session: SessionDep,
-    von: Optional[str] = None,
-    bis: Optional[str] = None,
+    von: Optional[datetime] = None,
+    bis: Optional[datetime] = None,
     only_storno: bool = False,
     include_details: bool = False,
     include_mwst: bool = False,
@@ -50,16 +50,10 @@ def read_verkaeufe(
     desc: bool = False,
 ) -> List[dict]:
     selection = select(Verkauf)
-    if von:
-        von_dt = datetime.fromisoformat(von)
-        if von_dt.tzinfo is None:
-            von_dt = von_dt.replace(tzinfo=timezone.utc)
-        selection = selection.where(Verkauf.verkaufsdatum >= von_dt)
-    if bis:
-        bis_dt = datetime.fromisoformat(bis)
-        if bis_dt.tzinfo is None:
-            bis_dt = bis_dt.replace(tzinfo=timezone.utc)
-        selection = selection.where(Verkauf.verkaufsdatum <= bis_dt)
+    if von is not None:
+        selection = selection.where(Verkauf.verkaufsdatum >= von)
+    if bis is not None:
+        selection = selection.where(Verkauf.verkaufsdatum <= bis)
     if only_storno:
         selection = selection.where(Verkauf.storno_von.is_not(None))
     verkaeufe = session.exec(
@@ -112,19 +106,28 @@ def read_single_verkauf(
 
 
 @router.post("/", response_model=VerkaufPublic)
-def create_verkauf(verkauf: VerkaufCreate, session: SessionDep, credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme), _user: User = Depends(require_user)):
-    # Resolve user_id from token if present (transaction attribution)
-    user_id = getattr(verkauf, "user_id", None)
-    if user_id is None and credentials is not None and credentials.credentials:
-        from ..utils.auth import decode_token
-        payload = decode_token(credentials.credentials)
-        if payload:
-            user_id = payload.get("user_id")
+def create_verkauf(verkauf: VerkaufCreate, session: SessionDep, _user: User = Depends(require_user)):
+    # Attribution always comes from the token: a payload `user_id` must not be
+    # able to book a receipt for someone else.
+    user_id = getattr(_user, "user_id", None)
+    # A storno is only created by POST /verkauf/{rechnungs_nr}/storno, which
+    # inverts the receipt; a client-set `storno_von` would fake one.
+    if verkauf.storno_von is not None:
+        raise HTTPException(
+            status_code=400,
+            detail="storno_von is set by POST /verkauf/{rechnungs_nr}/storno",
+        )
     # Expand auxiliary lines (Pfand, discounts, price adjustment, voucher
     # redemption, Anzahlung) and validate before writing anything.
     prepared = build_sale_details(session, verkauf)
     anzahlung = apply_anzahlung(session, verkauf, prepared)
-    total = sum((d.ges_preis or 0) for d in prepared)
+    total = sum((Decimal(str(d.ges_preis or 0)) for d in prepared), Decimal("0"))
+    # Change is never negative (Java asks for a sufficient "KUNDE GIBT").
+    if not verkauf.ec_zahlung and verkauf.kunde_gibt is not None and Decimal(str(verkauf.kunde_gibt)) < total:
+        raise HTTPException(
+            status_code=400,
+            detail=f"kunde_gibt ({verkauf.kunde_gibt}) is less than the sale total ({total})",
+        )
 
     from ..business.cash_register import (
         KASSENSTAND_LOCK,
@@ -137,7 +140,6 @@ def create_verkauf(verkauf: VerkaufCreate, session: SessionDep, credentials: HTT
         verkaufsdatum=datetime.now(timezone.utc),
         ec_zahlung=verkauf.ec_zahlung,
         kunde_gibt=verkauf.kunde_gibt,
-        storno_von=verkauf.storno_von,
         user_id=user_id,
     )
     try:

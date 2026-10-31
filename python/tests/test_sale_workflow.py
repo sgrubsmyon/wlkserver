@@ -408,7 +408,7 @@ def test_router_applies_discount_as_separate_rabatt_line(session):
     action = _seed_rabatt(session, artikel_id=artikel.artikel_id, rabatt_relativ=0.10)
 
     payload = VerkaufCreate(verkauf_details=[{"artikel_id": artikel.artikel_id, "stueckzahl": 2}])
-    result = router_create_verkauf(payload, session, None, None)
+    result = router_create_verkauf(payload, session, None)
 
     rows = sorted(result["verkauf_details"], key=lambda d: d.vd_id)
     assert [r.ges_preis for r in rows] == [20.0, -2.0]
@@ -455,7 +455,7 @@ def test_router_adds_pfand_and_price_adjustment_lines(session):
     payload = VerkaufCreate(verkauf_details=[
         {"artikel_id": artikel.artikel_id, "stueckzahl": 2, "rabatt_absolut": -1.0},
     ])
-    result = router_create_verkauf(payload, session, None, None)
+    result = router_create_verkauf(payload, session, None)
 
     rows = sorted(result["verkauf_details"], key=lambda d: d.vd_id)
     assert [r.ges_preis for r in rows] == [4.0, 2.0, 0.5]
@@ -479,7 +479,7 @@ def test_router_receipt_discount_one_line_per_vat_rate(session):
             {"artikel_id": b.artikel_id, "stueckzahl": 1},
         ],
     )
-    result = router_create_verkauf(payload, session, None, None)
+    result = router_create_verkauf(payload, session, None)
     rows = sorted(result["verkauf_details"], key=lambda d: d.vd_id)
     assert [(r.mwst_satz, r.ges_preis) for r in rows] == [
         (0.19, 10.0), (0.07, 20.0), (0.19, -1.0), (0.07, -2.0)
@@ -501,7 +501,7 @@ def test_router_redeems_voucher_as_sale_position(session):
         gutschein_einloesung_nr=200,
         verkauf_details=[{"artikel_id": artikel.artikel_id, "stueckzahl": 1}],
     )
-    result = router_create_verkauf(payload, session, None, None)
+    result = router_create_verkauf(payload, session, None)
     rows = sorted(result["verkauf_details"], key=lambda d: d.vd_id)
     assert [r.ges_preis for r in rows] == [20.0, -10.0]
     assert session.get(Gutschein, g.gutschein_id).restbetrag == 10.0
@@ -526,7 +526,7 @@ def test_router_creates_anzahlung_with_vat_split(session):
             {"artikel_id": b.artikel_id, "stueckzahl": 1},
         ],
     )
-    result = router_create_verkauf(payload, session, None, None)
+    result = router_create_verkauf(payload, session, None)
     rows = sorted(result["verkauf_details"], key=lambda d: d.vd_id)
     split = [r for r in rows if r.artikel_id == anzahlung_artikel.artikel_id]
     goods = [r for r in rows if r.artikel_id != anzahlung_artikel.artikel_id]
@@ -561,12 +561,12 @@ def test_router_resolves_anzahlung_in_normal_sale(session):
             {"artikel_id": a.artikel_id, "stueckzahl": 1},
             {"artikel_id": b.artikel_id, "stueckzahl": 1},
         ],
-    ), session, None, None)
+    ), session, None)
 
     result = router_create_verkauf(VerkaufCreate(
         anzahlung_aufloesen_nr=deposit["rechnungs_nr"],
         verkauf_details=[{"artikel_id": c.artikel_id, "stueckzahl": 1}],
-    ), session, None, None)
+    ), session, None)
     rows = sorted(result["verkauf_details"], key=lambda d: d.vd_id)
 
     assert [r.ges_preis for r in rows] == [5.0, 10.0, 20.0, -10.0, -5.0]
@@ -583,7 +583,7 @@ def test_router_resolves_anzahlung_in_normal_sale(session):
     with pytest.raises(Exception) as exc:
         router_create_verkauf(VerkaufCreate(
             anzahlung_aufloesen_nr=deposit["rechnungs_nr"],
-        ), session, None, None)
+        ), session, None)
     assert "already resolved" in str(exc.value)
 
 
@@ -597,7 +597,7 @@ def test_variable_price_article_uses_explicit_line_price(session):
     payload = VerkaufCreate(verkauf_details=[
         {"artikel_id": artikel.artikel_id, "stueckzahl": 2, "ges_preis": 12.34},
     ])
-    result = router_create_verkauf(payload, session, None, None)
+    result = router_create_verkauf(payload, session, None)
 
     rows = result["verkauf_details"]
     assert len(rows) == 1
@@ -620,7 +620,7 @@ def test_failed_sale_rolls_back_everything(session, monkeypatch):
         {"artikel_id": artikel.artikel_id, "stueckzahl": 1},
     ])
     with pytest.raises(RuntimeError):
-        router_create_verkauf(payload, session, None, None)
+        router_create_verkauf(payload, session, None)
 
     # the sale, its details, the VAT rows and the cash entry are all rolled back
     assert session.exec(select(Verkauf)).all() == []
@@ -637,7 +637,7 @@ def test_sale_creates_voucher_with_counter_number(session):
     payload = VerkaufCreate(verkauf_details=[
         {"artikel_id": artikel.artikel_id, "stueckzahl": 1, "ges_preis": 10.0},
     ])
-    router_create_verkauf(payload, session, None, None)
+    router_create_verkauf(payload, session, None)
 
     rows = session.exec(select(Gutschein)).all()
     assert len(rows) == 1

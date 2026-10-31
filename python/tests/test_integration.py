@@ -252,3 +252,45 @@ def test_concurrent_sales_are_consistent(tmp_path):
         assert [e.neuer_kassenstand for e in entries] == [10.0, 20.0, 30.0, 40.0]
         total = sum(Decimal(str(e.neuer_kassenstand)) for e in entries[-1:])
         assert total == Decimal("40.0")
+
+
+# ------------------------------------------------------- edge-case validation
+
+def test_sale_rejects_invalid_edge_cases(client, session):
+    a = _seed_artikel(session, vk_preis=10.0)
+
+    # cash tendered below the total would yield a negative change
+    r = client.post("/verkauf/", json={
+        "ec_zahlung": False,
+        "kunde_gibt": 5.0,
+        "verkauf_details": [{"artikel_id": a.artikel_id, "stueckzahl": 1}],
+    })
+    assert r.status_code == 400
+
+    # stornos are only created by the dedicated endpoint
+    r = client.post("/verkauf/", json={
+        "storno_von": 1,
+        "verkauf_details": [{"artikel_id": a.artikel_id, "stueckzahl": 1}],
+    })
+    assert r.status_code == 400
+
+    # a redemption amount without a voucher number would be silently ignored
+    r = client.post("/verkauf/", json={
+        "gutschein_einloesung_betrag": 5.0,
+        "verkauf_details": [{"artikel_id": a.artikel_id, "stueckzahl": 1}],
+    })
+    assert r.status_code == 400
+
+    # no receipt may be attributed to another user
+    r = client.post("/verkauf/", json={
+        "user_id": 999,
+        "verkauf_details": [{"artikel_id": a.artikel_id, "stueckzahl": 1}],
+    })
+    assert r.status_code == 200
+    assert r.json()["user_id"] != 999
+    assert r.json()["user_id"] is not None
+
+    # invalid dates are a client error, not a 500
+    assert client.get("/verkauf/?von=not-a-date").status_code == 422
+    assert client.get("/bestellung/?bis=not-a-date").status_code == 422
+    assert client.get("/verkauf/?von=2026-01-01T00:00:00").status_code == 200

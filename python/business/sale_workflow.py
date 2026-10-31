@@ -395,6 +395,11 @@ def build_sale_details(session, verkauf) -> list[VerkaufDetails]:
                 rows.append(_aux_line(rabatt_artikel, 1, -reduction, mwst_satz))
 
     gutschein_nr = getattr(verkauf, "gutschein_einloesung_nr", None)
+    if gutschein_nr is None and getattr(verkauf, "gutschein_einloesung_betrag", None) is not None:
+        raise HTTPException(
+            status_code=400,
+            detail="gutschein_einloesung_betrag requires gutschein_einloesung_nr",
+        )
     if gutschein_nr is not None:
         from .voucher_logic import voucher_balance
         balance = voucher_balance(session, gutschein_nr)

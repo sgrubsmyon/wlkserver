@@ -13,7 +13,7 @@ This document outlines the comprehensive implementation plan to complete the Fas
 ### ✅ Already Implemented
 - **Database Models**: All core tables have SQLModel definitions in `python/models.py` (`user_id` columns on all 8 transaction tables). The Java `training_*` models were removed: training mode now uses a separate sandbox database with the same schema
 - **CRUD Operations**: All planned entities have CRUD functionality, including Bestellung positions (`details` embedded in the order payload) and the Java order types `LM`/`KHW`/`IVT` (default `LM`; `IVT` holds the inventory count)
-- **Business Logic**: Modules under `python/business/` are wired into the main flows (VAT, sale workflow incl. vouchers/discounts and detail validation, storno incl. voucher/installment reversal and kassenstand reversal, cash-register side-effects incl. balance validation, DSFinV-K export, TSE export + settlement TSE metadata best-effort, training sandbox). VAT module and sale workflow are Java-parity checked and fully tested. The 2026-10-28 audit gaps #1-#7 are closed; remaining work is edge-case validation and the untested TSE hardware adapter.
+- **Business Logic**: Modules under `python/business/` are wired into the main flows (VAT, sale workflow incl. vouchers/discounts and detail validation, storno incl. voucher/installment reversal and kassenstand reversal, cash-register side-effects incl. balance validation, DSFinV-K export, TSE export + settlement TSE metadata best-effort, training sandbox). VAT module and sale workflow are Java-parity checked and fully tested. The 2026-10-28 audit gaps #1-#7 are closed, as is the edge-case validation pass (2026-10-31); remaining work is the untested TSE hardware adapter.
 - **API Structure**: Clean FastAPI structure with proper routing
 - **Auth**: Per-user accounts (bcrypt + JWT), login auditing (readable via admin-only `GET /auth/anmeldungen`), `user_id` attribution on transaction endpoints, SQL migration in `migrations/02_user_auth/`; all data endpoints (reads included) require `require_user`, admin endpoints require role `admin`, login has rate limiting, refresh/logout supported
 
@@ -21,7 +21,7 @@ This document outlines the comprehensive implementation plan to complete the Fas
 - Validate against a real MariaDB instance (tests are SQLite-only)
 - CORS configured in `python/main.py` via `CORS_ORIGINS` (defaults to the SvelteKit dev server); keep the OpenAPI schema stable
 - Add integration tests for complete sales/storno/settlement workflows (coverage target 80% reached)
-- All 2026-10-28 audit gaps are closed; the remaining work is validation/edge cases, the untested TSE hardware adapter, and the documentation/production items - see "Business-logic gaps (2026-10-28 audit)" below
+- All 2026-10-28 audit gaps and the edge-case validation pass are closed; the remaining work is the untested TSE hardware adapter and the documentation/production items - see "Business-logic gaps (2026-10-28 audit)" below
 - Complete documentation (migration guide, DB schema reference, docstrings)
 
 > **Note**: The Phase sections below contain the original plan text (some "Current" states are outdated). The authoritative per-endpoint status is in `concepts/TODO.md`; the priority matrix and success criteria below are kept up to date.
@@ -50,7 +50,7 @@ Audit of `python/` against the Java POS (`../git/src/org/weltladen_bonn/pos/`). 
 - ✅ Special articles are detected by their master-data `artikel_nr` (`RABATT1`, `RABATT2`, `ANPASSUNG`, `ANZAHLUNG`, `ANZAHLAUFLOES`, `GUTSCHEINEINLOES`, `GUTSCHEIN`), which matches the Java `WindowContent` IDs 1, 2, 3, 4, 5, 6, 7 in production.
 - Price-tag export (`PreisschilderExport`, ODT templates) is client-side output like the deferred ODS exports.
 
-All functional audit gaps are done; remaining items are validation/edge cases and the untested TSE adapter. Tracking: `concepts/TODO.md` → "Business-logic gaps".
+All functional audit gaps and the edge-case validation pass are done; the remaining item is the untested TSE adapter. Tracking: `concepts/TODO.md` → "Business-logic gaps".
 
 ---
 
@@ -729,7 +729,7 @@ Still missing: none for the planned workflows; new endpoints should keep adding 
 
 - [x] All database tables have corresponding models and endpoints (training tables have core sale endpoints)
 - [x] Bookkeeping integrity: no update/delete endpoints for immutable tables (verkauf, kassenstand, gutschein, anzahlung, abrechnung_tag)
-- [ ] All business logic from Java POS is ported to API (edge-case validation still missing; 2026-10-28 audit gaps #1-#7 done)
+- [ ] All business logic from Java POS is ported to API (2026-10-28 audit gaps #1-#7 and edge-case validation done; open: ODS exports, client-side Preisschilder export, untested TSE hardware adapter)
 - [x] Per-user accounts with login auditing and transaction attribution
 - [x] Comprehensive validation and error handling
 - [x] 80%+ test coverage (83%)
