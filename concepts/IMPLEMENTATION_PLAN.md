@@ -458,7 +458,7 @@ Details and sources: `docs/VAT_ROUNDING.md`.
 - Prevent storno of already storniert sales
 
 **Status: ✅ Done (2026-10-26).**
-- Inverted entries match Java `HeutigeRechnungen.insertStornoIntoVerkauf` (position, `artikel_id`, `rabatt_id`, `mwst_satz` copied; quantity, price and VAT negated), written in one transaction with rollback
+- Inverted entries match Java `HeutigeRechnungen.insertStornoIntoVerkauf` (position, `artikel_id`, `rabatt_id`, `mwst_satz` copied; quantity, price and VAT negated), written in one transaction with rollback; the storno receipt, its voucher/installment reversal and the cash payout are committed together (voucher lock → Kassenstand lock, same order as sale creation)
 - The storno receipt mirrors the **original payment mode** (Java: `ec_zahlung = !zahlMod.equals("Bar")`)
 - The refund is paid out in cash: Java `insertStornoIntoTSE` always sends the payment type "Bar" ("Weltladen can only pay back in bar, even in case of EC payment"), so a reversing Kassenstand entry is written for cash and EC stornos; `cash_refund=false` only covers the edge case that a card charge was not executed
 - **Only receipts that are not yet part of a completed Tagesabschluss can be storniert**: a receipt inside any `abrechnung_tag` range is rejected with `400` and a message naming the settlement, because a finished settlement is immutable

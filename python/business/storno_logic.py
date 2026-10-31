@@ -88,6 +88,9 @@ def create_storno(*args, **kwargs):
             else:
                 session, rechnungs_nr = args[0], args[1]
     user_id = kwargs.get("user_id")
+    # `commit=False` lets the caller (the storno endpoint) book the whole storno -
+    # receipt, voucher/installment reversal and cash payout - in one transaction.
+    commit = kwargs.get("commit", True)
     original = validate_storno(rechnungs_nr, session)
     # The storno receipt mirrors the original payment mode (Java
     # HeutigeRechnungen.insertStornoIntoVerkauf: ec_zahlung = !zahlMod.equals("Bar")).
@@ -107,17 +110,19 @@ def create_storno(*args, **kwargs):
             session.add(invert_detail(d, storno_sale.rechnungs_nr))
         for m in original.verkauf_mwst or []:
             session.add(invert_mwst(m, storno_sale.rechnungs_nr))
-        session.commit()
+        session.flush()
+        if commit:
+            session.commit()
+            session.refresh(storno_sale)
     except Exception:
         # never leave a half-written storno behind
         session.rollback()
         raise
-    session.refresh(storno_sale)
     return storno_sale
 
 
 # voucher/installment handling hooks (placeholders for integration)
-def handle_storno_voucher(session: Session, original: Verkauf) -> None:
+def handle_storno_voucher(session: Session, original: Verkauf, commit: bool = True) -> None:
     """Reverse voucher side-effects caused by the sale (best-effort)."""
     from datetime import datetime, timezone
     from ..models import Gutschein, VerkaufDetails
@@ -139,11 +144,11 @@ def handle_storno_voucher(session: Session, original: Verkauf) -> None:
         )
         new_g.gutschein_id = None
         session.add(new_g)
-    if gutscheine:
+    if gutscheine and commit:
         session.commit()
 
 
-def handle_storno_installment(session: Session, original: Verkauf) -> None:
+def handle_storno_installment(session: Session, original: Verkauf, commit: bool = True) -> None:
     """Reverse installment (Anzahlung) handling: resolve open installments against storno."""
     from datetime import datetime, timezone
     from ..models import Anzahlung
@@ -168,7 +173,7 @@ def handle_storno_installment(session: Session, original: Verkauf) -> None:
         )
         new_a.anzahlung_id = None
         session.add(new_a)
-    if open_anz:
+    if open_anz and commit:
         session.commit()
 
 

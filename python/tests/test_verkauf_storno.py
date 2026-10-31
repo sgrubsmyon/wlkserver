@@ -180,3 +180,40 @@ def test_storno_is_attributed_to_user(session):
 
     row = session.get(Verkauf, result["rechnungs_nr"])
     assert row.user_id == user.user_id
+
+def test_storno_rolls_back_receipt_voucher_and_cash_on_failure(session, monkeypatch):
+    from python.business import cash_register
+    from python.models import Artikel, Gutschein, Kassenstand
+
+    # sale of a GUTSCHEIN article: its storno cancels the voucher, so the
+    # rollback has to cover the storno receipt, the voucher row and the payout
+    a = Artikel(artikel_nr="GUTSCHEIN", artikel_name="Gutschein", vk_preis=10.0)
+    session.add(a)
+    session.commit()
+    session.refresh(a)
+    original = Verkauf(verkaufsdatum=datetime.now(timezone.utc), ec_zahlung=False)
+    session.add(original)
+    session.commit()
+    session.refresh(original)
+    session.add(VerkaufDetails(position=1, stueckzahl=1, ges_preis=10.0, mwst_satz=0.0,
+                               artikel_id=a.artikel_id, rechnungs_nr=original.rechnungs_nr))
+    session.add(VerkaufMwst(rechnungs_nr=original.rechnungs_nr, mwst_satz=0.0,
+                            mwst_netto=10.0, mwst_betrag=0.0))
+    session.add(Gutschein(gutschein_nr=1, datum=datetime.now(timezone.utc),
+                          gutschein_in_vd_id=1, einloesung_in_vd_id=None, restbetrag=10.0))
+    session.commit()
+
+    def boom(*args, **kwargs):
+        raise RuntimeError("cash register write failed")
+
+    monkeypatch.setattr(cash_register, "update_kassenstand_for_sale", boom)
+    with pytest.raises(RuntimeError):
+        storno_verkauf(original.rechnungs_nr, session)
+    monkeypatch.undo()
+
+    # nothing of the storno survived: no receipt, no voucher cancellation, no payout
+    assert session.exec(
+        select(Verkauf).where(Verkauf.storno_von == original.rechnungs_nr)
+    ).first() is None
+    assert len(session.exec(select(Gutschein)).all()) == 1
+    assert session.exec(select(Kassenstand)).all() == []

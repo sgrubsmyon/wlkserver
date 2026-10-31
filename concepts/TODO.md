@@ -243,7 +243,7 @@
 - [x] TSE transaction for the storno (best-effort, still untested without hardware); `user_id` attribution on both the storno sale and the TSE row
 - [x] Validation: original must exist, must not be a storno, must not already have a storno
 - [x] **Storno is only allowed for receipts not yet part of a completed Tagesabschluss**: a receipt whose `rechnungs_nr` falls into any `abrechnung_tag` range is rejected with `400` and a clear message naming the settlement; a finished settlement is immutable
-- [x] Single transaction with rollback - a failed inversion no longer leaves a half-written storno
+- [x] Single transaction with rollback - the storno receipt, its voucher/installment reversal and the cash payout are booked in one commit (locks held until it, lock order voucher → Kassenstand like sale creation); a failure leaves none of them behind (`test_storno_rolls_back_receipt_voucher_and_cash_on_failure`)
 - [x] Covered by tests/test_verkauf_storno.py and tests/test_storno_logic.py (payment modes, cash payout, settlement guard, rollback, attribution, voucher/installment handling); storno_logic.py at 94 %
 - [x] Cash Register Operations (python/business/cash_register.py) - complete
 - [x] Payment processing: `calculate_change`, `process_payment` (change + EC warning) and `ec_payment_threshold_check` (10 EUR threshold, Java `ecSchwelle`) wired into sale creation

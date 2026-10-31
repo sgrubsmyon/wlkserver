@@ -267,22 +267,55 @@ def storno_verkauf(rechnungs_nr: int, session: SessionDep, cash_refund: bool = T
     sends "Bar" even for EC sales), so `cash_refund` defaults to true. Set it to
     false only when an EC charge was not actually executed and nothing is paid out.
     """
-    from ..business.storno_logic import create_storno
+    from ..business.cash_register import (
+        KASSENSTAND_LOCK,
+        is_training_mode,
+        update_kassenstand_for_sale,
+    )
+    from ..business.storno_logic import (
+        create_storno,
+        handle_storno_installment,
+        handle_storno_voucher,
+    )
+    from ..business.voucher_logic import VOUCHER_LOCK
+
     original = session.get(Verkauf, rechnungs_nr)
     if not original:
         raise HTTPException(status_code=404, detail="Verkauf not found")
     user_id = getattr(_user, "user_id", None)
-    storno_sale = create_storno(
-        session,
-        rechnungs_nr,
-        user_id=user_id,
-    )
-    # voucher/installment handling hooks
-    from ..business.storno_logic import handle_storno_voucher, handle_storno_installment
-    handle_storno_voucher(session, original)
-    handle_storno_installment(session, original)
-    # TSE transaction handling for storno (best-effort; no TSE in training mode)
-    from ..business.cash_register import is_training_mode
+    # Cash payout: a cash sale is always refunded in cash; an EC sale too unless the
+    # caller says the card was not charged (Java asks this in a dialog).
+    payout_cash = (not original.ec_zahlung) or cash_refund
+    try:
+        # The whole storno is one transaction: the receipt, its voucher and
+        # installment reversals and the cash payout. Lock order matches
+        # create_verkauf (voucher, then Kassenstand).
+        with ExitStack() as locks:
+            locks.enter_context(VOUCHER_LOCK)
+            if payout_cash:
+                locks.enter_context(KASSENSTAND_LOCK)
+            storno_sale = create_storno(
+                session,
+                rechnungs_nr,
+                user_id=user_id,
+                commit=False,
+            )
+            handle_storno_voucher(session, original, commit=False)
+            handle_storno_installment(session, original, commit=False)
+            if payout_cash:
+                update_kassenstand_for_sale(
+                    session=session,
+                    rechnungs_nr=storno_sale.rechnungs_nr,
+                    kommentar="Storno",
+                    commit=False,
+                    lock=False,
+                )
+            session.commit()
+    except Exception:
+        session.rollback()
+        raise
+    # TSE transaction handling for storno (best-effort; no TSE in training mode).
+    # Signed after the commit: the signature needs the receipt number.
     if not is_training_mode():
         try:
             from ..utils.tse_client import tse_client
@@ -306,16 +339,6 @@ def storno_verkauf(rechnungs_nr: int, session: SessionDep, cash_refund: bool = T
             session.commit()
         except Exception:
             pass
-    # Cash payout: a cash sale is always refunded in cash; an EC sale too unless the
-    # caller says the card was not charged (Java asks this in a dialog).
-    payout_cash = (not original.ec_zahlung) or cash_refund
-    if payout_cash:
-        from ..business.cash_register import update_kassenstand_for_sale
-        update_kassenstand_for_sale(
-            session=session,
-            rechnungs_nr=storno_sale.rechnungs_nr,
-            kommentar="Storno",
-        )
     return read_single_verkauf(storno_sale.rechnungs_nr, session)
 
 
