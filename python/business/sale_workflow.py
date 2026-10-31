@@ -4,7 +4,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from decimal import Decimal, ROUND_HALF_UP
 
-from fastapi import HTTPException
+from .errors import DomainError
 from sqlmodel import Session, select
 
 from ..models import (
@@ -62,15 +62,15 @@ def validate_detail(*args, **kwargs):
             session = args[1] if len(args) > 1 else session
     stueckzahl = _field(detail, "stueckzahl", 1)
     if stueckzahl == 0:
-        raise HTTPException(status_code=400, detail="stueckzahl must not be zero")
+        raise DomainError(detail="stueckzahl must not be zero")
     if session is None:
         return
     artikel_id = _field(detail, "artikel_id")
     if artikel_id is not None and session.get(Artikel, artikel_id) is None:
-        raise HTTPException(status_code=400, detail=f"Artikel {artikel_id} not found")
+        raise DomainError(detail=f"Artikel {artikel_id} not found")
     rabatt_id = _field(detail, "rabatt_id")
     if rabatt_id is not None and session.get(Rabattaktion, rabatt_id) is None:
-        raise HTTPException(status_code=400, detail=f"Rabattaktion {rabatt_id} not found")
+        raise DomainError(detail=f"Rabattaktion {rabatt_id} not found")
 
 
 def determine_mwst_satz(*args, **kwargs):
@@ -132,13 +132,13 @@ def _active_rabattaktionen(session: Session, artikel: Artikel, rabatt_id=None):
     if rabatt_id is not None:
         rabatt = session.get(Rabattaktion, rabatt_id)
         if rabatt is None:
-            raise HTTPException(status_code=400, detail=f"Rabattaktion {rabatt_id} not found")
+            raise DomainError(detail=f"Rabattaktion {rabatt_id} not found")
         if rabatt.von is not None and rabatt.von > now:
-            raise HTTPException(status_code=400, detail="Rabattaktion is not active yet")
+            raise DomainError(detail="Rabattaktion is not active yet")
         if rabatt.bis is not None and rabatt.bis < now:
-            raise HTTPException(status_code=400, detail="Rabattaktion has expired")
+            raise DomainError(detail="Rabattaktion has expired")
         if not _rabatt_matches(rabatt, artikel):
-            raise HTTPException(status_code=400, detail="Rabattaktion does not apply to this article")
+            raise DomainError(detail="Rabattaktion does not apply to this article")
         return [rabatt]
 
     rows = session.exec(
@@ -191,7 +191,7 @@ def _apply_rabattaktionen(base_unit, stueckzahl, aktionen):
                   for r, amount in per_action.values()]
     total = qty * Decimal(str(base_unit)) - sum((amount for _, amount in reductions), Decimal("0"))
     if total < 0:
-        raise HTTPException(status_code=400, detail="Rabattaktion exceeds the line price")
+        raise DomainError(detail="Rabattaktion exceeds the line price")
     return total.quantize(CENT, rounding=ROUND_HALF_UP), reductions
 
 
@@ -276,7 +276,7 @@ def _special_artikel(session, key) -> Artikel:
     nr = SPECIAL_ARTIKEL[key]
     artikel = session.exec(select(Artikel).where(Artikel.artikel_nr == nr)).first()
     if artikel is None:
-        raise HTTPException(status_code=400, detail=f"Special article {nr} not found")
+        raise DomainError(detail=f"Special article {nr} not found")
     return artikel
 
 
@@ -396,8 +396,7 @@ def build_sale_details(session, verkauf) -> list[VerkaufDetails]:
 
     gutschein_nr = getattr(verkauf, "gutschein_einloesung_nr", None)
     if gutschein_nr is None and getattr(verkauf, "gutschein_einloesung_betrag", None) is not None:
-        raise HTTPException(
-            status_code=400,
+        raise DomainError(
             detail="gutschein_einloesung_betrag requires gutschein_einloesung_nr",
         )
     if gutschein_nr is not None:
@@ -407,10 +406,9 @@ def build_sale_details(session, verkauf) -> list[VerkaufDetails]:
         amount = Decimal(str(betrag)) if betrag is not None else balance
         amount = amount.quantize(CENT, rounding=ROUND_HALF_UP)
         if amount <= 0:
-            raise HTTPException(status_code=400, detail="Gutschein has no remaining balance")
+            raise DomainError(detail="Gutschein has no remaining balance")
         if amount > balance:
-            raise HTTPException(
-                status_code=400,
+            raise DomainError(
                 detail=f"Gutschein-Einlösung exceeds the remaining balance of {balance}",
             )
         artikel = _special_artikel(session, "gutschein_einloesung")
@@ -442,8 +440,7 @@ def apply_anzahlung(session, verkauf, rows) -> dict | None:
     betrag = getattr(verkauf, "anzahlung_betrag", None)
     aufloesen_nr = getattr(verkauf, "anzahlung_aufloesen_nr", None)
     if betrag is not None and aufloesen_nr is not None:
-        raise HTTPException(
-            status_code=400,
+        raise DomainError(
             detail="Cannot create and resolve an Anzahlung in the same sale",
         )
 
@@ -451,12 +448,11 @@ def apply_anzahlung(session, verkauf, rows) -> dict | None:
         total = sum((Decimal(str(r.ges_preis)) for r in rows), Decimal("0"))
         amount = Decimal(str(betrag)).quantize(CENT, rounding=ROUND_HALF_UP)
         if amount <= 0:
-            raise HTTPException(status_code=400, detail="anzahlung_betrag must be positive")
+            raise DomainError(detail="anzahlung_betrag must be positive")
         if total <= 0:
-            raise HTTPException(status_code=400, detail="Anzahlung requires article positions")
+            raise DomainError(detail="Anzahlung requires article positions")
         if amount > total:
-            raise HTTPException(
-                status_code=400,
+            raise DomainError(
                 detail="anzahlung_betrag exceeds the sale total",
             )
 
@@ -493,7 +489,7 @@ def apply_anzahlung(session, verkauf, rows) -> dict | None:
 
     if aufloesen_nr is not None:
         if session.get(Verkauf, aufloesen_nr) is None:
-            raise HTTPException(status_code=400, detail="Anzahlung Verkauf not found")
+            raise DomainError(detail="Anzahlung Verkauf not found")
         already = session.exec(
             select(Anzahlung).where(
                 Anzahlung.anzahlung_in_rech_nr == aufloesen_nr,
@@ -501,7 +497,7 @@ def apply_anzahlung(session, verkauf, rows) -> dict | None:
             )
         ).first()
         if already is not None:
-            raise HTTPException(status_code=400, detail="Anzahlung is already resolved")
+            raise DomainError(detail="Anzahlung is already resolved")
 
         anzahlung_artikel = _special_artikel(session, "anzahlung")
         aufloesung_artikel = _special_artikel(session, "anzahlungsaufloesung")
@@ -514,7 +510,7 @@ def apply_anzahlung(session, verkauf, rows) -> dict | None:
             r for r in original_rows if r.artikel_id == anzahlung_artikel.artikel_id
         ]
         if not anzahlung_rows:
-            raise HTTPException(status_code=400, detail="Verkauf is not an Anzahlung")
+            raise DomainError(detail="Verkauf is not an Anzahlung")
         last_vd_id = max(r.vd_id for r in anzahlung_rows)
         original_prices = {
             d.vd_id: d.ges_preis

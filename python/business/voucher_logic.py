@@ -13,7 +13,7 @@ from contextlib import nullcontext
 from datetime import datetime, timezone
 from decimal import Decimal, ROUND_HALF_UP
 
-from fastapi import HTTPException
+from .errors import DomainError, NotFoundError
 from sqlmodel import func, select
 
 from ..models import Gutschein, GutscheinCounter, VerkaufDetails
@@ -110,7 +110,7 @@ def redeem_voucher(
     """
     original = session.get(Gutschein, gutschein_id)
     if original is None:
-        raise HTTPException(status_code=404, detail="Gutschein not found")
+        raise NotFoundError(detail="Gutschein not found")
     nr = original.gutschein_nr
 
     with (VOUCHER_LOCK if lock else nullcontext()):
@@ -125,25 +125,23 @@ def redeem_voucher(
         if einloesung_in_vd_id is not None:
             vd = session.get(VerkaufDetails, einloesung_in_vd_id)
             if vd is None:
-                raise HTTPException(status_code=400, detail="VerkaufDetails not found")
+                raise DomainError(detail="VerkaufDetails not found")
             already = session.exec(
                 select(Gutschein).where(Gutschein.einloesung_in_vd_id == einloesung_in_vd_id)
             ).first()
             if already is not None:
-                raise HTTPException(
-                    status_code=400,
+                raise DomainError(
                     detail="This sale position already redeemed a voucher",
                 )
 
         balance = voucher_balance(session, nr)
         if balance <= 0:
-            raise HTTPException(status_code=400, detail="Gutschein has no remaining balance")
+            raise DomainError(detail="Gutschein has no remaining balance")
 
         if vd is not None:
             amount = abs(_to_decimal(vd.ges_preis) or Decimal("0"))
             if betrag is not None and (_to_decimal(betrag) or Decimal("0")) != amount:
-                raise HTTPException(
-                    status_code=400,
+                raise DomainError(
                     detail="betrag does not match the sale position price",
                 )
         elif betrag is not None:
@@ -151,8 +149,7 @@ def redeem_voucher(
         elif restbetrag is not None:
             amount = balance - (_to_decimal(restbetrag) or Decimal("0"))
         else:
-            raise HTTPException(
-                status_code=400,
+            raise DomainError(
                 detail="betrag or einloesung_in_vd_id is required",
             )
 
@@ -160,15 +157,13 @@ def redeem_voucher(
         ensure_positive(amount, "betrag")
         new_balance = (balance - amount).quantize(CENT, rounding=ROUND_HALF_UP)
         if new_balance < 0:
-            raise HTTPException(
-                status_code=400,
+            raise DomainError(
                 detail=f"betrag exceeds the remaining balance of {balance}",
             )
         if restbetrag is not None:
             requested = _to_decimal(restbetrag)
             if requested is not None and requested.quantize(CENT, rounding=ROUND_HALF_UP) != new_balance:
-                raise HTTPException(
-                    status_code=400,
+                raise DomainError(
                     detail=f"restbetrag does not match the calculated balance of {new_balance}",
                 )
 
@@ -180,7 +175,7 @@ def redeem_voucher(
                 if creation is not None:
                     gutschein_in_vd_id = creation.gutschein_in_vd_id
         if gutschein_in_vd_id is not None and session.get(VerkaufDetails, gutschein_in_vd_id) is None:
-            raise HTTPException(status_code=400, detail="VerkaufDetails not found")
+            raise DomainError(detail="VerkaufDetails not found")
 
         new_g = Gutschein(
             gutschein_nr=nr,

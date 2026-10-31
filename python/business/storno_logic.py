@@ -4,7 +4,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any, Optional
 
-from fastapi import HTTPException
+from .errors import DomainError, NotFoundError
 from sqlmodel import Session, select
 
 from ..models import AbrechnungTag, Verkauf, VerkaufDetails, VerkaufMwst
@@ -47,10 +47,10 @@ def validate_storno(*args, **kwargs):
                 rechnungs_nr, session = args[0], args[1]
     original = session.get(Verkauf, rechnungs_nr)
     if not original:
-        raise HTTPException(status_code=404, detail="Original Verkauf not found")
+        raise NotFoundError(detail="Original Verkauf not found")
     ok, msg = can_storno(original, session)
     if not ok:
-        raise HTTPException(status_code=400, detail=msg)
+        raise DomainError(detail=msg)
     return original
 
 def invert_detail(detail: VerkaufDetails, storno_rechnungs_nr: int) -> VerkaufDetails:

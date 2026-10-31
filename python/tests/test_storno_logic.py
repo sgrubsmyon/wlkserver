@@ -1,6 +1,6 @@
 import pytest
 from datetime import datetime, timezone
-from fastapi import HTTPException
+from python.business.errors import DomainError
 from sqlmodel import select
 
 from python.models import Verkauf, VerkaufDetails, VerkaufMwst, Gutschein, Anzahlung, Artikel, Produktgruppe, Lieferant
@@ -73,7 +73,7 @@ def test_can_storno_already_storned(session):
 
 
 def test_validate_storno_not_found(session):
-    with pytest.raises(HTTPException) as exc:
+    with pytest.raises(DomainError) as exc:
         validate_storno(session, 99999)
     assert exc.value.status_code == 404
 
@@ -140,7 +140,7 @@ def test_create_storno_double_storno_fails(session):
     _add_mwst(session, v.rechnungs_nr, 0.19, 8.40, 1.60)
 
     create_storno(session, v.rechnungs_nr)
-    with pytest.raises(HTTPException) as exc:
+    with pytest.raises(DomainError) as exc:
         create_storno(session, v.rechnungs_nr)
     assert exc.value.status_code == 400
 

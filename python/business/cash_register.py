@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation, ROUND_CEILING, ROUND_FLOOR
 from typing import Any, Mapping, Optional
 
-from fastapi import HTTPException
+from .errors import DomainError, NotFoundError
 from sqlmodel import Session, select
 
 from ..models import Kassenstand, Verkauf
@@ -76,9 +76,9 @@ def validate_balance_change(alter, neuer, entnahme: bool = False) -> Decimal:
     new = _to_decimal(neuer) or Decimal("0")
     if entnahme:
         if new > previous:
-            raise HTTPException(status_code=400, detail="Entnahme must not increase the Kassenstand")
+            raise DomainError(detail="Entnahme must not increase the Kassenstand")
         if new < 0:
-            raise HTTPException(status_code=400, detail="Entnahme exceeds the current Kassenstand")
+            raise DomainError(detail="Entnahme exceeds the current Kassenstand")
     return new
 
 
@@ -122,8 +122,7 @@ def kassenstand_reset_suggestion(counts: Mapping[Decimal, int]) -> dict:
     """
     unknown = set(counts) - set(COIN_DENOMINATIONS) - set(NOTE_DENOMINATIONS)
     if unknown:
-        raise HTTPException(
-            status_code=400,
+        raise DomainError(
             detail=f"Unknown denomination(s): {', '.join(sorted(str(u) for u in unknown))}",
         )
     soll_muenzen, soll_scheine = drawer_targets()
@@ -180,7 +179,7 @@ def update_kassenstand_for_sale(*args, **kwargs) -> Kassenstand:
     with (KASSENSTAND_LOCK if lock else nullcontext()):
         v = session.get(Verkauf, rechnungs_nr)
         if v is None:
-            raise HTTPException(status_code=404, detail="Verkauf not found")
+            raise NotFoundError(detail="Verkauf not found")
         # total price = sum of detail ges_preis
         total = Decimal("0")
         for d in (v.verkauf_details or []):

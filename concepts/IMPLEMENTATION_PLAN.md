@@ -625,6 +625,35 @@ Scripts (cron jobs for price changes, supplier article imports, settlement creat
 
 ---
 
+## Separation of Concerns (planned)
+
+The `routers/` + `business/` split exists, but the layers still leak. Findings (2026-10-31) and the steps that close them:
+
+| Leak | Where |
+|------|-------|
+| Business logic inside endpoints | `routers/abrechnung_tag.py` `POST /` (period detection, TSE export, DSFinV-K file write, month/year invalidation, count protocol), `routers/verkauf.py` `POST /` (whole sale assembly) |
+| Domain layer speaks HTTP | `HTTPException` in `business/*` (fixed in step 1) |
+| Domain layer owns SQL | `sqlmodel.select` / `Session` in `business/*` |
+| Transaction control and side effects in routers | several `commit()` per endpoint, file writes, imports inside function bodies |
+| No schema/table boundary | `models.py` mixes ORM tables with `Public`/`Create`/`Update` DTOs; routers hand-shape dicts |
+| Duplicated query logic | `offset`/`limit`/`order_by` + filter blocks copied in 18 places |
+| Config scattered | `os.environ` reads in `session.py`, `vat_calculator.py`, `cash_register.py`, `dsfinvk_export.py` |
+
+Target layering: router (HTTP, auth, serialization) → service/use case (orchestration + one transaction) → domain (pure rules such as `vat_calculator`) → persistence (queries). Deliberately **not** targeted: ports/adapters, a DI container, or one repository class per table — four layers are enough for a shop POS.
+
+- [x] **1. Domain errors instead of HTTP errors**: `python/business/errors.py` (`DomainError` = 400, `NotFoundError` = 404) replaces `fastapi.HTTPException` in `cash_register`, `sale_workflow`, `storno_logic`, `voucher_logic`, `dsfinvk_export`; `main.py` registers one handler that maps them to `{"detail": ...}` with the original status codes, so API behaviour is unchanged. Tests for those modules now expect `DomainError`.
+- [ ] **2. Thin routers**: move the bodies of `POST /abrechnung/tag`, `POST /verkauf/`, storno and `POST /gutschein/{id}/einloesen` into business use-case functions `(payload, session, user_id) -> result`; the endpoint becomes parse → call → serialize. Removes the in-function imports and the token decoding in `routers/abrechnung_tag.py`.
+- [ ] **3. One transaction per use case**: `with session.begin():` in the service, no per-step `commit()`. Today a failure between two commits can leave half a settlement.
+- [ ] **4. Split tables from schemas**: `models/tables.py` (ORM) + `schemas/` (Public/Create/Update/Details), response objects built in one place instead of per-endpoint `model_dump()` assembly.
+- [ ] **5. Shared list helper**: one pagination/sort/filter helper replacing the 18 duplicated blocks.
+- [ ] **6. Settings module**: single place for env vars; modules import settings instead of reading `os.environ` at call time.
+- [ ] **7. Repository layer only where it pays**: a `repositories/`/`dao.py` for queries used by several services (sales in range, open Kassenstand, voucher family) — not a wrapper around every CRUD call.
+- [ ] **8. Test re-alignment**: domain/service tests without `TestClient` (needs steps 1-3; those purely business-level tests exist already), HTTP tests kept as contract tests.
+
+Steps 1-3 are what "proper separation of concerns" means for the success criteria; 4-7 are hygiene.
+
+---
+
 ## Implementation Priority Matrix
 
 | Priority | Category | Items | Estimated Effort | Status |

@@ -385,6 +385,23 @@ Audit of `python/` against the Java POS (`../git/src/org/weltladen_bonn/pos/`). 
 
 ---
 
+## 🧱 Separation of Concerns (planned)
+
+The `routers/` + `business/` split exists, but the layers still leak. Full findings, target layering and rationale: `concepts/IMPLEMENTATION_PLAN.md`, section "Separation of Concerns".
+
+- [x] **1. Domain errors instead of HTTP errors** (2026-10-31): `python/business/errors.py` (`DomainError` = 400, `NotFoundError` = 404) replaces `fastapi.HTTPException` in `cash_register.py`, `sale_workflow.py`, `storno_logic.py`, `voucher_logic.py`, `dsfinvk_export.py`; `main.py` maps them to `{"detail": ...}` with the same status codes, so API behaviour is unchanged. Tests for those modules expect `DomainError`
+- [ ] **2. Thin routers**: move the bodies of `POST /abrechnung/tag`, `POST /verkauf/`, storno and `POST /gutschein/{id}/einloesen` into business use-case functions `(payload, session, user_id) -> result`; drop the in-function imports and the token decoding in `routers/abrechnung_tag.py`
+- [ ] **3. One transaction per use case**: `with session.begin():` in the service instead of several per-step `commit()` (a failure mid-way currently leaves half a settlement)
+- [ ] **4. Split tables from schemas**: `models/tables.py` (ORM) + `schemas/` (Public/Create/Update/Details); response objects built in one place instead of per-endpoint `model_dump()` assembly
+- [ ] **5. Shared list helper**: one pagination/sort/filter helper replacing the duplicated `offset`/`limit`/`order_by` blocks in 18 places
+- [ ] **6. Settings module**: env vars read once (currently `os.environ` in `session.py`, `vat_calculator.py`, `cash_register.py`, `dsfinvk_export.py`)
+- [ ] **7. Repository layer only where it pays**: queries used by several services (sales in range, open Kassenstand, voucher family) — not a wrapper around every CRUD call
+- [ ] **8. Test re-alignment**: domain/service tests without `TestClient`, HTTP tests kept as contract tests
+
+Steps 1-3 are what the "Proper separation of concerns" criterion below means; 4-7 are hygiene.
+
+---
+
 ## 📚 Documentation Tasks
 
 - [ ] API Documentation Enhancement - `docs/API.md` and auto-generated `/docs` exist; the Kassenstand and Abrechnung flow (incl. JSON examples) is documented in `docs/KASSENSTAND_UND_ABRECHNUNG.md`, the remaining endpoint reference is still incomplete
@@ -469,7 +486,7 @@ The remaining imported items are quality/production tasks, tracked below.
 - [x] Comprehensive validation and error handling (Phase 7) - model constraints + wired `ensure_*` helpers (see Validation Framework)
 - [x] Per-user accounts with login auditing (Phase 7.4) - models + endpoints + migration + enforcement complete
 - [x] Transaction attribution via user_id (all 8 transaction tables have the column; populated from token where present) (step 4 follow-up)
-- [ ] Proper separation of concerns
+- [ ] Proper separation of concerns (steps 1-3 of "Separation of Concerns"; step 1 done)
 
 ### Quality Assurance
 

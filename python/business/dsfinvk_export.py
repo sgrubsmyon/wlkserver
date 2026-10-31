@@ -26,7 +26,7 @@ from decimal import Decimal, ROUND_HALF_UP
 from functools import lru_cache
 from pathlib import Path
 
-from fastapi import HTTPException
+from .errors import NotFoundError
 from sqlmodel import Session, select
 
 from ..models import (
@@ -278,7 +278,7 @@ def build_dsfinvk_files(session: Session, abrechnung_tag_id: int) -> dict[str, b
     """Build the DSFinV-K CSV files of one Tagesabschluss (filename -> bytes)."""
     at = session.get(AbrechnungTag, abrechnung_tag_id)
     if at is None:
-        raise HTTPException(status_code=404, detail="AbrechnungTag not found")
+        raise NotFoundError(detail="AbrechnungTag not found")
 
     previous = session.exec(
         select(AbrechnungTag)

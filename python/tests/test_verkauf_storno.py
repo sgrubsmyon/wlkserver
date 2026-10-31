@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 import pytest
-from fastapi import HTTPException
+from python.business.errors import DomainError
 from fastapi.testclient import TestClient
 
 from sqlmodel import select
@@ -70,7 +70,7 @@ def test_create_verkauf_rejects_zero_stueckzahl(session):
     from python.routers.verkauf import create_verkauf
     from python.models import VerkaufCreate
     payload = VerkaufCreate(verkauf_details=[{"artikel_id": 1, "stueckzahl": 0}])
-    with pytest.raises(HTTPException) as exc:
+    with pytest.raises(DomainError) as exc:
         create_verkauf(payload, session, None)
     assert exc.value.status_code == 400
     # no empty sale row must be left behind
@@ -87,8 +87,8 @@ def test_duplicate_storno_is_prevented(session):
     s = storno_verkauf(original.rechnungs_nr, session)
     assert s["storno_von"] == original.rechnungs_nr
 
-    # Second storno attempt should raise HTTPException (400)
-    with pytest.raises(HTTPException) as exc:
+    # Second storno attempt should raise DomainError (400)
+    with pytest.raises(DomainError) as exc:
         storno_verkauf(original.rechnungs_nr, session)
     assert exc.value.status_code == 400
 
