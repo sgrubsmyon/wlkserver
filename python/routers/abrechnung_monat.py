@@ -19,6 +19,7 @@ from ..schemas import (
 )
 from ..session import SessionDep
 from ..dependencies import bearer_scheme, require_user
+from ..utils.pagination import paginate
 
 router = APIRouter(
     prefix="/abrechnung/monat",
@@ -54,9 +55,7 @@ def read_abrechnung_monate(
     limit: Annotated[int, Query(le=100)] = 100,
 ) -> list[AbrechnungMonatPublic]:
     order = AbrechnungMonat.id.desc() if desc else AbrechnungMonat.id
-    rows = session.exec(
-        select(AbrechnungMonat).offset(offset).limit(limit).order_by(order)
-    ).all()
+    rows = paginate(session, select(AbrechnungMonat), offset, limit, order)
     return [AbrechnungMonatPublic.model_validate(r) for r in rows]
 
 

@@ -17,6 +17,7 @@ from ..schemas import (
     MwstUpdate,
 )
 from ..session import SessionDep
+from ..utils.pagination import paginate
 
 
 router = APIRouter(
@@ -44,9 +45,7 @@ def read_mwsts(
                 Mwst.dsfinvk_ust_schluessel.contains(term) |
                 Mwst.mwst_satz.contains(term)
             )
-    mwsts = session.exec(
-        selection.offset(offset).limit(limit)
-            .order_by(Mwst.mwst_satz)).all()
+    mwsts = paginate(session, selection, offset, limit, Mwst.mwst_satz)
     return mwsts
 
 

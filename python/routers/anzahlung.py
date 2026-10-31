@@ -21,6 +21,7 @@ from ..session import SessionDep
 from ..dependencies import bearer_scheme, require_user
 from fastapi.security import HTTPAuthorizationCredentials
 from fastapi import Depends
+from ..utils.pagination import paginate
 
 router = APIRouter(
     prefix="/anzahlung",
@@ -42,9 +43,7 @@ def read_anzahlungen(
         selection = selection.where(Anzahlung.anzahlung_in_rech_nr == anzahlung_in_rech_nr)
     if aufloesung_in_rech_nr is not None:
         selection = selection.where(Anzahlung.aufloesung_in_rech_nr == aufloesung_in_rech_nr)
-    rows = session.exec(
-        selection.offset(offset).limit(limit).order_by(Anzahlung.anzahlung_id)
-    ).all()
+    rows = paginate(session, selection, offset, limit, Anzahlung.anzahlung_id)
     return [AnzahlungPublic.model_validate(a) for a in rows]
 
 

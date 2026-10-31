@@ -19,6 +19,7 @@ from ..schemas import (
 )
 from ..session import SessionDep
 from ..utils.validation import ensure_non_negative, ensure_positive, ensure_range
+from ..utils.pagination import paginate
 
 
 router = APIRouter(
@@ -102,9 +103,7 @@ def read_rabattaktionen(
         selection = selection.where(Rabattaktion.aktionsname.contains(term))
 
     # Execute the query with offset and limit
-    rabattaktionen = session.exec(
-        selection.offset(offset).limit(limit)
-            .order_by(Rabattaktion.von, Rabattaktion.bis)).all()
+    rabattaktionen = paginate(session, selection, offset, limit, Rabattaktion.von, Rabattaktion.bis)
     
     # Prepare the response
     # (add data from the joined tables)

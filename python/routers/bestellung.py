@@ -20,6 +20,7 @@ from ..session import SessionDep
 from ..dependencies import bearer_scheme, require_user
 from fastapi.security import HTTPAuthorizationCredentials
 from fastapi import Depends
+from ..utils.pagination import paginate
 
 router = APIRouter(
     prefix="/bestellung",
@@ -74,9 +75,7 @@ def read_bestellungen(
         selection = selection.where(Bestellung.bestell_datum >= von)
     if bis is not None:
         selection = selection.where(Bestellung.bestell_datum <= bis)
-    rows = session.exec(
-        selection.offset(offset).limit(limit).order_by(Bestellung.bestell_nr)
-    ).all()
+    rows = paginate(session, selection, offset, limit, Bestellung.bestell_nr)
     return [BestellungPublic.model_validate(r) for r in rows]
 
 

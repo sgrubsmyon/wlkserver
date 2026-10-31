@@ -17,6 +17,7 @@ from ..dependencies import require_user
 from ..models import User
 from ..business.sale_workflow import create_sale
 from ..business.storno_logic import storno_sale
+from ..utils.pagination import paginate
 
 router = APIRouter(
     prefix="/verkauf",
@@ -44,9 +45,7 @@ def read_verkaeufe(
         selection = selection.where(Verkauf.verkaufsdatum <= bis)
     if only_storno:
         selection = selection.where(Verkauf.storno_von.is_not(None))
-    verkaeufe = session.exec(
-        selection.offset(offset).limit(limit).order_by(Verkauf.verkaufsdatum.desc() if desc else Verkauf.verkaufsdatum)
-    ).all()
+    verkaeufe = paginate(session, selection, offset, limit, Verkauf.verkaufsdatum.desc() if desc else Verkauf.verkaufsdatum)
     return [
         verkauf_public(v, include_details=include_details, include_mwst=include_mwst)
         for v in verkaeufe

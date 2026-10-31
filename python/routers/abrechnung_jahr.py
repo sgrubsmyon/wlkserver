@@ -19,6 +19,7 @@ from ..schemas import (
 )
 from ..session import SessionDep
 from ..dependencies import bearer_scheme, require_user
+from ..utils.pagination import paginate
 
 router = APIRouter(
     prefix="/abrechnung/jahr",
@@ -35,9 +36,7 @@ def read_abrechnung_jahre(
     limit: Annotated[int, Query(le=100)] = 100,
 ) -> list[AbrechnungJahrPublic]:
     order = AbrechnungJahr.id.desc() if desc else AbrechnungJahr.id
-    rows = session.exec(
-        select(AbrechnungJahr).offset(offset).limit(limit).order_by(order)
-    ).all()
+    rows = paginate(session, select(AbrechnungJahr), offset, limit, order)
     return [AbrechnungJahrPublic.model_validate(r) for r in rows]
 
 

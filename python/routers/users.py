@@ -12,6 +12,7 @@ from ..schemas import (
 from ..session import SessionDep
 from ..dependencies import require_admin
 from ..utils.auth import hash_password
+from ..utils.pagination import paginate
 
 router = APIRouter(prefix="/users", tags=["users"], responses={404: {"description": "Not found"}})
 
@@ -32,9 +33,7 @@ def read_users(
         selection = selection.where(User.active == active)
     for term in search_string.split():
         selection = selection.where(User.username.contains(term))
-    users = session.exec(
-        selection.offset(offset).limit(limit).order_by(User.username)
-    ).all()
+    users = paginate(session, selection, offset, limit, User.username)
     return [UserPublic.model_validate(u) for u in users]
 
 

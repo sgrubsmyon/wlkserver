@@ -19,6 +19,7 @@ from ..schemas import (
 from ..session import SessionDep
 from ..utils.tse_client import tse_client
 from ..dependencies import bearer_scheme, require_user
+from ..utils.pagination import paginate
 
 router = APIRouter(
     prefix="/tse",
@@ -70,9 +71,7 @@ def read_tse_transactions(
     selection = select(TSETransaction)
     if rechnungs_nr is not None:
         selection = selection.where(TSETransaction.rechnungs_nr == rechnungs_nr)
-    rows = session.exec(
-        selection.offset(offset).limit(limit).order_by(TSETransaction.transaction_id)
-    ).all()
+    rows = paginate(session, selection, offset, limit, TSETransaction.transaction_id)
     return [TSETransactionPublic.model_validate(r) for r in rows]
 
 

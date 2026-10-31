@@ -14,6 +14,7 @@ from ..schemas import (
     LieferantUpdate,
 )
 from ..session import SessionDep
+from ..utils.pagination import paginate
 
 
 router = APIRouter(
@@ -44,9 +45,7 @@ def read_lieferanten(
             )
     elif lieferant_name:
         selection = selection.where(Lieferant.lieferant_name == lieferant_name)
-    lieferanten = session.exec(
-        selection.offset(offset).limit(limit)
-            .order_by(Lieferant.lieferant_name)).all()
+    lieferanten = paginate(session, selection, offset, limit, Lieferant.lieferant_name)
     return lieferanten
 
 

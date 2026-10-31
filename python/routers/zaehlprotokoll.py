@@ -20,6 +20,7 @@ from ..session import SessionDep
 from ..dependencies import bearer_scheme, require_user
 from fastapi.security import HTTPAuthorizationCredentials
 from fastapi import Depends
+from ..utils.pagination import paginate
 
 router = APIRouter(
     prefix="/zaehlprotokoll",
@@ -38,9 +39,7 @@ def read_zaehlprotokolle(
     selection = select(Zaehlprotokoll)
     if abrechnung_tag_id is not None:
         selection = selection.where(Zaehlprotokoll.abrechnung_tag_id == abrechnung_tag_id)
-    rows = session.exec(
-        selection.offset(offset).limit(limit).order_by(Zaehlprotokoll.id)
-    ).all()
+    rows = paginate(session, selection, offset, limit, Zaehlprotokoll.id)
     return [ZaehlprotokollPublic.model_validate(r) for r in rows]
 
 

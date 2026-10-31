@@ -17,6 +17,7 @@ from ..schemas import (
 )
 from ..session import SessionDep
 from ..utils.auth import verify_password, create_token, decode_token
+from ..utils.pagination import paginate
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -93,9 +94,7 @@ def read_anmeldungen(
     selection = select(Anmeldung)
     if user_id is not None:
         selection = selection.where(Anmeldung.user_id == user_id)
-    rows = session.exec(
-        selection.offset(offset).limit(limit).order_by(Anmeldung.login_time.desc())
-    ).all()
+    rows = paginate(session, selection, offset, limit, Anmeldung.login_time.desc())
     return [AnmeldungPublic.model_validate(a) for a in rows]
 
 

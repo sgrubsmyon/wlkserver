@@ -12,6 +12,7 @@ from ..schemas import (
     ProduktgruppeUpdate,
 )
 from ..session import SessionDep
+from ..utils.pagination import paginate
 
 
 router = APIRouter(
@@ -49,9 +50,7 @@ def read_produktgruppen(
         selection = selection.where(Produktgruppe.toplevel_id == toplevel_id)
     elif produktgruppen_name:
         selection = selection.where(Produktgruppe.produktgruppen_name == produktgruppen_name)
-    produktgruppen = session.exec(
-        selection.offset(offset).limit(limit)
-            .order_by(Produktgruppe.toplevel_id, Produktgruppe.sub_id, Produktgruppe.subsub_id)).all()
+    produktgruppen = paginate(session, selection, offset, limit, Produktgruppe.toplevel_id, Produktgruppe.sub_id, Produktgruppe.subsub_id)
     return produktgruppen
 
 

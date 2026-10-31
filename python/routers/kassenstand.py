@@ -18,6 +18,7 @@ from ..session import SessionDep
 from ..dependencies import bearer_scheme, require_user
 from fastapi.security import HTTPAuthorizationCredentials
 from fastapi import Depends
+from ..utils.pagination import paginate
 
 router = APIRouter(
     prefix="/kassenstand",
@@ -42,9 +43,7 @@ def read_kassenstaende(
         selection = selection.where(Kassenstand.buchungsdatum >= von)
     if bis is not None:
         selection = selection.where(Kassenstand.buchungsdatum <= bis)
-    kassenstaende = session.exec(
-        selection.offset(offset).limit(limit).order_by(Kassenstand.buchungsdatum.desc())
-    ).all()
+    kassenstaende = paginate(session, selection, offset, limit, Kassenstand.buchungsdatum.desc())
     return [KassenstandPublic.model_validate(k) for k in kassenstaende]
 
 

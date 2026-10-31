@@ -18,6 +18,7 @@ from ..schemas import (
     ArtikelUpdate,
 )
 from ..session import SessionDep
+from ..utils.pagination import paginate
 
 
 router = APIRouter(
@@ -63,10 +64,7 @@ def read_artikel(
         selection = selection.where(Artikel.produktgruppen_id == produktgruppen_id)
     elif artikel_name:
         selection = selection.where(Artikel.artikel_name.contains(artikel_name) | Artikel.kurzname.contains(artikel_name))
-    artikel = session.exec(
-        selection.offset(offset).limit(limit)
-            .order_by(Artikel.artikel_name, Artikel.lieferant_id)
-    ).all()
+    artikel = paginate(session, selection, offset, limit, Artikel.artikel_name, Artikel.lieferant_id)
     
     # Prepare the response
     # (add data from the joined tables)

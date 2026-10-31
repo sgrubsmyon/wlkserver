@@ -17,6 +17,7 @@ from ..session import SessionDep
 from ..dependencies import require_user
 from ..business.cash_register import end_of_day_procedure
 from ..business.settlement import create_daily_settlement, last_settlement
+from ..utils.pagination import paginate
 
 router = APIRouter(
     prefix="/abrechnung/tag",
@@ -33,9 +34,7 @@ def read_abrechnung_tags(
     limit: Annotated[int, Query(le=100)] = 100,
 ) -> list[AbrechnungTagPublic]:
     order = AbrechnungTag.id.desc() if desc else AbrechnungTag.id
-    rows = session.exec(
-        select(AbrechnungTag).offset(offset).limit(limit).order_by(order)
-    ).all()
+    rows = paginate(session, select(AbrechnungTag), offset, limit, order)
     return [AbrechnungTagPublic.model_validate(r) for r in rows]
 
 

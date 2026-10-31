@@ -16,6 +16,7 @@ from ..schemas import (
 from ..session import SessionDep
 from ..dependencies import require_user
 from fastapi import Depends
+from ..utils.pagination import paginate
 
 router = APIRouter(
     prefix="/gutschein",
@@ -43,9 +44,7 @@ def read_gutscheine(
     selection = select(Gutschein)
     if gutschein_nr is not None:
         selection = selection.where(Gutschein.gutschein_nr == gutschein_nr)
-    gutscheine = session.exec(
-        selection.offset(offset).limit(limit).order_by(Gutschein.gutschein_id)
-    ).all()
+    gutscheine = paginate(session, selection, offset, limit, Gutschein.gutschein_id)
     return [GutscheinPublic.model_validate(g) for g in gutscheine]
 
 

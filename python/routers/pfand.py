@@ -18,6 +18,7 @@ from ..schemas import (
     PfandUpdate,
 )
 from ..session import SessionDep
+from ..utils.pagination import paginate
 
 
 router = APIRouter(
@@ -41,9 +42,7 @@ def read_pfands(
         selection = selection.where(Artikel.vk_preis == wert)
 
     # Execute the query with offset and limit
-    pfands = session.exec(
-        selection.offset(offset).limit(limit)
-            .order_by(Pfand.pfand_id)).all()
+    pfands = paginate(session, selection, offset, limit, Pfand.pfand_id)
     
     # Prepare the response
     return_obj = []
