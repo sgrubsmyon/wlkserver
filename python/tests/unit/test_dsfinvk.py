@@ -1,12 +1,5 @@
-import io
-import zipfile
 from datetime import datetime
 
-import pytest
-from fastapi.testclient import TestClient
-
-from python.main import app
-from python.session import get_session
 from python.models import (
     AbrechnungTag,
     AbrechnungTagMwst,
@@ -22,19 +15,8 @@ from python.models import (
     VerkaufDetails,
     VerkaufMwst,
 )
+
 from python.business.dsfinvk_export import build_dsfinvk_files
-
-
-@pytest.fixture
-def client(session):
-    app.dependency_overrides[get_session] = lambda: session
-    with TestClient(app) as c:
-        r = c.post("/auth/login", json={"username": "test", "password": "test"})
-        if r.status_code == 200:
-            c.headers["Authorization"] = "Bearer " + r.json()["access_token"]
-        yield c
-    app.dependency_overrides.clear()
-
 
 EXPORT_FILES = {
     "cashpointclosing.csv",
@@ -278,53 +260,3 @@ def test_tse_files(session, monkeypatch):
     assert transactions[0]["TSE_TANR"] == "42"
     assert transactions[0]["TSE_ID"] == "7"
     assert transactions[0]["TSE_TA_SIG"] == "c2ln"
-
-
-def test_export_endpoint_returns_zip(session, monkeypatch, client):
-    tag, _ = _seed_export(session, monkeypatch)
-    response = client.get(f"/export/dsfinvk/{tag.id}")
-
-    assert response.status_code == 200
-    assert response.headers["content-type"] == "application/zip"
-    with zipfile.ZipFile(io.BytesIO(response.content)) as archive:
-        names = set(archive.namelist())
-    assert {"index.xml", "gdpdu-01-09-2004.dtd"} | EXPORT_FILES <= names
-
-    assert client.get("/export/dsfinvk/9999").status_code == 404
-
-
-def test_settlement_writes_export_to_configured_dir(session, monkeypatch, client, tmp_path):
-    monkeypatch.setenv("DSFINVK_EXPORT_DIR", str(tmp_path))
-    monkeypatch.setenv("DSFINVK_NAME", "Weltladen")
-
-    mwst = Mwst(mwst_satz=0.19, dsfinvk_ust_schluessel=1)
-    session.add(mwst)
-    session.commit()
-    session.refresh(mwst)
-    pg = Produktgruppe(produktgruppen_name="Ware", mwst_id=mwst.mwst_id)
-    lieferant = Lieferant(lieferant_name="Lieferant")
-    session.add_all([pg, lieferant])
-    session.commit()
-    session.refresh(pg)
-    session.refresh(lieferant)
-    artikel = Artikel(
-        artikel_nr="A1", artikel_name="Artikel",
-        produktgruppen_id=pg.produktgruppen_id,
-        lieferant_id=lieferant.lieferant_id, vk_preis=10.0,
-    )
-    session.add(artikel)
-    session.commit()
-    session.refresh(artikel)
-
-    sale = client.post("/verkauf/", json={
-        "verkauf_details": [{"artikel_id": artikel.artikel_id, "stueckzahl": 2}],
-    })
-    assert sale.status_code == 200
-    settlement = client.post("/abrechnung/tag/", json={})
-    assert settlement.status_code == 200
-
-    path = tmp_path / f"dsfinvk_{settlement.json()['id']}.zip"
-    assert path.exists()
-    with zipfile.ZipFile(path) as archive:
-        cases = archive.read("businesscases.csv").decode()
-    assert "Umsatz" in cases

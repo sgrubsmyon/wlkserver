@@ -396,9 +396,9 @@ The `routers/` + `business/` split exists, but the layers still leak. Full findi
 - [x] **5. Shared list helper** (2026-10-31): `python/utils/pagination.py` `paginate(session, selection, offset, limit, *order_by)` replaces the duplicated `offset`/`limit`/`order_by` tails in all 18 list endpoints (single- and multi-column sorting, no order for the master-data lists)
 - [x] **6. Settings module** (2026-10-31): `python/config.py` is the only place that reads environment variables (`env()` plus named accessors for training mode, DB URL, auth secret/TTL, CORS, TSE and DSFinV-K export dir) and the only `load_dotenv()` call; `session.py`, `main.py`, `utils/auth.py`, `utils/tse_client.py` and the business modules import it. Reads stay on access, so runtime changes still apply
 - [x] **7. Repository layer only where it pays** (2026-10-31): `python/repositories/__init__.py` with the five queries used by more than one service — `latest_kassenstand` (optionally `FOR UPDATE`), `open_receipt_range`, `sales_between`, `voucher_rows` (optionally `FOR UPDATE`) and `storno_of`. Everything else stays a plain `session.get`/`select`; no per-table repository classes
-- [ ] **8. Test re-alignment**: domain/service tests without `TestClient`, HTTP tests kept as contract tests
+- [x] **8. Test re-alignment** (2026-11-01): `python/tests/unit/` = domain/service tests calling business functions directly (no `TestClient`, no app import, 151 tests); `python/tests/api/` = contract tests through `TestClient` (status codes, payloads, auth, filters, CORS, 124 tests). Mixed modules (`mwst`, `pfand`, `kassenstand`, `auth`, `dsfinvk`, `training`, `verkauf_storno`) were split along that line; both dirs are packages so identical basenames do not collide; still 275 tests, all green
 
-Steps 1-3 are what the "Proper separation of concerns" criterion below means; 4-7 are hygiene.
+Steps 1-3 are what the "Proper separation of concerns" criterion below means; 4-8 are hygiene.
 
 ---
 
@@ -416,27 +416,29 @@ Steps 1-3 are what the "Proper separation of concerns" criterion below means; 4-
 
 ### Unit Tests
 
-- [x] tests/test_mwst.py
-- [x] tests/test_pfand.py
-- [x] tests/test_phase2_smoke.py
-- [x] tests/test_phase3_smoke.py
-- [x] tests/test_phase4_smoke.py
-- [x] tests/test_phase5_smoke.py
-- [x] tests/test_kassenstand.py
-- [x] tests/test_gutschein.py
-- [x] tests/test_anzahlung.py
-- [x] tests/test_abrechnung_tag.py
-- [x] tests/test_abrechnung_monat.py
-- [x] tests/test_abrechnung_jahr.py
-- [x] tests/test_zaehlprotokoll.py
-- [x] tests/test_bestellung.py (incl. positions/details)
-- [x] tests/test_tse.py
-- [x] tests/test_auth.py
-- [x] tests/test_vat_calculator.py
-- [x] tests/test_verkauf_storno.py (storno flow)
-- [x] tests/test_sale_workflow.py
-- [x] tests/test_storno_logic.py
-- [x] tests/test_import_export.py
+Test layout (step 8): `python/tests/unit/` holds domain/service tests that call business functions directly (no `TestClient`, no app import), `python/tests/api/` holds endpoint contract tests through `TestClient`. Mixed modules were split along that line.
+
+- [x] `test_mwst.py`
+- [x] `test_pfand.py`
+- [x] `test_phase2_smoke.py`
+- [x] `test_phase3_smoke.py`
+- [x] `test_phase4_smoke.py`
+- [x] `test_phase5_smoke.py`
+- [x] `test_kassenstand.py`
+- [x] `test_gutschein.py`
+- [x] `test_anzahlung.py`
+- [x] `test_abrechnung_tag.py`
+- [x] `test_abrechnung_monat.py`
+- [x] `test_abrechnung_jahr.py`
+- [x] `test_zaehlprotokoll.py`
+- [x] `test_bestellung.py` (incl. positions/details)
+- [x] `test_tse.py`
+- [x] `test_auth.py`
+- [x] `test_vat_calculator.py`
+- [x] `test_verkauf_storno.py` (storno flow)
+- [x] `test_sale_workflow.py`
+- [x] `test_storno_logic.py`
+- [x] `test_import_export.py`
 
 ### Integration Tests
 
@@ -525,7 +527,7 @@ The remaining imported items are quality/production tasks, tracked below.
 - **Remaining Java logic**: only the untested TSE hardware adapter and the client-side ODS/Preisschilder exports; audit gaps #1-#7 and the edge-case validation pass are closed
 
 ### Testing Status
-- **Test Files**: 24 (incl. dedicated tests for abrechnung_monat/jahr, tse, sale_workflow, storno_logic, import_export)
+- **Test Files**: 35, split into `tests/unit/` (151 domain/service tests) and `tests/api/` (124 contract tests)
 - **Test Coverage**: 90% measured with pytest-cov (target 80% achieved)
 
 ---

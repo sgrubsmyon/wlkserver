@@ -1,13 +1,17 @@
 from datetime import datetime
 
 import pytest
+
 from fastapi.testclient import TestClient
+
 from sqlalchemy.pool import StaticPool
+
 from sqlmodel import SQLModel, Session, create_engine, select
 
 from python import session as db
+
 from python.main import app
-from python.session import get_session
+
 from python.models import (
     AbrechnungTag,
     Artikel,
@@ -19,23 +23,14 @@ from python.models import (
     User,
     Verkauf,
 )
+
 from python.utils.auth import hash_password
+
 from python.business.training import (
     SPECIAL_ARTIKEL,
     TEST_ARTIKEL,
     seed_catalog,
 )
-
-
-@pytest.fixture
-def production_client(session):
-    app.dependency_overrides[get_session] = lambda: session
-    with TestClient(app) as c:
-        r = c.post("/auth/login", json={"username": "test", "password": "test"})
-        if r.status_code == 200:
-            c.headers["Authorization"] = "Bearer " + r.json()["access_token"]
-        yield c
-    app.dependency_overrides.clear()
 
 
 @pytest.fixture
@@ -76,12 +71,6 @@ def _login(client):
 def _artikel_id(engine, nr):
     with Session(engine) as session:
         return session.exec(select(Artikel).where(Artikel.artikel_nr == nr)).one().artikel_id
-
-
-def test_status_without_training_mode(production_client):
-    r = production_client.get("/training/status")
-    assert r.status_code == 200
-    assert r.json() == {"training_mode": False}
 
 
 def test_seed_catalog_covers_pos_aspects():

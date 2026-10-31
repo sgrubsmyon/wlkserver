@@ -1,8 +1,12 @@
 import pytest
+
 from fastapi.testclient import TestClient
 
 from python.main import app
+
 from python.session import get_session
+
+from decimal import Decimal
 
 
 @pytest.fixture
@@ -14,6 +18,37 @@ def client(session):
             c.headers["Authorization"] = "Bearer " + r.json()["access_token"]
         yield c
     app.dependency_overrides.clear()
+
+
+def _counts(notes, coins):
+    """Build a Zählprotokoll that amounts to the given note/coin totals."""
+    out = []
+    for wert in (100, 50, 20, 10, 5):
+        while notes >= wert:
+            notes -= wert
+            out.append({"einheit": wert, "anzahl": 1})
+    for wert in ("2.00", "1.00", "0.50", "0.20", "0.10", "0.05", "0.02", "0.01"):
+        while coins >= Decimal(wert):
+            coins -= Decimal(wert)
+            out.append({"einheit": float(wert), "anzahl": 1})
+    assert Decimal(str(notes)) == 0 and coins == 0
+    return out
+
+
+def _apply(details, suggestion):
+    """Physical outcome of the suggestion: exchange first, then both deltas."""
+    counts = {}
+    for d in details:
+        counts[Decimal(str(d["einheit"]))] = counts.get(Decimal(str(d["einheit"])), 0) + d["anzahl"]
+    coins = sum((w * counts.get(w, 0) for w in
+                 (Decimal("0.01"), Decimal("0.02"), Decimal("0.05"), Decimal("0.10"),
+                  Decimal("0.20"), Decimal("0.50"), Decimal("1.00"), Decimal("2.00"))), Decimal("0"))
+    notes = sum((w * counts.get(w, 0) for w in
+                 (Decimal("5"), Decimal("10"), Decimal("20"), Decimal("50"),
+                  Decimal("100"), Decimal("200"))), Decimal("0"))
+    tausch = Decimal(str(suggestion["tausch"]))
+    return (notes - tausch + Decimal(str(suggestion["scheine_delta"])),
+            coins + tausch + Decimal(str(suggestion["muenzen_delta"])))
 
 
 def test_create_and_read(client):
@@ -53,52 +88,11 @@ def test_entnahme_below_zero_rejected(client):
     assert r.status_code == 422
 
 
-def test_validate_balance_change_entnahme_exceeds_balance(session):
-    from python.business.errors import DomainError
-    from python.business.cash_register import validate_balance_change
-    with pytest.raises(DomainError):
-        validate_balance_change(10.0, -5.0, entnahme=True)
-
-
 def test_valid_entnahme_accepted(client):
     client.post("/kassenstand/", json={"neuer_kassenstand": 100.0, "manuell": True})
     r = client.post("/kassenstand/", json={"neuer_kassenstand": 40.0, "manuell": True, "entnahme": True})
     assert r.status_code == 200
     assert r.json()["neuer_kassenstand"] == 40.0
-
-# ------------------------------------------------ drawer reset suggestion
-from decimal import Decimal
-
-
-def _counts(notes, coins):
-    """Build a Zählprotokoll that amounts to the given note/coin totals."""
-    out = []
-    for wert in (100, 50, 20, 10, 5):
-        while notes >= wert:
-            notes -= wert
-            out.append({"einheit": wert, "anzahl": 1})
-    for wert in ("2.00", "1.00", "0.50", "0.20", "0.10", "0.05", "0.02", "0.01"):
-        while coins >= Decimal(wert):
-            coins -= Decimal(wert)
-            out.append({"einheit": float(wert), "anzahl": 1})
-    assert Decimal(str(notes)) == 0 and coins == 0
-    return out
-
-
-def _apply(details, suggestion):
-    """Physical outcome of the suggestion: exchange first, then both deltas."""
-    counts = {}
-    for d in details:
-        counts[Decimal(str(d["einheit"]))] = counts.get(Decimal(str(d["einheit"])), 0) + d["anzahl"]
-    coins = sum((w * counts.get(w, 0) for w in
-                 (Decimal("0.01"), Decimal("0.02"), Decimal("0.05"), Decimal("0.10"),
-                  Decimal("0.20"), Decimal("0.50"), Decimal("1.00"), Decimal("2.00"))), Decimal("0"))
-    notes = sum((w * counts.get(w, 0) for w in
-                 (Decimal("5"), Decimal("10"), Decimal("20"), Decimal("50"),
-                  Decimal("100"), Decimal("200"))), Decimal("0"))
-    tausch = Decimal(str(suggestion["tausch"]))
-    return (notes - tausch + Decimal(str(suggestion["scheine_delta"])),
-            coins + tausch + Decimal(str(suggestion["muenzen_delta"])))
 
 
 def test_reset_suggestion_cases(client):

@@ -604,8 +604,6 @@ def test_router_resolves_anzahlung_in_normal_sale(session):
     assert "already resolved" in str(exc.value)
 
 
-
-
 def test_variable_price_article_uses_explicit_line_price(session):
     from python.routers.verkauf import create_verkauf as router_create_verkauf
     from python.schemas import VerkaufCreate

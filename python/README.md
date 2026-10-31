@@ -12,8 +12,13 @@ pip install -r requirements.txt
 ## Run tests
 
 ```
-pytest -q
+pytest -q              # whole suite
+pytest -q tests/unit   # domain/service tests, no HTTP client
+pytest -q tests/api    # endpoint contract tests via TestClient
 ```
+
+`tests/unit/` calls the business/use-case functions directly; `tests/api/` covers
+status codes, payload shapes, auth and filters through the app's test client.
 
 ## Configuration
 
