@@ -14,7 +14,11 @@ from sqlmodel import select
 from ..models import Zaehlprotokoll, ZaehlprotokollDetails
 
 
-def insert_count_protocol(session, abrechnung_tag_id: int, payload, user_id=None):
+def insert_count_protocol(session, abrechnung_tag_id: int, payload, user_id=None, commit=True):
+    """Deactivate the settlement's previous count and insert the new one.
+
+    `commit=False` keeps the rows in the caller's transaction.
+    """
     for old in session.exec(
         select(Zaehlprotokoll).where(
             Zaehlprotokoll.abrechnung_tag_id == abrechnung_tag_id,
@@ -32,8 +36,7 @@ def insert_count_protocol(session, abrechnung_tag_id: int, payload, user_id=None
     )
     new_zp.id = None
     session.add(new_zp)
-    session.commit()
-    session.refresh(new_zp)
+    session.flush()
 
     for d in (payload.details or []):
         dd = ZaehlprotokollDetails(
@@ -43,7 +46,8 @@ def insert_count_protocol(session, abrechnung_tag_id: int, payload, user_id=None
         )
         dd.id = None
         session.add(dd)
-    if payload.details:
+    session.flush()
+    if commit:
         session.commit()
     return new_zp
 

@@ -391,7 +391,7 @@ The `routers/` + `business/` split exists, but the layers still leak. Full findi
 
 - [x] **1. Domain errors instead of HTTP errors** (2026-10-31): `python/business/errors.py` (`DomainError` = 400, `NotFoundError` = 404) replaces `fastapi.HTTPException` in `cash_register.py`, `sale_workflow.py`, `storno_logic.py`, `voucher_logic.py`, `dsfinvk_export.py`; `main.py` maps them to `{"detail": ...}` with the same status codes, so API behaviour is unchanged. Tests for those modules expect `DomainError`
 - [x] **2. Thin routers** (2026-10-31): `POST /verkauf/`, `POST /verkauf/{nr}/storno` and `POST /abrechnung/tag` now only parse → call → serialize. New use cases: `sale_workflow.create_sale`, `storno_logic.storno_sale`, `business/settlement.py` (`create_daily_settlement`, `last_settlement`, `invalidate_period_settlements`). The `bearer_scheme`/`decode_token` detour in `abrechnung_tag.py` and `gutschein.py` is gone (the use case gets `user_id` from `require_user`); `POST /gutschein/{id}/einloesen` already delegated to `voucher_logic.redeem_voucher`
-- [ ] **3. One transaction per use case**: `with session.begin():` in the service instead of several per-step `commit()` — the sale and the storno are single-transaction, but `create_daily_settlement` still commits per step (settlement row, VAT rows, TSE row, invalidation, count protocol), so a failure mid-way leaves a partial settlement
+- [x] **3. One transaction per use case** (2026-10-31): `create_daily_settlement` flushes between its steps (settlement row, VAT rows, TSE status row, month/year invalidation, count protocol) and commits once with rollback on failure — no partial settlement (`test_failed_settlement_rolls_back_everything`). `insert_count_protocol` and `invalidate_period_settlements` no longer commit internally; `POST /abrechnung/monat|jahr` also commit once. Explicit `with session.begin():` is not usable because `require_user` has already autobegun the request transaction, so the pattern is flush/commit/rollback. The storno's TSE row stays a separate best-effort commit (the signature needs the committed receipt number)
 - [ ] **4. Split tables from schemas**: `models/tables.py` (ORM) + `schemas/` (Public/Create/Update/Details); response objects built in one place instead of per-endpoint `model_dump()` assembly
 - [ ] **5. Shared list helper**: one pagination/sort/filter helper replacing the duplicated `offset`/`limit`/`order_by` blocks in 18 places
 - [ ] **6. Settings module**: env vars read once (currently `os.environ` in `session.py`, `vat_calculator.py`, `cash_register.py`, `dsfinvk_export.py`)
@@ -486,7 +486,7 @@ The remaining imported items are quality/production tasks, tracked below.
 - [x] Comprehensive validation and error handling (Phase 7) - model constraints + wired `ensure_*` helpers (see Validation Framework)
 - [x] Per-user accounts with login auditing (Phase 7.4) - models + endpoints + migration + enforcement complete
 - [x] Transaction attribution via user_id (all 8 transaction tables have the column; populated from token where present) (step 4 follow-up)
-- [ ] Proper separation of concerns (steps 1-3 of "Separation of Concerns"; step 1 done)
+- [x] Proper separation of concerns (steps 1-3 of "Separation of Concerns" done; steps 4-7 are optional hygiene)
 
 ### Quality Assurance
 

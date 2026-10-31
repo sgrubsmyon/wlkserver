@@ -118,7 +118,7 @@ def create_abrechnung_jahr(payload: Optional[AbrechnungJahrCreate], session: Ses
         for m in session.exec(select(AbrechnungJahrMwst).where(AbrechnungJahrMwst.id == existing.id)).all():
             session.delete(m)
         session.delete(existing)
-        session.commit()
+        session.flush()
 
     mwst_map = {}
     for m in monate_in_year:
@@ -135,8 +135,7 @@ def create_abrechnung_jahr(payload: Optional[AbrechnungJahrCreate], session: Ses
     )
     aj.id = None
     session.add(aj)
-    session.commit()
-    session.refresh(aj)
+    session.flush()
 
     for satz, vals in mwst_map.items():
         row = AbrechnungJahrMwst(

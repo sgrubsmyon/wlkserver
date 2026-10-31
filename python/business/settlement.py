@@ -68,7 +68,8 @@ def invalidate_period_settlements(session: Session, zeitpunkt: datetime) -> None
 
     Mirrors Java `AbrechnungenTag.deleteAbrechnungIfNeedBe()`: a backdated daily
     settlement makes the enclosing month and year settlements outdated, so they
-    must be recreated by the next `POST /abrechnung/monat|jahr`.
+    must be recreated by the next `POST /abrechnung/monat|jahr`. The caller owns
+    the transaction.
     """
     month = zeitpunkt.date().replace(day=1)
     for row in session.exec(
@@ -87,7 +88,7 @@ def invalidate_period_settlements(session: Session, zeitpunkt: datetime) -> None
         ).all():
             session.delete(m)
         session.delete(row)
-    session.commit()
+    session.flush()
 
 
 def _export_tse_log(session: Session, last: AbrechnungTag | None, prev_sig: int) -> int | None:
@@ -173,33 +174,39 @@ def create_daily_settlement(
         user_id=user_id,
     )
     at.id = None
-    session.add(at)
-    session.commit()
-    session.refresh(at)
+    try:
+        # The settlement, its VAT rows, the TSE status row, the reopened month/year
+        # and the count protocol are one transaction: no partial settlement.
+        session.add(at)
+        session.flush()
 
-    for satz, vals in mwst_map.items():
-        session.add(AbrechnungTagMwst(
-            id=at.id,
-            mwst_satz=satz,
-            mwst_netto=vals["netto"],
-            mwst_betrag=vals["betrag"],
-            bar_brutto=vals["bar"],
-        ))
-    session.commit()
+        for satz, vals in mwst_map.items():
+            session.add(AbrechnungTagMwst(
+                id=at.id,
+                mwst_satz=satz,
+                mwst_netto=vals["netto"],
+                mwst_betrag=vals["betrag"],
+                bar_brutto=vals["bar"],
+            ))
 
-    # One TSE status row per settlement (Java AbrechnungenTag.insertTagesAbrechnung
-    # always inserts it, with NULL status columns when the TSE is not operational).
-    session.add(AbrechnungTagTse(id=at.id, tse_id=_configured_tse_id()))
-    session.commit()
+        # One TSE status row per settlement (Java
+        # AbrechnungenTag.insertTagesAbrechnung always inserts it, with NULL status
+        # columns when the TSE is not operational).
+        session.add(AbrechnungTagTse(id=at.id, tse_id=_configured_tse_id()))
 
-    # A backdated daily settlement reopens its month and year.
-    invalidate_period_settlements(session, at.zeitpunkt)
+        # A backdated daily settlement reopens its month and year.
+        invalidate_period_settlements(session, at.zeitpunkt)
 
-    # The cashier counts the drawer while submitting; insert it afterwards and
-    # deactivate any previous count of the same settlement (Java
-    # AbrechnungenTag.insertZaehlprotokoll / setZaehlprotokollInactive).
-    if p.zaehlprotokoll is not None:
-        insert_count_protocol(session, at.id, p.zaehlprotokoll, user_id)
+        # The cashier counts the drawer while submitting; insert it afterwards and
+        # deactivate any previous count of the same settlement (Java
+        # AbrechnungenTag.insertZaehlprotokoll / setZaehlprotokollInactive).
+        if p.zaehlprotokoll is not None:
+            insert_count_protocol(session, at.id, p.zaehlprotokoll, user_id, commit=False)
+
+        session.commit()
+    except Exception:
+        session.rollback()
+        raise
 
     # DSFinV-K export (Java AbrechnungenTag.writeIntoDSFinVKCSVFiles): written
     # to DSFINVK_EXPORT_DIR when configured, otherwise on demand via

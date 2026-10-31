@@ -150,7 +150,7 @@ def create_abrechnung_monat(payload: Optional[AbrechnungMonatCreate], session: S
         for m in session.exec(select(AbrechnungMonatMwst).where(AbrechnungMonatMwst.id == existing.id)).all():
             session.delete(m)
         session.delete(existing)
-        session.commit()
+        session.flush()
 
     # Aggregate mwst from daily settlements in range
     daily_in_range = session.exec(
@@ -171,8 +171,7 @@ def create_abrechnung_monat(payload: Optional[AbrechnungMonatCreate], session: S
     )
     am.id = None
     session.add(am)
-    session.commit()
-    session.refresh(am)
+    session.flush()
 
     for satz, vals in mwst_map.items():
         row = AbrechnungMonatMwst(

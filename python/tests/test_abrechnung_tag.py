@@ -191,6 +191,43 @@ def test_backdated_daily_settlement_reopens_month_and_year(client, session):
     assert client.get("/abrechnung/jahr/offen").json() == [2026]
 
 
+def test_failed_settlement_rolls_back_everything(client, session, monkeypatch):
+    from sqlmodel import select
+
+    from python.business import settlement
+    from python.models import (
+        AbrechnungTag,
+        AbrechnungTagCreate,
+        AbrechnungTagMwst,
+        AbrechnungTagTse,
+        Zaehlprotokoll,
+    )
+
+    a = _seed_artikel(session)
+    client.post("/verkauf/", json={
+        "verkauf_details": [{"artikel_id": a.artikel_id, "stueckzahl": 1}],
+    })
+
+    def boom(*args, **kwargs):
+        raise RuntimeError("count protocol failed")
+
+    # the count protocol is the last step of the settlement transaction
+    monkeypatch.setattr(settlement, "insert_count_protocol", boom)
+    with pytest.raises(RuntimeError):
+        settlement.create_daily_settlement(
+            session,
+            AbrechnungTagCreate(zaehlprotokoll={"kommentar": "Kasse gezaehlt"}),
+            user_id=None,
+        )
+
+    assert session.exec(select(AbrechnungTag)).all() == []
+    assert session.exec(select(AbrechnungTagMwst)).all() == []
+    assert session.exec(select(AbrechnungTagTse)).all() == []
+    assert session.exec(select(Zaehlprotokoll)).all() == []
+    # the receipts are still open for a later settlement
+    assert client.get("/abrechnung/tag/vorschau").json()["open"] is True
+
+
 def test_settlement_writes_abrechnung_tag_tse_row(client, session, monkeypatch):
     from python.models import AbrechnungTagTse
 
