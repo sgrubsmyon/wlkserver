@@ -1,6 +1,7 @@
 """Sale creation workflow helpers."""
 from __future__ import annotations
 
+from contextlib import ExitStack
 from datetime import datetime, timezone
 from decimal import Decimal, ROUND_HALF_UP
 
@@ -11,14 +12,23 @@ from ..models import (
     Anzahlung,
     AnzahlungDetails,
     Artikel,
+    Gutschein,
     Mwst,
     Rabattaktion,
     Verkauf,
     VerkaufDetails,
     VerkaufDetailsCreate,
+    VerkaufMwst,
 )
-from .cash_register import EC_THRESHOLD, ec_payment_threshold_check
+from .cash_register import (
+    EC_THRESHOLD,
+    KASSENSTAND_LOCK,
+    ec_payment_threshold_check,
+    process_payment,
+    update_kassenstand_for_sale,
+)
 from .vat_calculator import calculate_mwst_values_in_rechnung
+from .voucher_logic import VOUCHER_LOCK, next_gutschein_nr, redeem_voucher
 
 CENT = Decimal("0.01")
 
@@ -613,6 +623,133 @@ def check_ec_payment_threshold(total, ec_zahlung=None):
     return ec_payment_threshold_check(total, bool(ec_zahlung))
 
 
+def create_sale(session: Session, payload, user_id=None):
+    """Book a complete sale: positions, VAT rows, voucher, Anzahlung, Kassenstand.
+
+    Everything is written in one transaction. Returns `(verkauf, change, ec_warning)`.
+    """
+    # A storno is only created by `storno_sale`, which inverts the receipt; a
+    # client-set `storno_von` would fake one.
+    if payload.storno_von is not None:
+        raise DomainError(detail="storno_von is set by the storno endpoint")
+    # Expand auxiliary lines (Pfand, discounts, price adjustment, voucher
+    # redemption, Anzahlung) and validate before writing anything.
+    prepared = build_sale_details(session, payload)
+    anzahlung = apply_anzahlung(session, payload, prepared)
+    total = sum((Decimal(str(d.ges_preis or 0)) for d in prepared), Decimal("0"))
+    if (
+        not payload.ec_zahlung
+        and payload.kunde_gibt is not None
+        and Decimal(str(payload.kunde_gibt)) < total
+    ):
+        raise DomainError(
+            detail=f"kunde_gibt ({payload.kunde_gibt}) is less than the sale total ({total})"
+        )
+
+    new_v = Verkauf(
+        verkaufsdatum=datetime.now(timezone.utc),
+        ec_zahlung=payload.ec_zahlung,
+        kunde_gibt=payload.kunde_gibt,
+        user_id=user_id,
+    )
+    try:
+        # A failure must not leave a half-booked receipt behind.
+        new_v.rechnungs_nr = None
+        session.add(new_v)
+        session.flush()
+
+        for d_obj in prepared:
+            d_obj.rechnungs_nr = new_v.rechnungs_nr
+            session.add(d_obj)
+        session.flush()
+
+        # Deposit bookkeeping: the anzahlung row and the original prices of the
+        # zeroed positions / the resolution entry for an open deposit.
+        write_anzahlung(
+            session, anzahlung, new_v.rechnungs_nr, new_v.verkaufsdatum,
+            user_id, commit=False,
+        )
+
+        for mwst_satz, summary in calculate_mwst_summary(prepared).items():
+            session.add(VerkaufMwst(
+                rechnungs_nr=new_v.rechnungs_nr,
+                mwst_satz=float(mwst_satz),
+                mwst_netto=float(summary["mwst_netto"]),
+                mwst_betrag=float(summary["mwst_betrag"]),
+            ))
+
+        detail_artikel = [
+            (d, session.get(Artikel, d.artikel_id) if d.artikel_id is not None else None)
+            for d in prepared
+        ]
+        creates_voucher = any(
+            art is not None and art.artikel_nr == "GUTSCHEIN" for _, art in detail_artikel
+        )
+
+        # Voucher redemption as a sale position (Java
+        # Kassieren.maybeInsertEinloesungIntoGutschein): the negative position is
+        # booked with the receipt and reduces the voucher's remaining balance.
+        voucher = None
+        einloesung = None
+        if payload.gutschein_einloesung_nr is not None:
+            einloesung = next(
+                (d for d, art in detail_artikel
+                 if art is not None and art.artikel_nr == "GUTSCHEINEINLOES"),
+                None,
+            )
+            voucher = session.exec(
+                select(Gutschein)
+                .where(Gutschein.gutschein_nr == payload.gutschein_einloesung_nr)
+                .order_by(Gutschein.gutschein_id)
+            ).first()
+            if einloesung is None or voucher is None:
+                raise DomainError(detail="Gutschein not found")
+
+        # Keep the voucher / cash-register locks until the single commit, so the
+        # counter and balance read-modify-writes stay serialized.
+        with ExitStack() as locks:
+            if creates_voucher or voucher is not None:
+                locks.enter_context(VOUCHER_LOCK)
+            if creates_voucher:
+                next_nr = next_gutschein_nr(session, lock=False)
+                for d, art in detail_artikel:
+                    if art is not None and art.artikel_nr == "GUTSCHEIN":
+                        g = Gutschein(
+                            gutschein_nr=next_nr,
+                            datum=new_v.verkaufsdatum,
+                            gutschein_in_vd_id=d.vd_id,
+                            einloesung_in_vd_id=None,
+                            restbetrag=d.ges_preis if d.ges_preis is not None else 0.0,
+                        )
+                        g.gutschein_id = None
+                        session.add(g)
+                        next_nr += 1
+                session.flush()
+            if voucher is not None:
+                redeem_voucher(
+                    session, voucher.gutschein_id,
+                    einloesung_in_vd_id=einloesung.vd_id,
+                    user_id=user_id, commit=False, lock=False,
+                )
+            if not payload.ec_zahlung:
+                locks.enter_context(KASSENSTAND_LOCK)
+                update_kassenstand_for_sale(
+                    session=session, rechnungs_nr=new_v.rechnungs_nr,
+                    commit=False, lock=False,
+                )
+            session.commit()
+    except Exception:
+        session.rollback()
+        raise
+
+    change, ec_warning = process_payment(
+        total, ec_zahlung=payload.ec_zahlung, kunde_gibt=payload.kunde_gibt
+    )
+    if not payload.ec_zahlung:
+        ec_warning = None
+    return new_v, change, ec_warning
+
+
 __all__ = [
     "EC_THRESHOLD",
     "validate_detail",
@@ -624,4 +761,5 @@ __all__ = [
     "write_anzahlung",
     "calculate_mwst_summary",
     "check_ec_payment_threshold",
+    "create_sale",
 ]

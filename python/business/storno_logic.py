@@ -1,6 +1,7 @@
 """Advanced storno (refund) logic."""
 from __future__ import annotations
 
+from contextlib import ExitStack
 from datetime import datetime, timezone
 from typing import Any, Optional
 
@@ -181,6 +182,84 @@ create_storno_sale = create_storno
 storno_verkauf_logic = create_storno
 
 
+def storno_sale(
+    session: Session,
+    rechnungs_nr: int,
+    user_id=None,
+    cash_refund: bool = True,
+) -> Verkauf:
+    """Storno a receipt: reversing receipt, voucher/installment reversal, cash payout.
+
+    The shop can only refund in cash (Java `HeutigeRechnungen.insertStornoIntoTSE`
+    sends "Bar" even for EC sales), so the payout happens for cash and EC sales
+    unless `cash_refund` says the card was not charged.
+    """
+    from .cash_register import (
+        KASSENSTAND_LOCK,
+        is_training_mode,
+        update_kassenstand_for_sale,
+    )
+    from .voucher_logic import VOUCHER_LOCK
+
+    original = session.get(Verkauf, rechnungs_nr)
+    if not original:
+        raise NotFoundError(detail="Verkauf not found")
+    payout_cash = (not original.ec_zahlung) or cash_refund
+    try:
+        # The whole storno is one transaction: receipt, voucher and installment
+        # reversals, cash payout. Lock order matches the sale (voucher, then
+        # Kassenstand).
+        with ExitStack() as locks:
+            locks.enter_context(VOUCHER_LOCK)
+            if payout_cash:
+                locks.enter_context(KASSENSTAND_LOCK)
+            storno = create_storno(session, rechnungs_nr, user_id=user_id, commit=False)
+            handle_storno_voucher(session, original, commit=False)
+            handle_storno_installment(session, original, commit=False)
+            if payout_cash:
+                update_kassenstand_for_sale(
+                    session=session,
+                    rechnungs_nr=storno.rechnungs_nr,
+                    kommentar="Storno",
+                    commit=False,
+                    lock=False,
+                )
+            session.commit()
+    except Exception:
+        session.rollback()
+        raise
+
+    # TSE transaction for the storno (best-effort, no TSE in training mode).
+    # Signed after the commit: the signature needs the receipt number.
+    if not is_training_mode():
+        try:
+            from ..models import TSETransaction
+            from ..utils.tse_client import tse_client
+
+            signed = tse_client.create_transaction(
+                process_type="Kassenbeleg-Storno", process_data=None, training=False
+            )
+            tse = TSETransaction(
+                transaction_number=signed.get("transaction_number"),
+                rechnungs_nr=storno.rechnungs_nr,
+                training=False,
+                transaction_start=signed.get("transaction_start"),
+                transaction_end=signed.get("transaction_end"),
+                process_type="Kassenbeleg-Storno",
+                signature_counter=signed.get("signature_counter"),
+                signature_base64=signed.get("signature_base64"),
+                tse_error=signed.get("tse_error"),
+                process_data=None,
+                user_id=user_id,
+            )
+            tse.transaction_id = None
+            session.add(tse)
+            session.commit()
+        except Exception:
+            pass
+    return storno
+
+
 __all__ = [
     "can_storno",
     "validate_storno",
@@ -189,6 +268,7 @@ __all__ = [
     "create_storno",
     "create_storno_sale",
     "storno_verkauf_logic",
+    "storno_sale",
     "handle_storno_voucher",
     "handle_storno_installment",
 ]

@@ -642,8 +642,8 @@ The `routers/` + `business/` split exists, but the layers still leak. Findings (
 Target layering: router (HTTP, auth, serialization) → service/use case (orchestration + one transaction) → domain (pure rules such as `vat_calculator`) → persistence (queries). Deliberately **not** targeted: ports/adapters, a DI container, or one repository class per table — four layers are enough for a shop POS.
 
 - [x] **1. Domain errors instead of HTTP errors**: `python/business/errors.py` (`DomainError` = 400, `NotFoundError` = 404) replaces `fastapi.HTTPException` in `cash_register`, `sale_workflow`, `storno_logic`, `voucher_logic`, `dsfinvk_export`; `main.py` registers one handler that maps them to `{"detail": ...}` with the original status codes, so API behaviour is unchanged. Tests for those modules now expect `DomainError`.
-- [ ] **2. Thin routers**: move the bodies of `POST /abrechnung/tag`, `POST /verkauf/`, storno and `POST /gutschein/{id}/einloesen` into business use-case functions `(payload, session, user_id) -> result`; the endpoint becomes parse → call → serialize. Removes the in-function imports and the token decoding in `routers/abrechnung_tag.py`.
-- [ ] **3. One transaction per use case**: `with session.begin():` in the service, no per-step `commit()`. Today a failure between two commits can leave half a settlement.
+- [x] **2. Thin routers** (2026-10-31): the flows moved out of the endpoints into use cases — `sale_workflow.create_sale` (sale + positions + VAT + voucher + Anzahlung + Kassenstand in one transaction, returns `(verkauf, change, ec_warning)`), `storno_logic.storno_sale` (transaction, TSE signing), `business/settlement.py` `create_daily_settlement` (period, TSE export, TSE status row, month/year invalidation, count protocol, DSFinV-K write, response values) plus `last_settlement`/`invalidate_period_settlements`. `POST /verkauf/`, `POST /verkauf/{nr}/storno` and `POST /abrechnung/tag` now parse → call → serialize; the token decode/deprecated `bearer_scheme` handling in `abrechnung_tag` and `gutschein` is gone (the use case gets `user_id` from `require_user`). `POST /gutschein/{id}/einloesen` already delegated to `voucher_logic.redeem_voucher`.
+- [ ] **3. One transaction per use case**: `with session.begin():` in the service, no per-step `commit()`. The sale and the storno are single-transaction, but `create_daily_settlement` still commits per step (settlement row, VAT rows, TSE row, invalidation, count protocol) and a failure mid-way leaves a partial settlement.
 - [ ] **4. Split tables from schemas**: `models/tables.py` (ORM) + `schemas/` (Public/Create/Update/Details), response objects built in one place instead of per-endpoint `model_dump()` assembly.
 - [ ] **5. Shared list helper**: one pagination/sort/filter helper replacing the 18 duplicated blocks.
 - [ ] **6. Settings module**: single place for env vars; modules import settings instead of reading `os.environ` at call time.
@@ -780,9 +780,11 @@ python/
 ├── models.py                  # All SQLModel definitions (incl. new User, Anmeldung models)
 ├── business/                  # Business logic modules
 │   ├── __init__.py
+│   ├── errors.py              # NEW: DomainError/NotFoundError (mapped to HTTP in main.py)
 │   ├── vat_calculator.py      # VAT calculation logic
-│   ├── sale_workflow.py      # Sale creation workflow
-│   ├── storno_logic.py        # Storno/refund logic
+│   ├── sale_workflow.py      # Sale creation workflow (create_sale use case)
+│   ├── storno_logic.py        # Storno/refund logic (storno_sale use case)
+│   ├── settlement.py          # NEW: Daily settlement use case
 │   └── cash_register.py       # Cash register operations
 ├── routers/                   # FastAPI route definitions
 │   ├── __init__.py

@@ -608,14 +608,14 @@ def test_variable_price_article_uses_explicit_line_price(session):
 def test_failed_sale_rolls_back_everything(session, monkeypatch):
     from python.routers.verkauf import create_verkauf as router_create_verkauf
     from python.models import Kassenstand, VerkaufCreate
-    from python.business import cash_register
+    from python.business import sale_workflow
 
     artikel = _seed_artikel(session)
 
     def boom(**kwargs):
         raise RuntimeError("kassenstand update failed")
 
-    monkeypatch.setattr(cash_register, "update_kassenstand_for_sale", boom)
+    monkeypatch.setattr(sale_workflow, "update_kassenstand_for_sale", boom)
     payload = VerkaufCreate(verkauf_details=[
         {"artikel_id": artikel.artikel_id, "stueckzahl": 1},
     ])

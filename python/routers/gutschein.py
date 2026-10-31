@@ -6,8 +6,7 @@ from sqlmodel import select, func
 
 from ..models import Gutschein, GutscheinPublic, GutscheinCreate, GutscheinEinloesen, VerkaufDetails
 from ..session import SessionDep
-from ..dependencies import bearer_scheme, require_user
-from fastapi.security import HTTPAuthorizationCredentials
+from ..dependencies import require_user
 from fastapi import Depends
 
 router = APIRouter(
@@ -82,15 +81,10 @@ def read_single_gutschein(gutschein_id: int, session: SessionDep) -> GutscheinPu
 
 
 @router.post("/", response_model=GutscheinPublic)
-def create_gutschein(gutschein: GutscheinCreate, session: SessionDep, credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme), _user=Depends(require_user)):
+def create_gutschein(gutschein: GutscheinCreate, session: SessionDep, _user=Depends(require_user)):
     from ..business.voucher_logic import VOUCHER_LOCK, next_gutschein_nr
 
-    user_id = getattr(gutschein, "user_id", None)
-    if user_id is None and credentials is not None and credentials.credentials:
-        from ..utils.auth import decode_token
-        p = decode_token(credentials.credentials)
-        if p:
-            user_id = p.get("user_id")
+    user_id = getattr(gutschein, "user_id", None) or getattr(_user, "user_id", None)
     if gutschein.gutschein_in_vd_id is not None:
         vd = session.get(VerkaufDetails, gutschein.gutschein_in_vd_id)
         if not vd:
