@@ -168,6 +168,14 @@ def _seed_export(session, monkeypatch):
             transaction_start="2026-10-27T12:00:00.000+01:00",
             process_type="Kassenbeleg-V1", signature_counter=4,
         ),
+        # Training receipts are signed on the TSE too, but never exported.
+        TSETransaction(
+            rechnungs_nr=sale.rechnungs_nr, transaction_number=43,
+            training=True,
+            transaction_start="2026-10-28T13:00:00.000+01:00",
+            process_type="Kassenbeleg-V1", signature_counter=6,
+            process_data="AVTraining^0.00_0.00_0.00_0.00_5.00^5.00:Bar",
+        ),
     ])
     session.commit()
     return tag, sale

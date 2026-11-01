@@ -99,7 +99,9 @@ not used by the API anymore.
 Tagesabschluss (`cashpointclosing.csv`, `location.csv`, `cashregister.csv`,
 `slaves.csv`, `pa.csv`, `vat.csv`, `tse.csv`, `businesscases.csv`,
 `transactions_tse.csv` plus the official `index.xml` and DTD) and returns them
-as a ZIP archive. `POST /abrechnung/tag` also writes `dsfinvk_<id>.zip` to
+as a ZIP archive. Training receipts (`training = TRUE`, from the training
+database) are never included in `transactions_tse.csv`.
+`POST /abrechnung/tag` also writes `dsfinvk_<id>.zip` to
 `DSFINVK_EXPORT_DIR` when that variable is set.
 
 The Stammdaten come from `DSFINVK_*` environment variables; the shop's name,

@@ -415,7 +415,9 @@ def build_dsfinvk_files(session: Session, abrechnung_tag_id: int) -> dict[str, b
     window_start = previous.zeitpunkt_real if previous is not None else None
     transactions = []
     for tx in session.exec(
-        select(TSETransaction).order_by(TSETransaction.transaction_id)
+        select(TSETransaction)
+        .where(TSETransaction.training == False)  # noqa: E712 - SQLAlchemy comparison
+        .order_by(TSETransaction.transaction_id)
     ).all():
         started = _parse_tse_time(tx.transaction_start)
         if started is None or started > at.zeitpunkt_real:
