@@ -60,12 +60,16 @@ def test_tse_transaction_flow(client):
     # List
     r = client.get("/tse/transaction")
     assert r.status_code == 200
-    assert len(r.json()) == 1
+    rows = r.json()
+    assert len(rows) == 2  # the sale signs itself + the manual transaction
+    sale_row = next(row for row in rows if row["transaction_id"] != tid)
+    assert sale_row["process_type"] == "Kassenbeleg-V1"
+    assert sale_row["process_data"].startswith("Beleg^")
 
     # By verkauf
     r = client.get(f"/tse/transaction/verkauf/{sale['rechnungs_nr']}")
     assert r.status_code == 200
-    assert len(r.json()) == 1
+    assert len(r.json()) == 2
 
 
 def test_tse_transaction_404(client):

@@ -30,6 +30,7 @@ from .cash_register import (
     process_payment,
     update_kassenstand_for_sale,
 )
+from .tse_signing import sign_receipt
 from .vat_calculator import calculate_mwst_values_in_rechnung
 from .voucher_logic import VOUCHER_LOCK, next_gutschein_nr, redeem_voucher
 
@@ -673,7 +674,8 @@ def create_sale(session: Session, payload, user_id=None):
             user_id, commit=False,
         )
 
-        for mwst_satz, summary in calculate_mwst_summary(prepared).items():
+        mwst_summary = calculate_mwst_summary(prepared)
+        for mwst_satz, summary in mwst_summary.items():
             session.add(VerkaufMwst(
                 rechnungs_nr=new_v.rechnungs_nr,
                 mwst_satz=float(mwst_satz),
@@ -746,6 +748,15 @@ def create_sale(session: Session, payload, user_id=None):
     )
     if not payload.ec_zahlung:
         ec_warning = None
+    # Sign the finished receipt (Java `Kassieren.neuerKunde` -> `finishTransaction`).
+    # Signed after the commit: the signature needs the receipt number.
+    sign_receipt(
+        session,
+        new_v.rechnungs_nr,
+        {rate: values["brutto"] for rate, values in mwst_summary.items()},
+        payload.ec_zahlung,
+        user_id,
+    )
     return new_v, change, ec_warning
 
 

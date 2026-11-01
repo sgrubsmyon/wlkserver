@@ -15,6 +15,7 @@ from ..models import (
     VerkaufMwst,
 )
 from ..repositories import storno_of
+from .tse_signing import sign_receipt
 from .vat_calculator import _to_decimal
 
 
@@ -205,7 +206,6 @@ def storno_sale(
         KASSENSTAND_LOCK,
         update_kassenstand_for_sale,
     )
-    from ..config import training_mode
     from .voucher_logic import VOUCHER_LOCK
 
     original = session.get(Verkauf, rechnungs_nr)
@@ -236,34 +236,16 @@ def storno_sale(
         session.rollback()
         raise
 
-    # TSE transaction for the storno (best-effort, no TSE in training mode).
-    # Signed after the commit: the signature needs the receipt number.
-    if not training_mode():
-        try:
-            from ..models import TSETransaction
-            from ..utils.tse_client import tse_client
-
-            signed = tse_client.create_transaction(
-                process_type="Kassenbeleg-Storno", process_data=None, training=False
-            )
-            tse = TSETransaction(
-                transaction_number=signed.get("transaction_number"),
-                rechnungs_nr=storno.rechnungs_nr,
-                training=False,
-                transaction_start=signed.get("transaction_start"),
-                transaction_end=signed.get("transaction_end"),
-                process_type="Kassenbeleg-Storno",
-                signature_counter=signed.get("signature_counter"),
-                signature_base64=signed.get("signature_base64"),
-                tse_error=signed.get("tse_error"),
-                process_data=None,
-                user_id=user_id,
-            )
-            tse.transaction_id = None
-            session.add(tse)
-            session.commit()
-        except Exception:
-            pass
+    # Sign the storno receipt like the original sale (Java
+    # `HeutigeRechnungen.insertStornoIntoTSE`). Signed after the commit: the
+    # signature needs the receipt number. The refund is always sent as cash.
+    gross = {
+        row.mwst_satz: _to_decimal(row.mwst_netto) + _to_decimal(row.mwst_betrag)
+        for row in session.exec(
+            select(VerkaufMwst).where(VerkaufMwst.rechnungs_nr == storno.rechnungs_nr)
+        ).all()
+    }
+    sign_receipt(session, storno.rechnungs_nr, gross, True, user_id)
     return storno
 
 

@@ -208,7 +208,7 @@ def test_tse_transaction_filter_and_limit(client):
     })
 
     body = client.get("/tse/transaction", params={"rechnungs_nr": nr}).json()
-    assert len(body) == 1
+    assert len(body) == 2  # the signed sale + the manual transaction
     assert body[0]["rechnungs_nr"] == nr
 
     assert client.get("/tse/transaction", params={"rechnungs_nr": 99999}).json() == []

@@ -31,7 +31,7 @@ def test_tse_flow(client):
     assert r.status_code == 200
     r = client.get("/tse/transaction")
     assert r.status_code == 200
-    assert len(r.json()) == 1
+    assert len(r.json()) == 2  # the signed sale + the manual transaction
     # exports
     r = client.post("/tse/export/full")
     assert r.status_code == 200
