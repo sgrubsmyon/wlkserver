@@ -34,7 +34,7 @@ from python.business.training import (
 
 
 @pytest.fixture
-def sandbox(monkeypatch):
+def sandbox(monkeypatch, tmp_path):
     """Two engines (production + training) with the training instance active."""
     production = _engine()
     training = _engine()
@@ -48,7 +48,8 @@ def sandbox(monkeypatch):
     db._engines["production"] = production
     db._engines["training"] = training
     monkeypatch.setenv("TRAINING_MODE", "1")
-    monkeypatch.setenv("TRAINING_DB_URL", "sqlite://")
+    # The engines above are injected; the URL only has to pass the persistence check.
+    monkeypatch.setenv("TRAINING_DB_URL", f"sqlite:///{tmp_path}/training.db")
     with TestClient(app) as client:  # startup creates/mirrors/seeds the sandbox
         yield client, production, training
     db._engines.clear()
@@ -66,6 +67,17 @@ def _login(client):
     r = client.post("/auth/login", json={"username": "admin", "password": "admin"})
     assert r.status_code == 200
     client.headers["Authorization"] = "Bearer " + r.json()["access_token"]
+
+
+def test_training_db_url_must_be_persistent(monkeypatch):
+    from python import config
+
+    monkeypatch.setenv("TRAINING_DB_URL", "sqlite://")
+    with pytest.raises(RuntimeError, match="persistent"):
+        config.training_db_url()
+
+    monkeypatch.setenv("TRAINING_DB_URL", "sqlite:///training.db")
+    assert config.training_db_url() == "sqlite:///training.db"
 
 
 def _artikel_id(engine, nr):

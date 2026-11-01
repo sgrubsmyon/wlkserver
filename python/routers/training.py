@@ -1,10 +1,10 @@
 """Training mode endpoints.
 
 `TRAINING_MODE` turns the whole API instance into a sandbox: it runs against
-the disposable database configured in `TRAINING_DB_URL` (created and seeded on
-startup by `business/training.py`), so sales, settlements *and* master-data
-edits never touch production. These endpoints report the mode and reset the
-sandbox.
+the persistent training database configured in `TRAINING_DB_URL` (created and
+seeded on startup by `business/training.py`), so sales, settlements *and*
+master-data edits never touch production. These endpoints report the mode and
+reset the sandbox.
 """
 from fastapi import APIRouter, Depends, HTTPException
 

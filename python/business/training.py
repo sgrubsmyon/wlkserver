@@ -1,10 +1,13 @@
-"""Training sandbox: separate database with a short POS test catalog.
+"""Training sandbox: separate persistent database with a short POS test catalog.
 
 The Java POS only redirects the cashier tables to `training_*` tables, so
 editing articles or discount actions in its training mode changes production
-master data. The API instead runs the whole instance against a disposable
+master data. The API instead runs the whole instance against a separate
 training database (`TRAINING_MODE` + `TRAINING_DB_URL`): every table exists
-there, so all transactions *and* master-data edits are sandboxed.
+there, so all transactions *and* master-data edits are sandboxed. The database
+must be persistent (MariaDB, not in-memory SQLite): training receipts are
+signed on the real TSE, so their `tse_transaction` rows have to survive
+restarts.
 
 On startup (and on `POST /training/reset`) the sandbox is created from the
 SQLModel metadata, the production users are mirrored so authentication and the

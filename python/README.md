@@ -35,8 +35,8 @@ once). `.env` is git-ignored — never commit secrets.
 | `AUTH_SECRET` | dev placeholder | JWT signing secret — **must** be set in production |
 | `AUTH_TOKEN_TTL` | `3600` | JWT lifetime in seconds |
 | `CORS_ORIGINS` | SvelteKit dev server (`localhost:5173`, `127.0.0.1:5173`) | Comma-separated allowed browser origins |
-| `TRAINING_MODE` | off | `1`/`true`/`yes`/`on` runs the whole instance against the disposable training database |
-| `TRAINING_DB_URL` | — | SQLAlchemy URL of the training sandbox (e.g. `sqlite:///training.db` or a separate MariaDB database); required when `TRAINING_MODE` is set |
+| `TRAINING_MODE` | off | `1`/`true`/`yes`/`on` runs the whole instance against the training database |
+| `TRAINING_DB_URL` | — | SQLAlchemy URL of the **persistent** training sandbox (a separate MariaDB database); required when `TRAINING_MODE` is set. In-memory SQLite is rejected |
 | `TSE_DEVICE_PATH`, `TSE_LIB_PATH`, `TSE_CLIENT_ID` | unset / `WeltladenKasse` | TSE (cryptovision SE-API) adapter settings |
 | `TSE_ID` | unset | TSE number stored in `abrechnung_tag_tse` (Java `bc.TSE_ID`, used by DSFinV-K) |
 | `VAT_ROUNDING_METHOD` | `horizontal` | Receipt VAT rounding: `horizontal` (per position, Java POS) or `vertical` (per VAT rate, e-invoice compatible). Invalid values abort startup |
@@ -52,10 +52,20 @@ must always use the vertical method (EN 16931 BR-CO-17) — see
 
 The Java POS only redirects the cashier tables to `training_*` tables; editing
 articles or discount actions there still changes production master data. The API
-instead runs the **whole instance** against a disposable database:
+instead runs the **whole instance** against a separate, **persistent** database.
+It has to be persistent because training receipts are signed on the real TSE:
+they consume real transaction numbers and signature counters, so their
+`tse_transaction` rows must stay reconcilable after a restart.
+
+```sql
+CREATE DATABASE weltladen_training CHARACTER SET utf8 COLLATE utf8_general_ci;
+GRANT ALL PRIVILEGES ON weltladen_training.* TO 'kassenadmin'@'localhost';
+```
 
 ```sh
-TRAINING_MODE=1 TRAINING_DB_URL=sqlite:///training.db fastapi run
+TRAINING_MODE=1 \
+TRAINING_DB_URL='mariadb+mariadbconnector://kassenadmin:PASS@localhost/weltladen_training' \
+fastapi run
 ```
 
 On startup the API creates the schema in the sandbox (from `models/tables.py`), mirrors

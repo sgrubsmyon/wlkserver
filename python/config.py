@@ -6,6 +6,7 @@ processes see environment changes, like the per-request VAT rounding method.
 import os
 
 from dotenv import load_dotenv
+from sqlalchemy.engine import make_url
 
 load_dotenv()  # optional python/.env; real environment variables take precedence
 
@@ -34,11 +35,24 @@ def database_url() -> str:
 
 
 def training_db_url() -> str:
+    """Persistent sandbox database (a separate MariaDB database in production).
+
+    Training receipts consume real TSE transaction numbers and signature
+    counters, so their `tse_transaction` rows must survive restarts; an
+    in-memory database would lose them.
+    """
     url = env("TRAINING_DB_URL")
     if not url:
         raise RuntimeError(
             "TRAINING_MODE is enabled but TRAINING_DB_URL is not set "
-            "(e.g. sqlite:///training.db or a separate MariaDB database)"
+            "(e.g. a separate MariaDB database)"
+        )
+    parsed = make_url(url)
+    if parsed.get_backend_name() == "sqlite" and parsed.database in (None, "", ":memory:"):
+        raise RuntimeError(
+            "TRAINING_DB_URL must be persistent: training receipts are signed on "
+            "the real TSE, so their tse_transaction rows have to survive restarts "
+            "(use a separate MariaDB database)"
         )
     return url
 
