@@ -9,6 +9,7 @@ from sqlmodel import select
 from python.main import app
 
 from python.models import (
+    TSETransaction,
     Verkauf,
     VerkaufDetails,
     VerkaufMwst,
@@ -57,6 +58,22 @@ def test_storno_rejected_for_sale_in_completed_settlement(session, client):
     assert session.exec(
         select(Verkauf).where(Verkauf.storno_von == original.rechnungs_nr)
     ).first() is None
+
+
+def test_storno_signs_the_tse_refund_as_cash_even_for_ec_sales(session, client):
+    original = _sale_with_detail(session, ec_zahlung=True)
+
+    r = client.post(f"/verkauf/{original.rechnungs_nr}/storno")
+    assert r.status_code == 200
+    storno_nr = r.json()["rechnungs_nr"]
+
+    tx = session.exec(
+        select(TSETransaction).where(TSETransaction.rechnungs_nr == storno_nr)
+    ).one()
+    assert tx.process_type == "Kassenbeleg-V1"
+    assert tx.process_data.startswith("Beleg^")
+    assert tx.process_data.endswith(":Bar")  # Java: refund is always cash
+    assert tx.training is False
 
 
 def test_storno_allowed_for_sales_after_a_settlement(session, client):

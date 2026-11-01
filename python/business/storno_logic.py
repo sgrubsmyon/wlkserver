@@ -245,7 +245,7 @@ def storno_sale(
             select(VerkaufMwst).where(VerkaufMwst.rechnungs_nr == storno.rechnungs_nr)
         ).all()
     }
-    sign_receipt(session, storno.rechnungs_nr, gross, True, user_id)
+    sign_receipt(session, storno.rechnungs_nr, gross, False, user_id)  # refund always "Bar"
     return storno
 
 
