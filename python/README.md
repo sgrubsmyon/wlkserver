@@ -70,7 +70,9 @@ fastapi run
 
 On startup the API creates the schema in the sandbox (from `models/tables.py`), mirrors
 the production users (authentication and the `user_id` attributes need them)
-and seeds a short test catalog:
+and seeds a short test catalog. The catalog is only seeded when the sandbox has
+no articles yet; startup never wipes existing training data, and `POST
+/training/reset` (below) is the only reset. The catalog covers:
 
 | Article | Purpose |
 |---|---|

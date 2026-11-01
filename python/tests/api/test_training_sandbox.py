@@ -117,6 +117,23 @@ def test_seed_catalog_covers_pos_aspects():
         assert action.von < datetime.now(action.von.tzinfo)
 
 
+def test_restart_does_not_wipe_the_sandbox(sandbox):
+    client, _, training = sandbox
+    _login(client)
+    artikel_id = _artikel_id(training, "T-19")
+    sale = client.post("/verkauf/", json={
+        "verkauf_details": [{"artikel_id": artikel_id, "stueckzahl": 1}],
+    })
+    assert sale.status_code == 200
+    rechnungs_nr = sale.json()["rechnungs_nr"]
+
+    with TestClient(app):  # startup runs `ensure_training_database` again
+        pass
+
+    with Session(training) as session:
+        assert session.get(Verkauf, rechnungs_nr) is not None
+
+
 def test_training_mode_sandboxes_sales_storno_and_settlements(sandbox):
     client, production, training = sandbox
     _login(client)

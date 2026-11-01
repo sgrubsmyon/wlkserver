@@ -9,11 +9,13 @@ must be persistent (MariaDB, not in-memory SQLite): training receipts are
 signed on the real TSE, so their `tse_transaction` rows have to survive
 restarts.
 
-On startup (and on `POST /training/reset`) the sandbox is created from the
-SQLModel metadata, the production users are mirrored so authentication and the
-`user_id` foreign keys work, and a short catalog is seeded that covers the POS
-test cases: 0/7/19 % VAT, fixed and variable prices, deposit articles, the
-special discount/voucher/deposit articles and an active discount action.
+On startup (and on `POST /training/reset`) the sandbox schema is created from
+the SQLModel metadata and the production users are mirrored so authentication
+and the `user_id` foreign keys work. A short catalog covering the POS test
+cases (0/7/19 % VAT, fixed and variable prices, deposit articles, the special
+discount/voucher/deposit articles and an active discount action) is seeded
+only when the sandbox has no articles yet. Existing training data is never
+wiped on startup; `POST /training/reset` is the only reset.
 """
 from __future__ import annotations
 
@@ -179,7 +181,11 @@ def mirror_users(session: Session, production_engine: Engine) -> None:
 
 
 def ensure_training_database() -> None:
-    """Create and seed the sandbox when this instance runs in training mode."""
+    """Create the schema if missing and seed the catalog only when it is empty.
+
+    Existing training data is never wiped here; `POST /training/reset` is the
+    only way to clear the sandbox.
+    """
     if not training_mode():
         return
     engine = get_engine()
