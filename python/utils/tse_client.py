@@ -8,6 +8,7 @@ hardware and may need adjustments.
 
 import ctypes
 import os
+from datetime import datetime
 
 from .. import config
 
@@ -18,6 +19,20 @@ _LIB_PATHS = [
 ]
 
 CLIENT_ID = config.tse_client_id()
+
+PROCESS_TYPE = "Kassenbeleg-V1"  # Java `WeltladenTSE.defaultProcessType`
+# DSFinV-K process data of an aborted Vorgang: no payment may have happened
+# (Java `WeltladenTSE.cancelTransaction`).
+ABORT_PROCESS_DATA = "AVBelegabbruch^0.00_0.00_0.00_0.00_0.00^"
+
+def now_iso() -> str:
+    """Current time in the DSFinV-K format `yyyy-MM-dd'T'HH:mm:ss.SSSXXX`."""
+    return datetime.now().astimezone().isoformat(timespec="milliseconds")
+
+
+def _log_time(value) -> str:
+    """TSE `logTime` (unix seconds) in the DSFinV-K timestamp format."""
+    return datetime.fromtimestamp(value).astimezone().isoformat(timespec="milliseconds")
 
 
 class SeStartTransactionResult(ctypes.Structure):
@@ -152,16 +167,16 @@ class TSEClient:
         return {"status": "failed: device not available", "device_path": self.device_path}
 
     def create_transaction(self, process_type, process_data, training=False):
+
+    def start_transaction(self):
+        """Start a Vorgang. processType/processData stay empty (DSFinV-K)."""
         if not self._ensure_open():
             return {
                 "transaction_number": 1,
                 "signature_counter": 1,
-                "signature_base64": "DUMMY_SIGNATURE",
-                "transaction_start": "2026-01-01T00:00:00.000+01:00",
-                "transaction_end": "2026-01-01T00:00:00.000+01:00",
+                "transaction_start": now_iso(),
                 "tse_error": "device not available (stub)",
             }
-        # Start transaction
         start_res = SeStartTransactionResult()
         client_id = CLIENT_ID
         rc = self.lib.se_startTransaction(
@@ -175,21 +190,35 @@ class TSEClient:
             return {
                 "transaction_number": None,
                 "signature_counter": None,
-                "signature_base64": None,
                 "transaction_start": None,
-                "transaction_end": None,
                 "tse_error": f"startTransaction failed: {rc}",
             }
-        tx_number = start_res.transactionNumber
-        start_time = start_res.logTime
+        self.lib.se_free(start_res.signatureValue)
+        self.lib.se_free(start_res.serialNumber)
+        return {
+            "transaction_number": start_res.transactionNumber,
+            "signature_counter": start_res.signatureCounter,
+            "transaction_start": _log_time(start_res.logTime),
+            "tse_error": None,
+        }
 
-        # Finish transaction
+    def finish_transaction(self, transaction_number, process_type, process_data):
+        """Finish a started Vorgang with its processType and processData."""
+        if not self._ensure_open():
+            return {
+                "signature_counter": 1,
+                "signature_base64": "DUMMY_SIGNATURE",
+                "transaction_end": now_iso(),
+                "tse_error": "device not available (stub)",
+            }
+        import base64
+
         proc_bytes = (process_data or "").encode("utf-8")
         ptype = (process_type or "").encode("utf-8")
         finish_res = SeFinishTransactionResult()
         rc = self.lib.se_finishTransaction(
-            client_id, len(client_id),
-            tx_number,
+            CLIENT_ID, len(CLIENT_ID),
+            transaction_number,
             proc_bytes, len(proc_bytes),
             ptype, len(ptype),
             None, 0,
@@ -197,30 +226,37 @@ class TSEClient:
         )
         if rc != 0:
             return {
-                "transaction_number": tx_number,
-                "signature_counter": start_res.signatureCounter,
+                "signature_counter": None,
                 "signature_base64": None,
-                "transaction_start": str(start_time),
                 "transaction_end": None,
                 "tse_error": f"finishTransaction failed: {rc}",
             }
         sig_b64 = ""
         if finish_res.signatureValue and finish_res.signatureValueLength:
-            import base64
             raw = bytes(finish_res.signatureValue[:finish_res.signatureValueLength])
             sig_b64 = base64.b64encode(raw).decode("ascii")
             self.lib.se_free(finish_res.signatureValue)
             self.lib.se_free(finish_res.serialNumber)
-        self.lib.se_free(start_res.signatureValue)
-        self.lib.se_free(start_res.serialNumber)
         return {
-            "transaction_number": tx_number,
             "signature_counter": finish_res.signatureCounter,
             "signature_base64": sig_b64,
-            "transaction_start": str(start_time),
-            "transaction_end": str(finish_res.logTime),
+            "transaction_end": _log_time(finish_res.logTime),
             "tse_error": None,
         }
+
+    def abort_transaction(self, transaction_number, process_type=PROCESS_TYPE):
+        """Abort a started Vorgang: the sale did not happen, nothing was paid."""
+        return self.finish_transaction(transaction_number, process_type, ABORT_PROCESS_DATA)
+
+    def create_transaction(self, process_type, process_data, training=False):
+        """Start and finish in one go (stornos at the counter, scripted bookings)."""
+        started = self.start_transaction()
+        if started["transaction_number"] is None:
+            return {**started, "signature_base64": None, "transaction_end": None}
+        finished = self.finish_transaction(
+            started["transaction_number"], process_type or PROCESS_TYPE, process_data
+        )
+        return {**started, **finished}
 
     def _export_bytes(self, client_id_bytes, transaction_number=None, start_tx=None, end_tx=None,
                       start_date=0, end_date=0, max_records=0, previous_sig_counter=0, max_records2=0,

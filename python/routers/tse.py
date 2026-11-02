@@ -10,6 +10,7 @@ from sqlmodel import select
 
 from ..models import (
     TSETransaction,
+    User,
     Verkauf,
 )
 from ..schemas import (
@@ -17,7 +18,11 @@ from ..schemas import (
     TSETransactionCreate,
 )
 from ..session import SessionDep
-from ..utils.tse_client import tse_client
+from ..business.tse_signing import (
+    abort_transaction as abort_started_transaction,
+    start_transaction as start_basket_transaction,
+)
+from ..utils.tse_client import PIN_LENGTH, PUK_LENGTH, tse_client
 from ..dependencies import bearer_scheme, require_user
 from ..utils.pagination import paginate
 
@@ -119,6 +124,20 @@ def create_tse_transaction(payload: TSETransactionCreate, session: SessionDep, c
     session.commit()
     session.refresh(new_t)
     return TSETransactionPublic.model_validate(new_t)
+
+
+@router.post("/transaction/start", response_model=TSETransactionPublic)
+def start_tse_transaction(session: SessionDep, _user: User = Depends(require_user)):
+    """Start the TSE transaction of a new basket (first article scanned)."""
+    row = start_basket_transaction(session, user_id=getattr(_user, "user_id", None))
+    return TSETransactionPublic.model_validate(row)
+
+
+@router.post("/transaction/{transaction_id}/abbruch", response_model=TSETransactionPublic)
+def abort_tse_transaction(transaction_id: int, session: SessionDep, _user: User = Depends(require_user)):
+    """Abort a started transaction: the sale did not happen (`AVBelegabbruch`)."""
+    row = abort_started_transaction(session, transaction_id)
+    return TSETransactionPublic.model_validate(row)
 
 
 @router.get("/status")

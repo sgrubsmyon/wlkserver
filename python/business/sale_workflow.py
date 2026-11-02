@@ -30,7 +30,7 @@ from .cash_register import (
     process_payment,
     update_kassenstand_for_sale,
 )
-from .tse_signing import sign_receipt
+from .tse_signing import get_open_transaction, sign_receipt
 from .vat_calculator import calculate_mwst_values_in_rechnung
 from .voucher_logic import VOUCHER_LOCK, next_gutschein_nr, redeem_voucher
 
@@ -636,6 +636,9 @@ def create_sale(session: Session, payload, user_id=None):
     # client-set `storno_von` would fake one.
     if payload.storno_von is not None:
         raise DomainError(detail="storno_von is set by the storno endpoint")
+    # A basket's TSE transaction must still be open before anything is written.
+    if getattr(payload, "tse_transaction_id", None) is not None:
+        get_open_transaction(session, payload.tse_transaction_id)
     # Expand auxiliary lines (Pfand, discounts, price adjustment, voucher
     # redemption, Anzahlung) and validate before writing anything.
     prepared = build_sale_details(session, payload)
@@ -756,6 +759,7 @@ def create_sale(session: Session, payload, user_id=None):
         {rate: values["brutto"] for rate, values in mwst_summary.items()},
         payload.ec_zahlung,
         user_id,
+        transaction_id=getattr(payload, "tse_transaction_id", None),
     )
     return new_v, change, ec_warning
 

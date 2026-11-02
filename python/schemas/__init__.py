@@ -196,6 +196,9 @@ class VerkaufCreate(VerkaufBase):
     # Resolve an open deposit: re-add its positions and book the negative
     # Anzahlungsauflösung line (Java `AnzahlungAufloesDialog`).
     anzahlung_aufloesen_nr: int | None = None
+    # TSE transaction started with the first article of this basket. The sale
+    # finishes it (Java `Kassieren.startTransaction` on the first item).
+    tse_transaction_id: int | None = None
     verkauf_details: list["VerkaufDetailsCreate"] | None = None
 
 

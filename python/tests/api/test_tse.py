@@ -86,6 +86,42 @@ def test_tse_transaction_bad_verkauf(client):
     assert r.status_code == 400
 
 
+def test_tse_basket_lifecycle_abort(client):
+    started = client.post("/tse/transaction/start")
+    assert started.status_code == 200
+    opened = started.json()
+    assert opened["rechnungs_nr"] is None
+    assert opened["transaction_end"] is None
+
+    aborted = client.post(f"/tse/transaction/{opened['transaction_id']}/abbruch")
+    assert aborted.status_code == 200
+    body = aborted.json()
+    assert body["process_type"] == "Kassenbeleg-V1"
+    assert body["process_data"].startswith("AVBelegabbruch^")
+    assert body["transaction_end"] > body["transaction_start"]
+    # aborted twice, or after the sale, is an error
+    assert client.post(f"/tse/transaction/{opened['transaction_id']}/abbruch").status_code == 400
+    assert client.post("/tse/transaction/99999/abbruch").status_code == 404
+
+
+def test_tse_basket_lifecycle_finish_by_sale(client):
+    opened = client.post("/tse/transaction/start").json()
+
+    sale = client.post("/verkauf/", json={"tse_transaction_id": opened["transaction_id"]})
+    assert sale.status_code == 200
+
+    row = client.get(f"/tse/transaction/{opened['transaction_id']}").json()
+    assert row["rechnungs_nr"] == sale.json()["rechnungs_nr"]
+    assert row["transaction_end"] > row["transaction_start"]
+    assert row["process_data"].startswith("Beleg^")
+    # the sale signs the started transaction, it does not create a second one
+    assert len(client.get(f"/tse/transaction/verkauf/{sale.json()['rechnungs_nr']}").json()) == 1
+
+    # a finished transaction cannot be reused
+    r = client.post("/verkauf/", json={"tse_transaction_id": opened["transaction_id"]})
+    assert r.status_code == 400
+
+
 def test_tse_export_full(client):
     r = client.post("/tse/export/full")
     assert r.status_code == 200
