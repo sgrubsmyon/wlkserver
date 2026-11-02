@@ -6,3 +6,6 @@ htmlcov/
 .pytest_cache/
 __pycache__/
 *.pyc
+
+# Migration DB backups
+migrations/*/backup_*.sql
