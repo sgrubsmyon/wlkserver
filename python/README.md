@@ -38,6 +38,7 @@ once). `.env` is git-ignored — never commit secrets.
 | `TRAINING_MODE` | off | `1`/`true`/`yes`/`on` runs the whole instance against the training database |
 | `TRAINING_DB_URL` | — | SQLAlchemy URL of the **persistent** training sandbox (a separate MariaDB database); required when `TRAINING_MODE` is set. In-memory SQLite is rejected |
 | `TSE_DEVICE_PATH`, `TSE_LIB_PATH`, `TSE_CLIENT_ID` | unset / `WeltladenKasse` | TSE (cryptovision SE-API) adapter settings |
+| `TSE_TIME_ADMIN_PIN` | unset | TimeAdmin PIN, needed for the time update the TSE requires after every power-up |
 | `TSE_ID` | unset | TSE number stored in `abrechnung_tag_tse` (Java `bc.TSE_ID`, used by DSFinV-K) |
 | `VAT_ROUNDING_METHOD` | `horizontal` | Receipt VAT rounding: `horizontal` (per position, Java POS) or `vertical` (per VAT rate, e-invoice compatible). Invalid values abort startup |
 | `DSFINVK_EXPORT_DIR` | unset | Directory for the DSFinV-K ZIP written after every Tagesabschluss; unset means on-demand only |

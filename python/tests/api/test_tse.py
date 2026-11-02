@@ -37,6 +37,33 @@ def test_tse_init(client):
     assert "status" in r.json()
 
 
+def test_tse_init_with_pin_values(client, monkeypatch):
+    from python.utils.tse_client import tse_client
+
+    monkeypatch.setattr(tse_client, "lib", None)  # no TSE in the test environment
+    r = client.post("/tse/init", json={
+        "admin_pin": "12345678",
+        "admin_puk": "1234567890",
+        "time_admin_pin": "87654321",
+        "time_admin_puk": "0987654321",
+    })
+    assert r.status_code == 200
+    assert r.json()["status"].startswith("initialized")
+
+
+def test_tse_init_rejects_wrong_pin_and_puk_length(client):
+    body = {
+        "admin_pin": "1234567",  # 7 instead of 8
+        "admin_puk": "1234567890",
+        "time_admin_pin": "87654321",
+        "time_admin_puk": "0987654321",
+    }
+    assert client.post("/tse/init", json=body).status_code == 400
+    body["admin_pin"] = "12345678"
+    body["time_admin_puk"] = "098765432"  # 9 instead of 10
+    assert client.post("/tse/init", json=body).status_code == 400
+
+
 def test_tse_transaction_flow(client):
     # Create a sale first (for the rechnungs_nr FK)
     sale = _create_sale(client)

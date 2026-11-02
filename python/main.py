@@ -9,6 +9,7 @@ from . import config
 from .business.training import ensure_training_database
 from .business.vat_calculator import vat_rounding_method
 from .dependencies import require_user
+from .utils.tse_client import tse_client
 
 # from .dependencies import get_query_token, get_token_header
 # from .internal import admin
@@ -32,6 +33,8 @@ async def lifespan(app: FastAPI):
     # In training mode this creates and seeds the disposable sandbox database.
     ensure_training_database()
     yield
+    # Release the TSE so a restart can open the device again.
+    tse_client.close()
 
 
 app = FastAPI(lifespan=lifespan)

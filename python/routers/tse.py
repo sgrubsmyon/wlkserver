@@ -43,6 +43,15 @@ class TSEExportPartialRequest(BaseModel):
     max_records: int | None = None
 
 
+class TSEInitializeRequest(BaseModel):
+    """The four values the admin enters once for a brand-new TSE (`TSEInitDialog`)."""
+
+    admin_pin: str
+    admin_puk: str
+    time_admin_pin: str
+    time_admin_puk: str
+
+
 class TSEExportDeleteRequest(BaseModel):
     last_excluded_signature_counter: int | None = None
     max_records: int | None = None
@@ -146,8 +155,26 @@ def get_tse_status():
 
 
 @router.post("/init")
-def init_tse():
-    return tse_client.init()
+def init_tse(payload: Optional[TSEInitializeRequest] = None, _user: User = Depends(require_user)):
+    """Commission a brand-new TSE, or keep the time of a running one set.
+
+    With a body: sets both PINs and both PUKs while the TSE is still in transport
+    state, initializes it, sets its time and registers this client id
+    (`se_initializePinValues`, `se_initialize`, `se_updateTime`, `se_registerClient`).
+    Without a body: opens the device and keeps its time set.
+    """
+    if payload is None:
+        return tse_client.ensure_ready()
+    for name in ("admin_pin", "time_admin_pin"):
+        if len(getattr(payload, name)) != PIN_LENGTH:
+            raise HTTPException(status_code=400, detail=f"{name} must be {PIN_LENGTH} characters")
+    for name in ("admin_puk", "time_admin_puk"):
+        if len(getattr(payload, name)) != PUK_LENGTH:
+            raise HTTPException(status_code=400, detail=f"{name} must be {PUK_LENGTH} characters")
+    return tse_client.initialize(
+        payload.admin_pin.encode(), payload.admin_puk.encode(),
+        payload.time_admin_pin.encode(), payload.time_admin_puk.encode(),
+    )
 
 
 @router.post("/certificates")

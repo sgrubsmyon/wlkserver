@@ -93,5 +93,11 @@ def tse_client_id() -> bytes:
     return (env("TSE_CLIENT_ID", "WeltladenKasse") or "").encode("utf-8")
 
 
+def tse_time_admin_pin() -> bytes | None:
+    """TimeAdmin PIN: the SE API needs a time update after every power-up."""
+    value = env("TSE_TIME_ADMIN_PIN")
+    return value.encode("utf-8") if value else None
+
+
 def dsfinvk_export_dir() -> str | None:
     return env("DSFINVK_EXPORT_DIR")
