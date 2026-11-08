@@ -83,7 +83,18 @@ if os.path.exists(env_file):
 db_host = os.environ.get("DBHOST", "127.0.0.1")
 db_name = os.environ.get("DBNAME", "kasse")
 db_user = "kassenadmin"
-db_pass = getpass(f"{db_user} password: ")
+
+# Load password from toml file:
+try:
+    with open("/home/mvoge/.my.kassenadmin.cnf", "rb") as pwf:
+        pwlines = pwf.readlines()
+        pwstring = pwlines[2]
+        db_pass = str(pwstring).split("=")[1].strip().replace("\\n'", "")
+except:
+    db_pass = ""
+if len(db_pass) == 0:
+    # Ask user for password:
+    db_pass = getpass(f"{db_user} password: ")
 
 # Timezone constants
 TZ_BERLIN = ZoneInfo("Europe/Berlin")
