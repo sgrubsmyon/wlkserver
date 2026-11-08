@@ -20,5 +20,7 @@ FROM `gutschein`
 ON DUPLICATE KEY UPDATE last_nr = GREATEST(last_nr, VALUES(last_nr));
 
 -- Only needed if the API runs as `mitarbeiter` instead of `kassenadmin`.
-GRANT SELECT, INSERT, UPDATE ON kasse.gutschein_counter TO 'mitarbeiter'@'localhost';
-GRANT SELECT, INSERT, UPDATE ON kasse.gutschein_counter TO 'mitarbeiter'@'192.168.2.%';
+-- This needs to be run by root user, i.e. with sudo
+-- It is run with sudo from the bash script running this SQL script
+-- GRANT SELECT, INSERT, UPDATE ON kasse.gutschein_counter TO 'mitarbeiter'@'localhost';
+-- GRANT SELECT, INSERT, UPDATE ON kasse.gutschein_counter TO 'mitarbeiter'@'192.168.2.%';

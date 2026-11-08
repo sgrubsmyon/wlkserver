@@ -83,7 +83,7 @@ if os.path.exists(env_file):
 db_host = os.environ.get("DBHOST", "127.0.0.1")
 db_name = os.environ.get("DBNAME", "kasse")
 db_user = "kassenadmin"
-db_pass = getpass(f"Enter the MySQL password for user '{db_user}': ")
+db_pass = getpass(f"{db_user} password: ")
 
 # Timezone constants
 TZ_BERLIN = ZoneInfo("Europe/Berlin")
