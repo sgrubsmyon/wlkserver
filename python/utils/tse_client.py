@@ -539,11 +539,12 @@ class TSEClient:
         data = self.export_partial(last_excluded_signature_counter=prev, max_records=kwargs.get("max_records", 0))
         if not data:
             return b""
-        # Delete stored TSE data up to the current signature counter.
+        # Delete stored TSE data up to the current signature counter, on the
+        # primary key (NULL key) like the export above.
         counter = self.get_signature_counter()
         if counter is not None and self.lib is not None and self.opened:
             try:
-                self.lib.se_deleteStoredDataUpTo(CLIENT_ID, len(CLIENT_ID), counter)
+                self.lib.se_deleteStoredDataUpTo(None, 0, counter)
             except Exception:
                 pass
         return data
