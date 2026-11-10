@@ -60,6 +60,32 @@ def _last_settled_tx_number(session: Session, last: AbrechnungTag | None) -> int
     return row.transaction_number
 
 
+def _tse_status_row(at_id: int) -> AbrechnungTagTse:
+    """TSE status row of a settlement (Java `AbrechnungenTag` :1243-1288).
+
+    All status columns stay NULL when the TSE is not operational (Java stores
+    `tseStatusValues == null`).
+    """
+    row = AbrechnungTagTse(id=at_id, tse_id=_configured_tse_id())
+    try:
+        from ..utils.tse_client import tse_client
+
+        status = tse_client.status_values()
+    except Exception:
+        logger.exception("Reading the TSE status for the Tagesabschluss failed")
+        status = None
+    if status:
+        cert = status.get("certificate") or ""
+        row.tse_serial = (status.get("serial_number") or "")[:68] or None
+        row.tse_sig_algo = (status.get("signature_algorithm") or "")[:21] or None
+        row.tse_time_format = (status.get("time_sync_variant") or "")[:31] or None
+        row.tse_pd_encoding = "UTF-8"  # Java `bc.TSE_PD_ENCODING`
+        row.tse_public_key = (status.get("public_key") or "")[:512] or None
+        row.tse_cert_i = cert[:1000] or None
+        row.tse_cert_ii = cert[1000:2000] or None
+    return row
+
+
 def invalidate_period_settlements(session: Session, zeitpunkt: datetime) -> None:
     """Drop month/year settlements covering a (re)opened daily settlement.
 
@@ -187,7 +213,7 @@ def create_daily_settlement(
         # One TSE status row per settlement (Java
         # AbrechnungenTag.insertTagesAbrechnung always inserts it, with NULL status
         # columns when the TSE is not operational).
-        session.add(AbrechnungTagTse(id=at.id, tse_id=_configured_tse_id()))
+        session.add(_tse_status_row(at.id))
 
         # A backdated daily settlement reopens its month and year.
         invalidate_period_settlements(session, at.zeitpunkt)

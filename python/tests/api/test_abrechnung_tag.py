@@ -253,9 +253,38 @@ def test_settlement_writes_abrechnung_tag_tse_row(client, session, monkeypatch):
     row = session.get(AbrechnungTagTse, r.json()["id"])
     assert row is not None
     assert row.tse_id == 7
-    # status columns stay NULL while the SEAPI status getters are not wrapped
+    # status columns stay NULL when no TSE is connected (status_values() is None)
     assert row.tse_serial is None
     assert row.tse_cert_i is None
+
+
+def test_settlement_stores_tse_status_values(client, session, monkeypatch):
+    from python.models import AbrechnungTagTse
+    from python.utils.tse_client import tse_client
+
+    monkeypatch.setattr(tse_client, "status_values", lambda: {
+        "serial_number": "4a3f03a2dec81878b432548668f603d14f7b7f90d230e30c87c1a705dce1c890",
+        "signature_algorithm": "ecdsa-plain-SHA256",
+        "time_sync_variant": "unixTime",
+        "public_key": "BHhWOeisRpPBTGQ1W4VUH95TXx2GARf8e2NYZXJoInjtGqnxJ8sZ3CQpYgjI",
+        "certificate": "M" * 1500,
+    })
+    a = _seed_artikel(session)
+    client.post("/verkauf/", json={
+        "verkauf_details": [{"artikel_id": a.artikel_id, "stueckzahl": 1}],
+    })
+    r = client.post("/abrechnung/tag/", json={})
+    assert r.status_code == 200
+
+    row = session.get(AbrechnungTagTse, r.json()["id"])
+    assert row.tse_serial == "4a3f03a2dec81878b432548668f603d14f7b7f90d230e30c87c1a705dce1c890"
+    assert row.tse_sig_algo == "ecdsa-plain-SHA256"
+    assert row.tse_time_format == "unixTime"
+    assert row.tse_pd_encoding == "UTF-8"
+    assert row.tse_public_key == "BHhWOeisRpPBTGQ1W4VUH95TXx2GARf8e2NYZXJoInjtGqnxJ8sZ3CQpYgjI"
+    # the certificate is split into the two 1000-char columns (Java :1268-1280)
+    assert row.tse_cert_i == "M" * 1000
+    assert row.tse_cert_ii == "M" * 500
 
 
 def test_settlement_stores_current_tse_signature_counter(client, session, monkeypatch):

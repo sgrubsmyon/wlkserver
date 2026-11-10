@@ -7,10 +7,16 @@ hardware and may need adjustments.
 """
 
 import ctypes
+import logging
 import os
+from base64 import b64encode
 from datetime import datetime
+from io import BytesIO
+from tarfile import open as tarfile_open
 
 from .. import config
+
+logger = logging.getLogger(__name__)
 
 _LIB_PATHS = [
     config.tse_lib_path(),
@@ -36,6 +42,52 @@ ERS_ALREADY_MAPPED = 0x3006
 
 PIN_LENGTH = 8
 PUK_LENGTH = 10
+
+# `se_sync_variants_t` (se_types.h).
+TIME_SYNC_VARIANTS = {0: "noInput", 1: "utcTime", 2: "generalizedTime", 3: "unixTime"}
+# BSI TR-03151 signature algorithm OIDs (Java `WeltladenTSE.getSignatureAlgorithm`).
+SIGNATURE_ALGORITHMS = {
+    "0.4.0.127.0.7.1.1.4.1.1": "ecdsa-plain-SHA1",
+    "0.4.0.127.0.7.1.1.4.1.2": "ecdsa-plain-SHA224",
+    "0.4.0.127.0.7.1.1.4.1.3": "ecdsa-plain-SHA256",
+    "0.4.0.127.0.7.1.1.4.1.4": "ecdsa-plain-SHA384",
+    "0.4.0.127.0.7.1.1.4.1.5": "ecdsa-plain-SHA512",
+    "0.4.0.127.0.7.1.1.4.1.6": "ecdsa-plain-RIPEMD160",
+    "0.4.0.127.0.7.3.7.1.1": "id-SE-API-transaction-log",
+    "0.4.0.127.0.7.3.7.1.2": "id-SE-API-system-log",
+    "0.4.0.127.0.7.3.7.1.3": "id-SE-API-SE-audit-log",
+}
+
+
+def _oid_from_asn1(data: bytes) -> str | None:
+    """Dotted OID from the ASN.1 OBJECT IDENTIFIER the TSE returns.
+
+    Accepts both the full TLV (tag 0x06 + length + content) and the raw content
+    octets (base-128, first byte combines the first two arcs).
+    """
+    if len(data) >= 3 and data[0] == 0x06 and data[1] == len(data) - 2:  # TLV wrapper
+        data = data[2:]
+    if not data:
+        return None
+    arcs = [str(data[0] // 40), str(data[0] % 40)]
+    value = 0
+    for byte in data[1:]:
+        value = (value << 7) | (byte & 0x7F)
+        if not byte & 0x80:
+            arcs.append(str(value))
+            value = 0
+    return ".".join(arcs)
+
+
+def _first_serial_number(data: bytes) -> bytes | None:
+    """First key serial (32-byte OCTET STRING) of the TR-03151 export.
+
+    Layout `30 <len> 04 20 <32 bytes>` as assumed by the vendor test and Java
+    `WeltladenTSE.updateTSEStatusValues` (`Arrays.copyOfRange(data, 6, 6+32)`).
+    """
+    if len(data) >= 38 and data[4] == 0x04 and data[5] == 0x20:
+        return bytes(data[6:38])
+    return None
 
 
 def now_iso() -> str:
@@ -158,6 +210,51 @@ def _load_library():
             lib.se_registerClient.restype = ctypes.c_int
             lib.se_close.argtypes = []
             lib.se_close.restype = ctypes.c_int
+            # Status getters (TSE identification for `abrechnung_tag_tse` / DSFinV-K tse.csv).
+            lib.se_getUniqueId.argtypes = [ctypes.POINTER(ctypes.c_uint32)]
+            lib.se_getUniqueId.restype = ctypes.c_void_p
+            lib.se_getCertificationId.argtypes = [
+                ctypes.POINTER(ctypes.c_char_p), ctypes.POINTER(ctypes.c_uint32),
+            ]
+            lib.se_getCertificationId.restype = ctypes.c_int
+            lib.se_getFirmwareId.argtypes = []
+            lib.se_getFirmwareId.restype = ctypes.c_char_p
+            lib.se_getCertificateExpirationDate.argtypes = [
+                ctypes.POINTER(ctypes.c_ubyte), ctypes.c_uint32,
+                ctypes.POINTER(ctypes.c_int64),
+            ]
+            lib.se_getCertificateExpirationDate.restype = ctypes.c_int
+            lib.se_exportSerialNumbers.argtypes = [
+                ctypes.POINTER(ctypes.POINTER(ctypes.c_ubyte)), ctypes.POINTER(ctypes.c_uint32),
+            ]
+            lib.se_exportSerialNumbers.restype = ctypes.c_int
+            lib.se_exportPublicKey.argtypes = [
+                ctypes.c_char_p, ctypes.c_uint32,
+                ctypes.POINTER(ctypes.POINTER(ctypes.c_ubyte)), ctypes.POINTER(ctypes.c_uint32),
+            ]
+            lib.se_exportPublicKey.restype = ctypes.c_int
+            lib.se_getSignatureAlgorithm.argtypes = [
+                ctypes.POINTER(ctypes.POINTER(ctypes.c_ubyte)), ctypes.POINTER(ctypes.c_uint32),
+            ]
+            lib.se_getSignatureAlgorithm.restype = ctypes.c_int
+            lib.se_getTimeSyncVariant.argtypes = [ctypes.POINTER(ctypes.c_int)]
+            lib.se_getTimeSyncVariant.restype = ctypes.c_int
+            lib.se_getTransactionCounter.argtypes = [ctypes.POINTER(ctypes.c_uint32)]
+            lib.se_getTransactionCounter.restype = ctypes.c_int
+            lib.se_getWearIndicator.argtypes = [ctypes.POINTER(ctypes.c_uint32)]
+            lib.se_getWearIndicator.restype = ctypes.c_int
+            lib.se_getTotalLogMemory.argtypes = [ctypes.POINTER(ctypes.c_uint64)]
+            lib.se_getTotalLogMemory.restype = ctypes.c_int
+            lib.se_getAvailableLogMemory.argtypes = [ctypes.POINTER(ctypes.c_uint64)]
+            lib.se_getAvailableLogMemory.restype = ctypes.c_int
+            lib.se_getMaxNumberOfClients.argtypes = [ctypes.POINTER(ctypes.c_uint32)]
+            lib.se_getMaxNumberOfClients.restype = ctypes.c_int
+            lib.se_getCurrentNumberOfClients.argtypes = [ctypes.POINTER(ctypes.c_uint32)]
+            lib.se_getCurrentNumberOfClients.restype = ctypes.c_int
+            lib.se_getMaxNumberOfTransactions.argtypes = [ctypes.POINTER(ctypes.c_uint32)]
+            lib.se_getMaxNumberOfTransactions.restype = ctypes.c_int
+            lib.se_getCurrentNumberOfTransactions.argtypes = [ctypes.POINTER(ctypes.c_uint32)]
+            lib.se_getCurrentNumberOfTransactions.restype = ctypes.c_int
             return lib
         except OSError:
             continue
@@ -269,7 +366,144 @@ class TSEClient:
                 result["life_cycle_state"] = self.life_cycle_state()
                 self.initialized = result["life_cycle_state"] == LCS_ACTIVE
                 result["initialized"] = self.initialized
+                result["tse"] = self.status_values()
         return result
+
+    def status_values(self):
+        """TSE identification values (Java `WeltladenTSE.updateTSEStatusValues`).
+
+        Returns None when the TSE is not available; a dict with None entries
+        where a single read failed. The settlement stores NULLs like Java does
+        when the TSE is not operational.
+        """
+        if not self._open():
+            return None
+        values = {
+            "unique_id": None,
+            "certification_id": None,
+            "firmware_id": None,
+            "serial_number": None,
+            "public_key": None,
+            "signature_algorithm": None,
+            "time_sync_variant": None,
+            "certificate": None,
+            "certificate_expiration": None,
+            "transaction_counter": None,
+            "signature_counter": None,
+            "total_log_memory": None,
+            "available_log_memory": None,
+            "wear_indicator": None,
+            "max_clients": None,
+            "current_clients": None,
+            "max_transactions": None,
+            "current_transactions": None,
+        }
+        try:
+            length = ctypes.c_uint32(0)
+            raw_id = self.lib.se_getUniqueId(ctypes.byref(length))
+            if raw_id:
+                values["unique_id"] = ctypes.string_at(raw_id, length.value).hex()
+            # not null terminated (se_api.h): read exactly `cert_id_len` bytes
+            cert_id = ctypes.c_char_p()
+            cert_id_len = ctypes.c_uint32(0)
+            if self.lib.se_getCertificationId(
+                ctypes.byref(cert_id), ctypes.byref(cert_id_len)
+            ) == 0 and cert_id:
+                values["certification_id"] = ctypes.string_at(
+                    cert_id, cert_id_len.value
+                ).decode("utf-8", "replace")
+                self.lib.se_free(cert_id)
+            firmware = self.lib.se_getFirmwareId()
+            if firmware:
+                values["firmware_id"] = firmware.decode("utf-8", "replace")
+
+            serials = ctypes.POINTER(ctypes.c_ubyte)()
+            serials_len = ctypes.c_uint32(0)
+            if self.lib.se_exportSerialNumbers(
+                ctypes.byref(serials), ctypes.byref(serials_len)
+            ) == 0 and serials:
+                serial = _first_serial_number(bytes(serials[:serials_len.value]))
+                self.lib.se_free(serials)
+                if serial is not None:
+                    values["serial_number"] = serial.hex()
+                    public_key = ctypes.POINTER(ctypes.c_ubyte)()
+                    public_key_len = ctypes.c_uint32(0)
+                    if self.lib.se_exportPublicKey(
+                        serial, len(serial),
+                        ctypes.byref(public_key), ctypes.byref(public_key_len),
+                    ) == 0 and public_key:
+                        values["public_key"] = b64encode(
+                            bytes(public_key[:public_key_len.value])
+                        ).decode("ascii")
+                        self.lib.se_free(public_key)
+                    values["certificate"] = self._certificate_for(serial)
+                    # certificate expiration of that key (Java uses the serial too)
+                    expiration = ctypes.c_int64(0)
+                    if self.lib.se_getCertificateExpirationDate(
+                        serial, len(serial), ctypes.byref(expiration)
+                    ) == 0:
+                        values["certificate_expiration"] = expiration.value
+                else:
+                    values["tse_error"] = "unexpected serial number encoding"
+
+            algorithm = ctypes.POINTER(ctypes.c_ubyte)()
+            algorithm_len = ctypes.c_uint32(0)
+            if self.lib.se_getSignatureAlgorithm(
+                ctypes.byref(algorithm), ctypes.byref(algorithm_len)
+            ) == 0 and algorithm:
+                oid = _oid_from_asn1(bytes(algorithm[:algorithm_len.value]))
+                self.lib.se_free(algorithm)
+                values["signature_algorithm"] = SIGNATURE_ALGORITHMS.get(oid, "unknown")
+
+            variant = ctypes.c_int(0)
+            if self.lib.se_getTimeSyncVariant(ctypes.byref(variant)) == 0:
+                values["time_sync_variant"] = TIME_SYNC_VARIANTS.get(
+                    variant.value, str(variant.value)
+                )
+
+            values["signature_counter"] = self.get_signature_counter()
+            counter = ctypes.c_uint32(0)
+            if self.lib.se_getTransactionCounter(ctypes.byref(counter)) == 0:
+                values["transaction_counter"] = counter.value
+            if self.lib.se_getWearIndicator(ctypes.byref(counter)) == 0:
+                values["wear_indicator"] = counter.value
+            if self.lib.se_getMaxNumberOfClients(ctypes.byref(counter)) == 0:
+                values["max_clients"] = counter.value
+            if self.lib.se_getCurrentNumberOfClients(ctypes.byref(counter)) == 0:
+                values["current_clients"] = counter.value
+            if self.lib.se_getMaxNumberOfTransactions(ctypes.byref(counter)) == 0:
+                values["max_transactions"] = counter.value
+            if self.lib.se_getCurrentNumberOfTransactions(ctypes.byref(counter)) == 0:
+                values["current_transactions"] = counter.value
+            memory = ctypes.c_uint64(0)
+            if self.lib.se_getTotalLogMemory(ctypes.byref(memory)) == 0:
+                values["total_log_memory"] = memory.value
+            if self.lib.se_getAvailableLogMemory(ctypes.byref(memory)) == 0:
+                values["available_log_memory"] = memory.value
+        except Exception:
+            logger.exception("Reading TSE status values failed")
+        return values
+
+    def _certificate_for(self, serial: bytes) -> str | None:
+        """Certificate for a key serial from the certificate export tar.
+
+        Java `TSEUntar.exportCertificate`: the tar entry name starts with the
+        hex serial number.
+        """
+        data = self.export_certificates()
+        if not data:
+            return None
+        try:
+            prefix = serial.hex()
+            with tarfile_open(fileobj=BytesIO(data)) as tf:
+                for member in tf.getmembers():
+                    if member.name.startswith(prefix):
+                        file = tf.extractfile(member)
+                        if file is not None:
+                            return b64encode(file.read()).decode("ascii")
+        except Exception:
+            logger.exception("Extracting the TSE certificate failed")
+        return None
 
     def initialize(self, admin_pin, admin_puk, time_admin_pin, time_admin_puk):
         """First use of a brand-new TSE (`se_initializePinValues` + `se_initialize`).
