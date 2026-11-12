@@ -7,6 +7,15 @@ from python.session import get_session
 
 @pytest.fixture
 def client(session):
+    from sqlmodel import select
+
+    from python.models import User
+
+    # TSE commissioning is admin-only (gap G1), so the shared test user needs the role.
+    user = session.exec(select(User).where(User.username == "test")).one()
+    user.role = "admin"
+    session.add(user)
+    session.commit()
     app.dependency_overrides[get_session] = lambda: session
     with TestClient(app) as c:
         r = c.post("/auth/login", json={"username": "test", "password": "test"})
@@ -31,6 +40,19 @@ def test_tse_status(client):
     assert "library_loaded" in body
 
 
+def test_tse_init_requires_admin(client, session):
+    from python.models import User
+    from python.utils.auth import hash_password
+
+    cashier = User(username="kassierer", password_hash=hash_password("pw"), role="mitarbeiter", active=True)
+    cashier.user_id = None
+    session.add(cashier)
+    session.commit()
+    token = client.post("/auth/login", json={"username": "kassierer", "password": "pw"}).json()["access_token"]
+    r = client.post("/tse/init", headers={"Authorization": f"Bearer {token}"})
+    assert r.status_code == 403
+
+
 def test_tse_init(client):
     r = client.post("/tse/init")
     assert r.status_code == 200
@@ -40,6 +62,7 @@ def test_tse_init(client):
 def test_tse_init_with_pin_values(client, monkeypatch):
     from python.utils.tse_client import tse_client
 
+    monkeypatch.setenv("TSE_TIME_ADMIN_PIN", "87654321")
     monkeypatch.setattr(tse_client, "lib", None)  # no TSE in the test environment
     r = client.post("/tse/init", json={
         "admin_pin": "12345678",
@@ -49,6 +72,22 @@ def test_tse_init_with_pin_values(client, monkeypatch):
     })
     assert r.status_code == 200
     assert r.json()["status"].startswith("initialized")
+
+
+def test_tse_init_rejects_time_admin_pin_not_matching_env(client, monkeypatch):
+    from python.utils.tse_client import tse_client
+
+    body = {
+        "admin_pin": "12345678",
+        "admin_puk": "1234567890",
+        "time_admin_pin": "87654321",
+        "time_admin_puk": "0987654321",
+    }
+    monkeypatch.setenv("TSE_TIME_ADMIN_PIN", "11111111")
+    monkeypatch.setattr(tse_client, "lib", None)
+    assert client.post("/tse/init", json=body).status_code == 400
+    monkeypatch.delenv("TSE_TIME_ADMIN_PIN")
+    assert client.post("/tse/init", json=body).status_code == 400
 
 
 def test_tse_init_rejects_wrong_pin_and_puk_length(client):

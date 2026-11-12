@@ -279,8 +279,8 @@
 
 Full analysis: `concepts/TSE_FAILURE_PATHWAYS.md`. The production TSE can only be commissioned once; PUKs are permanent and a wrong PUK can block it forever. The current implementation fails *safely* on most hardware errors (no write) but has gaps that can leave unknown secrets or burn PIN retries:
 
-- [ ] `POST /tse/init` requires only `require_user` (`routers/tse.py:158`, `main.py:76`): make it `require_admin`, and refuse when `pin_state == 0` (already commissioned) — point to `ensure_ready` for time refresh
-- [ ] Single source of truth for the TimeAdmin PIN: init takes it from the request body, every later sync from `TSE_TIME_ADMIN_PIN`; a mismatch burns a PIN retry on each restart and can block the PIN. Accept the body value only if it equals `.env` (400 before any write), or take it from `.env` only
+- [ ] `POST /tse/init` admin-only: **done (2026-11-13)**, the endpoint now depends on `require_admin` (`routers/tse.py`, `tests/api/test_tse.py::test_tse_init_requires_admin`, gap G1). Still open: refuse when `pin_state == 0` (already commissioned) — point to `ensure_ready` for time refresh (G4)
+- [x] Single source of truth for the TimeAdmin PIN: **done (2026-11-13)**, `POST /tse/init` returns 400 before opening the device unless `time_admin_pin` equals `TSE_TIME_ADMIN_PIN` (and the variable is set), and passes the configured value to `initialize()` (`routers/tse.py`, gap G2)
 - [ ] Byte-accurate validation before opening the device: exact ASCII byte length (the router checks characters, `routers/tse.py:170-177`), printable charset, no leading/trailing whitespace or control characters (a mangled but length-valid PIN passes commissioning and fails only when a human types it)
 - [ ] Read-only preflight endpoint (`POST /tse/init/preflight`): library version, device path, `pin_state`, LCS, client-id length, `.env`/PIN consistency, server clock, expected writes — no device write
 - [ ] `threading.Lock` around SE-API calls (none today) and one uvicorn worker: a double submit or a concurrent sale can interleave PUK/PIN writes with different values

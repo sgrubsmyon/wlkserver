@@ -23,7 +23,8 @@ from ..business.tse_signing import (
     start_transaction as start_basket_transaction,
 )
 from ..utils.tse_client import PIN_LENGTH, PUK_LENGTH, tse_client
-from ..dependencies import bearer_scheme, require_user
+from ..config import tse_time_admin_pin
+from ..dependencies import bearer_scheme, require_admin, require_user
 from ..utils.pagination import paginate
 
 router = APIRouter(
@@ -155,7 +156,7 @@ def get_tse_status():
 
 
 @router.post("/init")
-def init_tse(payload: Optional[TSEInitializeRequest] = None, _user: User = Depends(require_user)):
+def init_tse(payload: Optional[TSEInitializeRequest] = None, _user: User = Depends(require_admin)):
     """Commission a brand-new TSE, or keep the time of a running one set.
 
     With a body: sets both PINs and both PUKs while the TSE is still in transport
@@ -172,9 +173,16 @@ def init_tse(payload: Optional[TSEInitializeRequest] = None, _user: User = Depen
     for name in ("admin_puk", "time_admin_puk"):
         if len(getattr(payload, name)) != PUK_LENGTH:
             raise HTTPException(status_code=400, detail=f"{name} must be {PUK_LENGTH} characters")
+    # Later time syncs use TSE_TIME_ADMIN_PIN, so a different value here would be
+    # written to the TSE and then burn a PIN retry on every restart (gap G2).
+    configured = tse_time_admin_pin()
+    if configured is None:
+        raise HTTPException(status_code=400, detail="TSE_TIME_ADMIN_PIN is not set in .env")
+    if payload.time_admin_pin.encode() != configured:
+        raise HTTPException(status_code=400, detail="time_admin_pin must equal TSE_TIME_ADMIN_PIN")
     return tse_client.initialize(
         payload.admin_pin.encode(), payload.admin_puk.encode(),
-        payload.time_admin_pin.encode(), payload.time_admin_puk.encode(),
+        configured, payload.time_admin_puk.encode(),
     )
 
 

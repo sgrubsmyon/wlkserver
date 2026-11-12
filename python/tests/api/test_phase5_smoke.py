@@ -6,6 +6,15 @@ from python.session import get_session
 
 @pytest.fixture
 def client(session):
+    from sqlmodel import select
+
+    from python.models import User
+
+    # TSE commissioning is admin-only (gap G1), so the shared test user needs the role.
+    user = session.exec(select(User).where(User.username == "test")).one()
+    user.role = "admin"
+    session.add(user)
+    session.commit()
     app.dependency_overrides[get_session] = lambda: session
     with TestClient(app) as c:
         r = c.post("/auth/login", json={"username": "test", "password": "test"})
