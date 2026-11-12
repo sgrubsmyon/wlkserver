@@ -135,6 +135,7 @@ def _load_library():
             lib.se_openDirect.restype = ctypes.c_int
             lib.se_initialize.argtypes = []
             lib.se_initialize.restype = ctypes.c_int
+            # v3.1 order: processData before processType (se_api.h:748).
             lib.se_startTransaction.argtypes = [
                 ctypes.c_char_p, ctypes.c_uint32,
                 ctypes.c_char_p, ctypes.c_uint32,
@@ -184,13 +185,17 @@ def _load_library():
             lib.se_getPinStatus.restype = ctypes.c_int
             lib.se_getLifeCycleState.argtypes = [ctypes.POINTER(ctypes.c_int)]
             lib.se_getLifeCycleState.restype = ctypes.c_int
-            lib.se_initializePinValues.argtypes = [
-                ctypes.c_char_p, ctypes.c_uint32,
-                ctypes.c_char_p, ctypes.c_uint32,
-                ctypes.c_char_p, ctypes.c_uint32,
-                ctypes.c_char_p, ctypes.c_uint32,
+            # v3.1 first boot: initializePuk + unblockUser instead of the
+            # deprecated initializePinValues (four writes can time out, se_api.h:414).
+            lib.se_initializePuk.argtypes = [
+                ctypes.c_char_p, ctypes.c_uint32, ctypes.c_char_p, ctypes.c_uint32,
             ]
-            lib.se_initializePinValues.restype = ctypes.c_int
+            lib.se_initializePuk.restype = ctypes.c_int
+            lib.se_unblockUser.argtypes = [
+                ctypes.c_char_p, ctypes.c_uint32, ctypes.c_char_p, ctypes.c_uint32,
+                ctypes.c_char_p, ctypes.c_uint32, ctypes.POINTER(ctypes.c_int),
+            ]
+            lib.se_unblockUser.restype = ctypes.c_int
             lib.se_initialize.argtypes = []
             lib.se_initialize.restype = ctypes.c_int
             lib.se_authenticateUser.argtypes = [
@@ -506,12 +511,12 @@ class TSEClient:
         return None
 
     def initialize(self, admin_pin, admin_puk, time_admin_pin, time_admin_puk):
-        """First use of a brand-new TSE (`se_initializePinValues` + `se_initialize`).
+        """First use of a brand-new TSE (SE-API v3.1 `firstBootTest` sequence).
 
-        Sets both PINs and both PUKs (only possible while the TSE is still in
-        transport state; PUKs cannot be changed afterwards), initializes the TSE,
-        sets its time and registers this client id. An already commissioned TSE is
-        only checked - the SE API has no way to change PINs or PUKs then.
+        Sets both PUKs (`se_initializePuk`) and both PINs (`se_unblockUser`)
+        while the TSE is still in transport state (`se_initializePinValues` is
+        deprecated in v3.1), initializes the TSE, sets its time and registers
+        this client id. PUKs cannot be changed once set.
         """
         if self.lib is None:
             self.initialized = True
@@ -524,12 +529,27 @@ class TSEClient:
             return {"status": "failed: se_getPinStatus"}
         result = {"transport_state": state != PIN_STATE_INITIALIZED}
         if result["transport_state"]:
-            rc = self.lib.se_initializePinValues(
-                admin_pin, len(admin_pin), admin_puk, len(admin_puk),
-                time_admin_pin, len(time_admin_pin), time_admin_puk, len(time_admin_puk),
-            )
-            if rc != 0:
-                return {**result, "status": f"failed: se_initializePinValues ({rc})"}
+            # `se_pin_state_flags_t`: Admin PIN 0x01 / PUK 0x02,
+            # TimeAdmin PIN 0x04 / PUK 0x08. PUKs and PINs are set per user so
+            # a partially commissioned TSE is handled too.
+            for user, puk, pin, pin_bit, puk_bit in (
+                ("Admin", admin_puk, admin_pin, 0x01, 0x02),
+                ("TimeAdmin", time_admin_puk, time_admin_pin, 0x04, 0x08),
+            ):
+                if state & puk_bit:
+                    rc = self.lib.se_initializePuk(
+                        user.encode(), len(user), puk, len(puk)
+                    )
+                    if rc != 0:
+                        return {**result, "status": f"failed: se_initializePuk ({user}, {rc})"}
+                if state & pin_bit:
+                    unblock = ctypes.c_int(0)
+                    rc = self.lib.se_unblockUser(
+                        user.encode(), len(user), puk, len(puk), pin, len(pin),
+                        ctypes.byref(unblock),
+                    )
+                    if rc != 0 or unblock.value != 0:
+                        return {**result, "status": f"failed: se_unblockUser ({user}, {rc})"}
             result["transport_state"] = self.pin_state() != PIN_STATE_INITIALIZED
             if result["transport_state"]:
                 return {**result, "status": "failed: PINs and PUKs are still in transport state"}

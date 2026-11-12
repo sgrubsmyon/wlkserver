@@ -3,8 +3,8 @@
 Source: https://fastapi.tiangolo.com/tutorial/
 
 ```
-python3 -m venv .venv
-source .venv/bin/activate
+python3 -m venv venv
+source venv/bin/activate
 python -m pip install --upgrade pip
 pip install -r requirements.txt
 ```
@@ -123,21 +123,21 @@ like DELETE are permitted by the database grants.
 ## Run API in development mode
 
 ```
-source .venv/bin/activate
+source venv/bin/activate
 fastapi dev main.py
 ```
 
 Or simply:
 
 ```
-source .venv/bin/activate
+source venv/bin/activate
 fastapi dev
 ```
 
 ## Run API in production mode
 
 ```
-source .venv/bin/activate
+source venv/bin/activate
 fastapi run
 ```
 
@@ -194,7 +194,7 @@ Run `migrations/02_user_auth/migrate.sh` (as kassenadmin) to create the
 ## Testing
 
 ```
-source .venv/bin/activate
+source venv/bin/activate
 pytest -q
 ```
 

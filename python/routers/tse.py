@@ -160,7 +160,8 @@ def init_tse(payload: Optional[TSEInitializeRequest] = None, _user: User = Depen
 
     With a body: sets both PINs and both PUKs while the TSE is still in transport
     state, initializes it, sets its time and registers this client id
-    (`se_initializePinValues`, `se_initialize`, `se_updateTime`, `se_registerClient`).
+    (`se_initializePuk` + `se_unblockUser`, `se_initialize`, `se_updateTime`,
+    `se_registerClient`; v3.1 replaces the deprecated `se_initializePinValues`).
     Without a body: opens the device and keeps its time set.
     """
     if payload is None:
