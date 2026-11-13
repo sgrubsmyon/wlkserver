@@ -519,13 +519,18 @@ class TSEClient:
             logger.exception("Extracting the TSE certificate failed")
         return None
 
-    def initialize(self, admin_pin, admin_puk, time_admin_pin, time_admin_puk):
+    def initialize(self, admin_pin, admin_puk, time_admin_pin, time_admin_puk, confirm_stored_puks=False):
         """First use of a brand-new TSE (SE-API v3.1 `firstBootTest` sequence).
 
         Sets both PUKs (`se_initializePuk`) and both PINs (`se_unblockUser`)
         while the TSE is still in transport state (`se_initializePinValues` is
         deprecated in v3.1), initializes the TSE, sets its time and registers
         this client id. PUKs cannot be changed once set.
+
+        A partly commissioned TSE (PUK already set, PIN still in transport
+        state) is only unblocked with the request's PUK when the caller passes
+        `confirm_stored_puks`: otherwise the PUK is unverified, and repeated
+        wrong PUKs can block it permanently (gap G6).
         """
         if self.lib is None:
             self.initialized = True
@@ -541,10 +546,30 @@ class TSEClient:
             # `se_pin_state_flags_t`: Admin PIN 0x01 / PUK 0x02,
             # TimeAdmin PIN 0x04 / PUK 0x08. PUKs and PINs are set per user so
             # a partially commissioned TSE is handled too.
-            for user, puk, pin, pin_bit, puk_bit in (
+            users = (
                 ("Admin", admin_puk, admin_pin, 0x01, 0x02),
                 ("TimeAdmin", time_admin_puk, time_admin_pin, 0x04, 0x08),
-            ):
+            )
+            already_set = [
+                f"{user} {field}"
+                for user, _, _, pin_bit, puk_bit in users
+                for field, bit in (("PUK", puk_bit), ("PIN", pin_bit))
+                if state & bit
+            ]
+            unverified = [
+                user for user, _, _, pin_bit, puk_bit in users
+                if state & pin_bit and not state & puk_bit
+            ]
+            if unverified and not confirm_stored_puks:
+                return {
+                    **result,
+                    "already_set": already_set,
+                    "status": (
+                        "failed: PUK already set for " + ", ".join(unverified)
+                        + "; pass confirm_stored_puks=true only if these are the PUKs already stored"
+                    ),
+                }
+            for user, puk, pin, pin_bit, puk_bit in users:
                 if state & puk_bit:
                     rc = self.lib.se_initializePuk(
                         user.encode(), len(user), puk, len(puk)

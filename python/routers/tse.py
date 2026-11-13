@@ -51,6 +51,9 @@ class TSEInitializeRequest(BaseModel):
     admin_puk: str
     time_admin_pin: str
     time_admin_puk: str
+    # Only for a partly commissioned TSE: confirms that the PUKs in this body
+    # are the ones already stored, so a PIN may be unblocked with them (gap G6).
+    confirm_stored_puks: bool = False
 
 
 class TSEExportDeleteRequest(BaseModel):
@@ -197,7 +200,10 @@ def init_tse(payload: Optional[TSEInitializeRequest] = None, _user: User = Depen
         raise HTTPException(status_code=400, detail="TSE_TIME_ADMIN_PIN is not set in .env")
     if time_admin_pin != configured:
         raise HTTPException(status_code=400, detail="time_admin_pin must equal TSE_TIME_ADMIN_PIN")
-    return tse_client.initialize(admin_pin, admin_puk, configured, time_admin_puk)
+    return tse_client.initialize(
+        admin_pin, admin_puk, configured, time_admin_puk,
+        confirm_stored_puks=payload.confirm_stored_puks,
+    )
 
 
 @router.post("/certificates")

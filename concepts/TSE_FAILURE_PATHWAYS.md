@@ -221,7 +221,7 @@ These are the good cases — they abort before or without corrupting the TSE:
 | G3 | ~~`_ensure_time` authenticates before checking `pin_state`/LCS~~ **fixed 2026-11-13**: guarded on `pin_state == 0` + LCS `noTime`/`active`; reports "not ready" without authenticating | `utils/tse_client.py:324` | R2 |
 | G4 | ~~Re-running init on a commissioned TSE still performs a TimeAdmin auth with the request PIN~~ **closed 2026-11-13** (refused before any authentication, points to `ensure_ready`) | `utils/tse_client.py` | R3 |
 | G5 | ~~Length validation on characters, not ASCII bytes; no charset check~~ **closed 2026-11-13** (`_credential_bytes`: UTF-8 byte count, printable non-whitespace ASCII only) | `routers/tse.py` | C2, C3 |
-| G6 | Partial state + new PUK → `se_unblockUser` with an unverified PUK | `utils/tse_client.py:513-560` | C4 |
+| G6 | ~~Partial state + new PUK → `se_unblockUser` with an unverified PUK~~ **closed 2026-11-13** (refused before any write unless `confirm_stored_puks=true`; response lists what is already set) | `utils/tse_client.py`, `routers/tse.py` | C4 |
 | G7 | No lock around SE-API calls | `utils/tse_client.py` | C5, P3 |
 | G8 | `unblockResult` / `remainingRetries` discarded | `utils/tse_client.py:293-299`, `~545` | diagnosis of R1/C4 |
 | G9 | No record of what was written (no secrets, but also no progress state) | — | C6, P2 |
@@ -293,9 +293,10 @@ Must be done **before** the live run (tracked in `TODO.md`):
    possible — without a single write.
 5. `threading.Lock` around all SE-API calls (or at least commissioning and time sync) and
    keep the API at one worker.
-6. Partial-state policy: never call `se_unblockUser` with a PUK that this request did not
+6. ✅ Partial-state policy: never call `se_unblockUser` with a PUK that this request did not
    just install, unless the caller explicitly confirms "these are the PUKs already stored"
-   (a loud flag). Default: refuse and report which fields are already set.
+   (`confirm_stored_puks=true`). Default: refuse and report which fields are already set
+   (G6, 2026-11-13).
 7. **Done (2026-11-13):** Guard `_ensure_time`: skip unless `pin_state == 0` and LCS is `noTime`/`active`.
 8. Report `unblockResult` and `remainingRetries` in the response and stop on the first
    failure (never loop retries).

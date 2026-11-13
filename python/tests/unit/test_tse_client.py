@@ -124,6 +124,55 @@ def test_recommissioning_an_initialized_tse_is_refused(monkeypatch):
     assert calls == []
 
 
+def _partial_admin_puk_fake(calls):
+    class FakeLib:
+        def se_getPinStatus(self, state):
+            # Admin PUK already set, Admin PIN and both TimeAdmin fields in transport state
+            state._obj.value = 0x0D
+            return 0
+
+        def se_initializePuk(self, user, user_len, puk, puk_len):
+            calls.append(("initializePuk", user, puk))
+            return 0
+
+        def se_unblockUser(self, user, user_len, puk, puk_len, pin, pin_len, result):
+            calls.append(("unblockUser", user, puk, pin))
+            result._obj.value = 0
+            return 0
+
+    return FakeLib()
+
+
+def test_partial_state_refuses_unverified_puk(monkeypatch):
+    """Never unblock a PIN with a PUK this request did not just install (gap G6)."""
+    calls = []
+    client = tse_module.tse_client
+    monkeypatch.setattr(client, "lib", _partial_admin_puk_fake(calls))
+    monkeypatch.setattr(client, "_open", lambda: True)
+
+    result = client.initialize(
+        b"12345678", b"1234567890", b"87654321", b"0987654321"
+    )
+
+    assert result["status"].startswith("failed: PUK already set for Admin")
+    assert result["already_set"] == ["Admin PIN", "TimeAdmin PUK", "TimeAdmin PIN"]
+    assert calls == []
+
+
+def test_partial_state_unblocks_with_confirmed_stored_puk(monkeypatch):
+    calls = []
+    client = tse_module.tse_client
+    monkeypatch.setattr(client, "lib", _partial_admin_puk_fake(calls))
+    monkeypatch.setattr(client, "_open", lambda: True)
+
+    client.initialize(
+        b"12345678", b"1234567890", b"87654321", b"0987654321",
+        confirm_stored_puks=True,
+    )
+
+    assert ("unblockUser", b"Admin", b"1234567890", b"12345678") in calls
+
+
 def _time_fake(pin_state, lcs, calls):
     class FakeLib:
         def se_getPinStatus(self, state):
