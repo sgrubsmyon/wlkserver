@@ -55,6 +55,15 @@ ERS_ALREADY_MAPPED = 0x3006
 PIN_LENGTH = 8
 PUK_LENGTH = 10
 
+# `se_unblock_result_t` (se_types.h).
+UNBLOCK_RESULTS = {
+    0: "unblockOk",
+    1: "unblockFailed",
+    2: "unblockPinIsBlocked",
+    3: "unblockUnknownUserId",
+    4: "unblockError",
+}
+
 # `se_sync_variants_t` (se_types.h).
 TIME_SYNC_VARIANTS = {0: "noInput", 1: "utcTime", 2: "generalizedTime", 3: "unixTime"}
 # BSI TR-03151 signature algorithm OIDs (Java `WeltladenTSE.getSignatureAlgorithm`).
@@ -286,6 +295,7 @@ class TSEClient:
         self.opened = False
         self.device_path = config.tse_device_path()
         self.time_error = None
+        self.remaining_retries = None
         self._next_sync = 0
 
     def _open(self):
@@ -309,6 +319,7 @@ class TSEClient:
         rc = self.lib.se_authenticateUser(
             user.encode(), len(user), pin, len(pin), ctypes.byref(result), ctypes.byref(remaining)
         )
+        self.remaining_retries = remaining.value
         return rc == 0 and result.value == 0
 
     def _log_out(self, user):
@@ -320,8 +331,14 @@ class TSEClient:
     def _update_time(self, pin) -> bool:
         """`se_updateTime`: the SE API demands a time update after every power-up."""
         self.time_error = None
-        if not pin or not self._authenticate("TimeAdmin", pin):
-            self.time_error = "TimeAdmin authentication failed (TSE_TIME_ADMIN_PIN)"
+        if not pin:
+            self.time_error = "TimeAdmin authentication failed (TSE_TIME_ADMIN_PIN is not set)"
+            return False
+        if not self._authenticate("TimeAdmin", pin):
+            self.time_error = (
+                "TimeAdmin authentication failed "
+                f"(TSE_TIME_ADMIN_PIN, {self.remaining_retries} retries left)"
+            )
             return False
         now = int(datetime.now().timestamp())
         rc = self.lib.se_updateTime(now)
@@ -338,6 +355,7 @@ class TSEClient:
         now = int(datetime.now().timestamp())
         if not force and now < self._next_sync:
             return True
+        self.remaining_retries = None
         # Never authenticate TimeAdmin on a TSE that is not commissioned yet: a
         # failed attempt would burn PIN retries before the PINs are even set.
         pin_state = self.pin_state()
@@ -602,7 +620,12 @@ class TSEClient:
                         ctypes.byref(unblock),
                     )
                     if rc != 0 or unblock.value != 0:
-                        return {**result, "status": f"failed: se_unblockUser ({user}, {rc})"}
+                        unblock_result = UNBLOCK_RESULTS.get(unblock.value, str(unblock.value))
+                        return {
+                            **result,
+                            "unblock_result": unblock_result,
+                            "status": f"failed: se_unblockUser ({user}, rc={rc}, {unblock_result})",
+                        }
             result["transport_state"] = self.pin_state() != PIN_STATE_INITIALIZED
             if result["transport_state"]:
                 return {**result, "status": "failed: PINs and PUKs are still in transport state"}
@@ -619,7 +642,11 @@ class TSEClient:
             }
         if lcs == LCS_NOT_INITIALIZED:
             if not self._authenticate("Admin", admin_pin):
-                return {**result, "status": "failed: Admin authentication"}
+                return {
+                    **result,
+                    "remaining_retries": self.remaining_retries,
+                    "status": f"failed: Admin authentication ({self.remaining_retries} retries left)",
+                }
             rc = self.lib.se_initialize()
             if rc != 0:
                 self._log_out("Admin")
@@ -629,7 +656,11 @@ class TSEClient:
             return {**result, "status": f"failed: life cycle state {lcs}"}
 
         if not self._ensure_time(time_admin_pin, force=True):
-            return {**result, "status": f"failed: {self.time_error}"}
+            return {
+                **result,
+                "remaining_retries": self.remaining_retries,
+                "status": f"failed: {self.time_error}",
+            }
         if not self.register_client():
             self._log_out("Admin")
             return {**result, "status": "failed: se_registerClient"}

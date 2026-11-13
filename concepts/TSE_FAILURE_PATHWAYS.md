@@ -178,9 +178,8 @@ These are the good cases — they abort before or without corrupting the TSE:
 - **S3** `se_getPinStatus` fails → abort before the first write.
 - **S4** `se_initializePuk` fails (already set, wrong length) → abort. Fields of an earlier
   user may already be written (partial state, see the recovery matrix).
-- **S5** `se_unblockUser` returns non-zero or `unblockResult != 0` → abort (but the message
-  only shows the result code; the enum value — `unblockPinIsBlocked` vs `unblockFailed` —
-  is not reported, which hampers diagnosis).
+- **S5** `se_unblockUser` returns non-zero or `unblockResult != 0` → abort, reporting the
+  named enum value (`unblockPinIsBlocked` vs `unblockFailed`) as `unblock_result` (G8).
 - **S6** `se_initialize` fails with `ErrorSECommunicationFailed` because the TSE is already
   initialised → harmless; the LCS check on the next attempt handles it.
 - **S7** `se_initialize` fails (expired certificate, storage, secure element) → LCS normally
@@ -223,7 +222,7 @@ These are the good cases — they abort before or without corrupting the TSE:
 | G5 | ~~Length validation on characters, not ASCII bytes; no charset check~~ **closed 2026-11-13** (`_credential_bytes`: UTF-8 byte count, printable non-whitespace ASCII only) | `routers/tse.py` | C2, C3 |
 | G6 | ~~Partial state + new PUK → `se_unblockUser` with an unverified PUK~~ **closed 2026-11-13** (refused before any write unless `confirm_stored_puks=true`; response lists what is already set) | `utils/tse_client.py`, `routers/tse.py` | C4 |
 | G7 | ~~No lock around SE-API calls~~ **closed 2026-11-13** (every public operation under a reentrant lock; one worker still required) | `utils/tse_client.py` | C5, P3 |
-| G8 | `unblockResult` / `remainingRetries` discarded | `utils/tse_client.py:293-299`, `~545` | diagnosis of R1/C4 |
+| G8 | ~~`unblockResult` / `remainingRetries` discarded~~ **closed 2026-11-13** (named `unblock_result` and `remaining_retries` in failed responses) | `utils/tse_client.py` | diagnosis of R1/C4 |
 | G9 | No record of what was written (no secrets, but also no progress state) | — | C6, P2 |
 | G10 | No preflight/dry-run endpoint | `routers/tse.py:157` | all |
 | G11 | Server clock not validated | `utils/tse_client.py:307` | W1 |
@@ -298,8 +297,8 @@ Must be done **before** the live run (tracked in `TODO.md`):
    (`confirm_stored_puks=true`). Default: refuse and report which fields are already set
    (G6, 2026-11-13).
 7. **Done (2026-11-13):** Guard `_ensure_time`: skip unless `pin_state == 0` and LCS is `noTime`/`active`.
-8. Report `unblockResult` and `remainingRetries` in the response and stop on the first
-   failure (never loop retries).
+8. ✅ Report `unblockResult` and `remainingRetries` in the response and stop on the first
+   failure (never loop retries) (G8, 2026-11-13).
 9. Record commissioning progress server-side (which fields were set, timestamps, client id
    — **never the secrets**) so a retry knows what happened.
 10. `/tse/export/delete` → `require_admin`.

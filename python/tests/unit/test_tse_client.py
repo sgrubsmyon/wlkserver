@@ -122,6 +122,73 @@ def test_commissioning_uses_v3_puk_and_unblock(monkeypatch):
     ]
 
 
+def _first_boot_fake(calls, unblock_result=0, auth_ok=True, remaining=2):
+    state = {"pin": 0x0F}
+
+    class FakeLib:
+        def se_getPinStatus(self, out):
+            out._obj.value = state["pin"]
+            return 0
+
+        def se_initializePuk(self, user, user_len, puk, puk_len):
+            calls.append(("initializePuk", user))
+            return 0
+
+        def se_unblockUser(self, user, user_len, puk, puk_len, pin, pin_len, result):
+            calls.append(("unblockUser", user))
+            result._obj.value = unblock_result
+            if unblock_result == 0 and user == b"TimeAdmin":
+                state["pin"] = 0
+            return 0
+
+        def se_getLifeCycleState(self, out):
+            out._obj.value = tse_module.LCS_NOT_INITIALIZED
+            return 0
+
+        def se_authenticateUser(self, user, user_len, pin, pin_len, result, remaining_out):
+            calls.append(("authenticateUser", user))
+            result._obj.value = 0 if auth_ok else 1
+            remaining_out._obj.value = remaining
+            return 0
+
+        def se_initialize(self):
+            calls.append("initialize")
+            return 0
+
+    return FakeLib()
+
+
+def test_unblock_failure_reports_result_and_stops(monkeypatch):
+    """unblockResult must be reported and used, not just the rc (gap G8)."""
+    calls = []
+    client = tse_module.tse_client
+    monkeypatch.setattr(client, "lib", _first_boot_fake(calls, unblock_result=2))
+    monkeypatch.setattr(client, "_open", lambda: True)
+
+    result = client.initialize(
+        b"12345678", b"1234567890", b"87654321", b"0987654321"
+    )
+
+    assert result["unblock_result"] == "unblockPinIsBlocked"
+    assert "unblockPinIsBlocked" in result["status"]
+    assert calls == [("initializePuk", b"Admin"), ("unblockUser", b"Admin")]
+
+
+def test_authentication_failure_reports_remaining_retries(monkeypatch):
+    calls = []
+    client = tse_module.tse_client
+    monkeypatch.setattr(client, "lib", _first_boot_fake(calls, auth_ok=False, remaining=2))
+    monkeypatch.setattr(client, "_open", lambda: True)
+
+    result = client.initialize(
+        b"12345678", b"1234567890", b"87654321", b"0987654321"
+    )
+
+    assert result["remaining_retries"] == 2
+    assert "2 retries left" in result["status"]
+    assert "initialize" not in calls
+
+
 def test_recommissioning_an_initialized_tse_is_refused(monkeypatch):
     """A re-run must not authenticate TimeAdmin with the request PIN (gap G4)."""
     calls = []
