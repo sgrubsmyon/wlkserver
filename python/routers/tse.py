@@ -177,6 +177,37 @@ def _credential_bytes(name: str, value: str, length: int) -> bytes:
     return raw
 
 
+def _init_values(payload: TSEInitializeRequest) -> tuple[bytes, bytes, bytes, bytes]:
+    """Validate the four values before the device is opened (gaps G2, G5)."""
+    admin_pin = _credential_bytes("admin_pin", payload.admin_pin, PIN_LENGTH)
+    admin_puk = _credential_bytes("admin_puk", payload.admin_puk, PUK_LENGTH)
+    time_admin_pin = _credential_bytes("time_admin_pin", payload.time_admin_pin, PIN_LENGTH)
+    time_admin_puk = _credential_bytes("time_admin_puk", payload.time_admin_puk, PUK_LENGTH)
+    # Later time syncs use TSE_TIME_ADMIN_PIN, so a different value here would be
+    # written to the TSE and then burn a PIN retry on every restart (gap G2).
+    configured = tse_time_admin_pin()
+    if configured is None:
+        raise HTTPException(status_code=400, detail="TSE_TIME_ADMIN_PIN is not set in .env")
+    if time_admin_pin != configured:
+        raise HTTPException(status_code=400, detail="time_admin_pin must equal TSE_TIME_ADMIN_PIN")
+    return admin_pin, admin_puk, configured, time_admin_puk
+
+
+@router.post("/init/preflight")
+def preflight_tse(
+    payload: Optional[TSEInitializeRequest] = None,
+    _user: User = Depends(require_admin),
+):
+    """Report what `POST /tse/init` would do, without writing to the TSE (gap G10).
+
+    With a body the four values are validated exactly as init validates them,
+    so a green preflight means init would pass the same checks.
+    """
+    if payload is not None:
+        _init_values(payload)
+    return tse_client.preflight()
+
+
 @router.post("/init")
 def init_tse(payload: Optional[TSEInitializeRequest] = None, _user: User = Depends(require_admin)):
     """Commission a brand-new TSE, or keep the time of a running one set.
@@ -189,17 +220,7 @@ def init_tse(payload: Optional[TSEInitializeRequest] = None, _user: User = Depen
     """
     if payload is None:
         return tse_client.ensure_ready()
-    admin_pin = _credential_bytes("admin_pin", payload.admin_pin, PIN_LENGTH)
-    admin_puk = _credential_bytes("admin_puk", payload.admin_puk, PUK_LENGTH)
-    time_admin_pin = _credential_bytes("time_admin_pin", payload.time_admin_pin, PIN_LENGTH)
-    time_admin_puk = _credential_bytes("time_admin_puk", payload.time_admin_puk, PUK_LENGTH)
-    # Later time syncs use TSE_TIME_ADMIN_PIN, so a different value here would be
-    # written to the TSE and then burn a PIN retry on every restart (gap G2).
-    configured = tse_time_admin_pin()
-    if configured is None:
-        raise HTTPException(status_code=400, detail="TSE_TIME_ADMIN_PIN is not set in .env")
-    if time_admin_pin != configured:
-        raise HTTPException(status_code=400, detail="time_admin_pin must equal TSE_TIME_ADMIN_PIN")
+    admin_pin, admin_puk, configured, time_admin_puk = _init_values(payload)
     return tse_client.initialize(
         admin_pin, admin_puk, configured, time_admin_puk,
         confirm_stored_puks=payload.confirm_stored_puks,

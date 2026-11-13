@@ -224,7 +224,7 @@ These are the good cases — they abort before or without corrupting the TSE:
 | G7 | ~~No lock around SE-API calls~~ **closed 2026-11-13** (every public operation under a reentrant lock; one worker still required) | `utils/tse_client.py` | C5, P3 |
 | G8 | ~~`unblockResult` / `remainingRetries` discarded~~ **closed 2026-11-13** (named `unblock_result` and `remaining_retries` in failed responses) | `utils/tse_client.py` | diagnosis of R1/C4 |
 | G9 | ~~No record of what was written (no secrets, but also no progress state)~~ **closed 2026-11-13** (`TSE_COMMISSIONING_LOG` JSONL: pin_state, fields set, timestamps, client id, serial; never secrets) | `utils/tse_client.py`, `config.py` | C6, P2 |
-| G10 | No preflight/dry-run endpoint | `routers/tse.py:157` | all |
+| G10 | ~~No preflight/dry-run endpoint~~ **closed 2026-11-13** (`POST /tse/init/preflight`: read-only state + expected writes) | `routers/tse.py:157`, `utils/tse_client.py` | all |
 | G11 | Server clock not validated | `utils/tse_client.py:307` | W1 |
 | G12 | `/tse/export/delete` only user-protected | `routers/tse.py:237` | R5 |
 
@@ -250,8 +250,8 @@ Do this in order; stop at the first deviation.
    temperature. Expected on a new device: `pin_state != 0` (transport bits set) and LCS
    `notInitialized`. **Do not run `assets/SE-API-C/bin/se-api-c-test`** — it runs
    `firstBootTest` itself.
-6. **API preflight (once implemented):** `POST /tse/init/preflight` with the four values —
-   read-only, returns what would be written and whether everything is consistent.
+6. **API preflight:** `POST /tse/init/preflight` with the four values — read-only, returns
+   what would be written and whether everything is consistent (G10).
 7. **Two-person protocol:** one reads the value aloud, the other types it; use the GUI's
    double-entry confirmation; submit exactly once.
 8. **After success:** verify with `GET /tse/status` (`pin_state == 0`, LCS `active`,
@@ -287,9 +287,9 @@ Must be done **before** the live run (tracked in `TODO.md`):
    `TSE_TIME_ADMIN_PIN`, otherwise 400 **before** any write (G2, 2026-11-13).
 3. ✅ Byte-accurate validation of all four values before opening the device: exact ASCII byte
    length, printable charset, no whitespace, no control characters (G5, 2026-11-13).
-4. Read-only preflight endpoint that reports library version, device path, `pin_state`,
+4. ✅ Read-only preflight endpoint that reports library version, device path, `pin_state`,
    LCS, client-id length, `.env` consistency, server clock, and whether commissioning is
-   possible — without a single write.
+   possible — without a single write (G10, 2026-11-13).
 5. ✅ `threading.RLock` around all SE-API calls and keep the API at one worker
    (G7, 2026-11-13).
 6. ✅ Partial-state policy: never call `se_unblockUser` with a PUK that this request did not

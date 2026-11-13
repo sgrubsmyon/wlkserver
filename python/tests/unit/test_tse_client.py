@@ -205,6 +205,46 @@ def test_authentication_failure_reports_remaining_retries(monkeypatch):
     assert "initialize" not in calls
 
 
+def test_preflight_reports_expected_writes_without_writing(monkeypatch):
+    """Preflight lists the writes init would make and writes nothing (gap G10)."""
+    calls = []
+    client = tse_module.tse_client
+    monkeypatch.setattr(client, "lib", _first_boot_fake(calls))
+    monkeypatch.setattr(client, "_open", lambda: True)
+
+    result = client.preflight()
+
+    assert result["pin_state"] == 0x0F
+    assert result["life_cycle_state"] == tse_module.LCS_NOT_INITIALIZED
+    assert result["can_commission"] is True
+    assert result["expected_writes"] == [
+        "set Admin PUK", "set Admin PIN", "set TimeAdmin PUK", "set TimeAdmin PIN",
+        "se_initialize", "se_updateTime", "se_registerClient (WeltladenKasse)",
+    ]
+    assert calls == []
+
+
+def test_preflight_reports_already_commissioned_tse(monkeypatch):
+    class FakeLib:
+        def se_getPinStatus(self, out):
+            out._obj.value = 0
+            return 0
+
+        def se_getLifeCycleState(self, out):
+            out._obj.value = tse_module.LCS_ACTIVE
+            return 0
+
+    client = tse_module.tse_client
+    monkeypatch.setattr(client, "lib", FakeLib())
+    monkeypatch.setattr(client, "_open", lambda: True)
+
+    result = client.preflight()
+
+    assert result["can_commission"] is False
+    assert result["expected_writes"] == []
+    assert "already commissioned" in result["status"]
+
+
 def test_recommissioning_an_initialized_tse_is_refused(monkeypatch):
     """A re-run must not authenticate TimeAdmin with the request PIN (gap G4)."""
     calls = []

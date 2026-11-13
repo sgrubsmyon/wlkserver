@@ -574,6 +574,75 @@ class TSEClient:
         return None
 
     @_locked
+    def preflight(self):
+        """Read-only report of what `initialize` would do (gap G10).
+
+        Opens the device and reads its state; writes nothing. The values that
+        `initialize` would write are validated by the router before this runs.
+        """
+        result = {
+            "server_time": now_iso(),
+            "device_path": self.device_path,
+            "library_loaded": self.lib is not None,
+            "api_version": None,
+            "client_id": CLIENT_ID.decode("utf-8", "replace"),
+            "client_id_length": len(CLIENT_ID),
+            "time_admin_pin_configured": config.tse_time_admin_pin() is not None,
+            "pin_state": None,
+            "life_cycle_state": None,
+            "already_set": [],
+            "needs_confirm_stored_puks": [],
+            "expected_writes": [],
+            "can_commission": False,
+        }
+        if self.lib is None:
+            return {**result, "status": "initialized (stub: no C library)"}
+        try:
+            result["api_version"] = self.lib.se_getApiVersionString().decode("utf-8", "replace")
+        except Exception:
+            pass
+        if not self._open():
+            return {**result, "status": "failed: device not available"}
+        state = self.pin_state()
+        lcs = self.life_cycle_state()
+        result["pin_state"] = state
+        result["life_cycle_state"] = lcs
+        if state is None or lcs is None:
+            return {**result, "status": "failed: device did not report its state"}
+
+        # `se_pin_state_flags_t`: Admin PIN 0x01 / PUK 0x02, TimeAdmin PIN 0x04 / PUK 0x08.
+        users = (("Admin", 0x01, 0x02), ("TimeAdmin", 0x04, 0x08))
+        result["already_set"] = [
+            f"{user} {field}"
+            for user, pin_bit, puk_bit in users
+            for field, bit in (("PUK", puk_bit), ("PIN", pin_bit))
+            if state & bit
+        ]
+        result["needs_confirm_stored_puks"] = [
+            user for user, pin_bit, puk_bit in users if state & pin_bit and not state & puk_bit
+        ]
+        if state == PIN_STATE_INITIALIZED and lcs in (LCS_NO_TIME, LCS_ACTIVE):
+            return {
+                **result,
+                "status": "already commissioned: POST /tse/init without a body refreshes the time",
+            }
+        if lcs not in (LCS_NOT_INITIALIZED, LCS_NO_TIME, LCS_ACTIVE):
+            return {**result, "status": f"failed: life cycle state {lcs}"}
+
+        result["can_commission"] = True
+        result["expected_writes"] = [
+            f"set {user} {field}"
+            for user, pin_bit, puk_bit in users
+            for field, bit in (("PUK", puk_bit), ("PIN", pin_bit))
+            if state & bit
+        ]
+        if lcs == LCS_NOT_INITIALIZED:
+            result["expected_writes"].append("se_initialize")
+        result["expected_writes"].append("se_updateTime")
+        result["expected_writes"].append(f"se_registerClient ({result['client_id']})")
+        return {**result, "status": "ready for commissioning"}
+
+    @_locked
     def initialize(self, admin_pin, admin_puk, time_admin_pin, time_admin_puk, confirm_stored_puks=False):
         """First use of a brand-new TSE (SE-API v3.1 `firstBootTest` sequence).
 

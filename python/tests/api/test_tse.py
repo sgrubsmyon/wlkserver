@@ -119,6 +119,37 @@ def test_tse_init_rejects_whitespace_control_and_non_ascii(client, monkeypatch):
         assert client.post("/tse/init", json={**body, "admin_pin": bad_pin}).status_code == 400
 
 
+def test_tse_preflight_requires_admin(client, session):
+    from python.models import User
+    from python.utils.auth import hash_password
+
+    cashier = User(username="kassierer2", password_hash=hash_password("pw"), role="mitarbeiter", active=True)
+    cashier.user_id = None
+    session.add(cashier)
+    session.commit()
+    token = client.post("/auth/login", json={"username": "kassierer2", "password": "pw"}).json()["access_token"]
+    assert client.post("/tse/init/preflight", headers={"Authorization": f"Bearer {token}"}).status_code == 403
+
+
+def test_tse_preflight(client, monkeypatch):
+    from python.utils.tse_client import tse_client
+
+    body = {
+        "admin_pin": "12345678",
+        "admin_puk": "1234567890",
+        "time_admin_pin": "87654321",
+        "time_admin_puk": "0987654321",
+    }
+    monkeypatch.setenv("TSE_TIME_ADMIN_PIN", "87654321")
+    monkeypatch.setattr(tse_client, "lib", None)
+    r = client.post("/tse/init/preflight", json=body)
+    assert r.status_code == 200
+    assert r.json()["status"].startswith("initialized (stub")
+    # A value init would reject fails here too, before any device access.
+    assert client.post("/tse/init/preflight", json={**body, "admin_pin": "1234567"}).status_code == 400
+    assert client.post("/tse/init/preflight", json={**body, "time_admin_pin": "11111111"}).status_code == 400
+
+
 def test_tse_transaction_flow(client):
     # Create a sale first (for the rechnungs_nr FK)
     sale = _create_sale(client)
