@@ -71,10 +71,12 @@ def test_commissioning_uses_v3_puk_and_unblock(monkeypatch):
     monkeypatch.setattr(client, "lib", FakeLib())
     monkeypatch.setattr(client, "_open", lambda: True)
     monkeypatch.setattr(client, "status", lambda: {})
+    monkeypatch.setattr(client, "_next_sync", 0)
     # all four PIN/PUK flags set (transport state), then initialized
     states = iter([0x0F, 0])
-    monkeypatch.setattr(client, "pin_state", lambda: next(states))
-    monkeypatch.setattr(client, "life_cycle_state", lambda: tse_module.LCS_NOT_INITIALIZED)
+    monkeypatch.setattr(client, "pin_state", lambda: next(states, 0))
+    lcs = iter([tse_module.LCS_NOT_INITIALIZED])
+    monkeypatch.setattr(client, "life_cycle_state", lambda: next(lcs, tse_module.LCS_NO_TIME))
 
     result = client.initialize(
         b"12345678", b"1234567890", b"87654321", b"0987654321"
@@ -87,3 +89,77 @@ def test_commissioning_uses_v3_puk_and_unblock(monkeypatch):
         ("initializePuk", b"TimeAdmin", b"0987654321"),
         ("unblockUser", b"TimeAdmin", b"0987654321", b"87654321"),
     ]
+
+
+def _time_fake(pin_state, lcs, calls):
+    class FakeLib:
+        def se_getPinStatus(self, state):
+            calls.append("pin_state")
+            state._obj.value = pin_state
+            return 0
+
+        def se_getLifeCycleState(self, state):
+            calls.append("lcs")
+            state._obj.value = lcs
+            return 0
+
+        def se_authenticateUser(self, user, user_len, pin, pin_len, result, retries):
+            calls.append("auth")
+            result._obj.value = 0
+            return 0
+
+        def se_updateTime(self, now):
+            calls.append("updateTime")
+            return 0
+
+        def se_getTimeSyncInterval(self, interval):
+            interval._obj.value = 0
+            return 0
+
+        def se_logOut(self, user, user_len):
+            return 0
+
+    return FakeLib()
+
+
+def test_ensure_time_skips_uncommissioned_tse(monkeypatch):
+    """No TimeAdmin authentication before the PINs are set (would burn retries)."""
+    calls = []
+    client = tse_module.tse_client
+    monkeypatch.setattr(
+        client,
+        "lib",
+        _time_fake(0x0F, tse_module.LCS_NOT_INITIALIZED, calls),
+    )
+    monkeypatch.setattr(client, "_next_sync", 0)
+    monkeypatch.setattr(client, "time_error", None)
+
+    assert client._ensure_time(b"12345678") is False
+    assert calls == ["pin_state", "lcs"]
+    assert "not ready" in client.time_error
+
+
+def test_ensure_time_updates_commissioned_tse(monkeypatch):
+    calls = []
+    client = tse_module.tse_client
+    monkeypatch.setattr(
+        client,
+        "lib",
+        _time_fake(0, tse_module.LCS_ACTIVE, calls),
+    )
+    monkeypatch.setattr(client, "_next_sync", 0)
+
+    assert client._ensure_time(b"12345678") is True
+    assert calls == ["pin_state", "lcs", "auth", "updateTime"]
+
+
+def test_ensure_time_does_not_touch_the_tse_before_the_interval(monkeypatch):
+    class ExplodingLib:
+        def __getattr__(self, name):
+            raise AssertionError(f"{name} must not be called before the interval")
+
+    client = tse_module.tse_client
+    monkeypatch.setattr(client, "lib", ExplodingLib())
+    monkeypatch.setattr(client, "_next_sync", 2**62)
+
+    assert client._ensure_time(b"12345678") is True

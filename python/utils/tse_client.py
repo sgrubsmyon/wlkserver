@@ -325,6 +325,15 @@ class TSEClient:
         now = int(datetime.now().timestamp())
         if not force and now < self._next_sync:
             return True
+        # Never authenticate TimeAdmin on a TSE that is not commissioned yet: a
+        # failed attempt would burn PIN retries before the PINs are even set.
+        pin_state = self.pin_state()
+        lcs = self.life_cycle_state()
+        if pin_state != PIN_STATE_INITIALIZED or lcs not in (LCS_NO_TIME, LCS_ACTIVE):
+            self.time_error = (
+                f"TSE not ready for a time update (pin_state={pin_state}, lcs={lcs})"
+            )
+            return False
         return self._update_time(pin or config.tse_time_admin_pin())
 
     def _ensure_open(self):

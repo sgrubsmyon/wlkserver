@@ -218,7 +218,7 @@ These are the good cases — they abort before or without corrupting the TSE:
 |---|---|---|---|
 | G1 | ~~Init only requires `require_user`~~ **closed 2026-11-13** (`require_admin`) | `routers/tse.py` | R4, C5 |
 | G2 | ~~TimeAdmin PIN comes from the request at init but from `.env` afterwards; no consistency check~~ **closed 2026-11-13** (init rejects a body value != `TSE_TIME_ADMIN_PIN` with 400) | `utils/tse_client.py:513`, `config.py:96` | R1, W4 |
-| G3 | `_ensure_time` authenticates before checking `pin_state`/LCS | `utils/tse_client.py:324` | R2 |
+| G3 | ~~`_ensure_time` authenticates before checking `pin_state`/LCS~~ **fixed 2026-11-13**: guarded on `pin_state == 0` + LCS `noTime`/`active`; reports "not ready" without authenticating | `utils/tse_client.py:324` | R2 |
 | G4 | Re-running init on a commissioned TSE still performs a TimeAdmin auth with the request PIN | `utils/tse_client.py:513` | R3 |
 | G5 | Length validation on characters, not ASCII bytes; no charset check | `routers/tse.py:170-177` | C2, C3 |
 | G6 | Partial state + new PUK → `se_unblockUser` with an unverified PUK | `utils/tse_client.py:513-560` | C4 |
@@ -298,7 +298,7 @@ Must be done **before** the live run (tracked in `TODO.md`):
 6. Partial-state policy: never call `se_unblockUser` with a PUK that this request did not
    just install, unless the caller explicitly confirms "these are the PUKs already stored"
    (a loud flag). Default: refuse and report which fields are already set.
-7. Guard `_ensure_time`: skip unless `pin_state == 0` and LCS is `noTime`/`active`.
+7. **Done (2026-11-13):** Guard `_ensure_time`: skip unless `pin_state == 0` and LCS is `noTime`/`active`.
 8. Report `unblockResult` and `remainingRetries` in the response and stop on the first
    failure (never loop retries).
 9. Record commissioning progress server-side (which fields were set, timestamps, client id
