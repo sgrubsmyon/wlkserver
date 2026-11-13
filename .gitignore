@@ -1,4 +1,5 @@
 assets/se-api-docs-C/
+assets/SE-API-C/build/
 
 # Test artifacts
 .coverage
