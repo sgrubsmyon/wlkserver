@@ -566,6 +566,13 @@ class TSEClient:
             result["status"] = "already commissioned"
 
         lcs = self.life_cycle_state()
+        if state == PIN_STATE_INITIALIZED and lcs in (LCS_NO_TIME, LCS_ACTIVE):
+            # Commissioning is one-shot; a re-run would only authenticate
+            # TimeAdmin with the request PIN and burn retries (gap G4).
+            return {
+                **result,
+                "status": "failed: already commissioned, use POST /tse/init without a body to refresh the time",
+            }
         if lcs == LCS_NOT_INITIALIZED:
             if not self._authenticate("Admin", admin_pin):
                 return {**result, "status": "failed: Admin authentication"}

@@ -91,6 +91,39 @@ def test_commissioning_uses_v3_puk_and_unblock(monkeypatch):
     ]
 
 
+def test_recommissioning_an_initialized_tse_is_refused(monkeypatch):
+    """A re-run must not authenticate TimeAdmin with the request PIN (gap G4)."""
+    calls = []
+
+    class FakeLib:
+        def se_getPinStatus(self, state):
+            state._obj.value = tse_module.PIN_STATE_INITIALIZED
+            return 0
+
+        def se_getLifeCycleState(self, state):
+            state._obj.value = tse_module.LCS_ACTIVE
+            return 0
+
+        def se_authenticateUser(self, *args):
+            calls.append("authenticateUser")
+            return 0
+
+        def se_updateTime(self, now):
+            calls.append("updateTime")
+            return 0
+
+    client = tse_module.tse_client
+    monkeypatch.setattr(client, "lib", FakeLib())
+    monkeypatch.setattr(client, "_open", lambda: True)
+
+    result = client.initialize(
+        b"12345678", b"1234567890", b"87654321", b"0987654321"
+    )
+
+    assert result["status"].startswith("failed: already commissioned")
+    assert calls == []
+
+
 def _time_fake(pin_state, lcs, calls):
     class FakeLib:
         def se_getPinStatus(self, state):
