@@ -1,8 +1,16 @@
+import json
 import threading
 import time
 
+import pytest
+
 from python.utils import tse_client as tse_module
 from python.utils.tse_client import _first_serial_number, _oid_from_asn1
+
+
+@pytest.fixture(autouse=True)
+def _commissioning_log(tmp_path, monkeypatch):
+    monkeypatch.setenv("TSE_COMMISSIONING_LOG", str(tmp_path / "commissioning.jsonl"))
 
 # ASN.1 dump of a cryptovision TSE (TSEUntar.java:89): algorithm=ecdsa-plain-SHA256.
 _SHA256_OID_TLV = bytes.fromhex("060a04007f00070101040103")
@@ -60,7 +68,7 @@ def test_se_api_calls_are_serialized(monkeypatch):
     assert peak == 1
 
 
-def test_commissioning_uses_v3_puk_and_unblock(monkeypatch):
+def test_commissioning_uses_v3_puk_and_unblock(monkeypatch, tmp_path):
     """SE-API v3.1 first boot: `se_initializePuk` + `se_unblockUser` per user.
 
     `se_initializePinValues` is deprecated in v3.1 (communication timeouts), so
@@ -120,6 +128,14 @@ def test_commissioning_uses_v3_puk_and_unblock(monkeypatch):
         ("initializePuk", b"TimeAdmin", b"0987654321"),
         ("unblockUser", b"TimeAdmin", b"0987654321", b"87654321"),
     ]
+    # Every step is recorded, without any PIN or PUK (gap G9).
+    log = (tmp_path / "commissioning.jsonl").read_text()
+    assert [json.loads(line)["event"] for line in log.splitlines()] == [
+        "commissioning_started", "puk_set", "pin_set", "puk_set", "pin_set",
+        "tse_initialized", "time_set", "client_registered", "commissioning_finished",
+    ]
+    for secret in ("12345678", "1234567890", "87654321", "0987654321"):
+        assert secret not in log
 
 
 def _first_boot_fake(calls, unblock_result=0, auth_ok=True, remaining=2):

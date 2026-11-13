@@ -101,3 +101,10 @@ def tse_time_admin_pin() -> bytes | None:
 
 def dsfinvk_export_dir() -> str | None:
     return env("DSFINVK_EXPORT_DIR")
+
+
+def tse_commissioning_log() -> str:
+    """JSONL file with commissioning progress (which fields were set; never secrets)."""
+    return env("TSE_COMMISSIONING_LOG") or os.path.join(
+        os.path.dirname(__file__), "tse_commissioning.jsonl"
+    )

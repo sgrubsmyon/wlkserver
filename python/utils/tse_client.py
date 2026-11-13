@@ -7,6 +7,7 @@ hardware and may need adjustments.
 """
 
 import ctypes
+import json
 import logging
 import os
 import threading
@@ -328,6 +329,23 @@ class TSEClient:
         except Exception:
             pass
 
+    def _record_progress(self, event, **fields):
+        """Append one commissioning step to the server-side log (gap G9).
+
+        Contains user ids, client id, result names and timestamps; never a PIN
+        or PUK. Appending one JSON line per step survives a crash mid-run.
+        """
+        try:
+            with open(config.tse_commissioning_log(), "a", encoding="utf-8") as file:
+                file.write(json.dumps({
+                    "timestamp": now_iso(),
+                    "event": event,
+                    "device_path": self.device_path,
+                    **fields,
+                }) + "\n")
+        except OSError:
+            logger.exception("Recording the TSE commissioning progress failed")
+
     def _update_time(self, pin) -> bool:
         """`se_updateTime`: the SE API demands a time update after every power-up."""
         self.time_error = None
@@ -578,6 +596,11 @@ class TSEClient:
         state = self.pin_state()
         if state is None:
             return {"status": "failed: se_getPinStatus"}
+        self._record_progress(
+            "commissioning_started",
+            pin_state=state,
+            client_id=CLIENT_ID.decode("utf-8", "replace"),
+        )
         result = {"transport_state": state != PIN_STATE_INITIALIZED}
         if result["transport_state"]:
             # `se_pin_state_flags_t`: Admin PIN 0x01 / PUK 0x02,
@@ -613,6 +636,7 @@ class TSEClient:
                     )
                     if rc != 0:
                         return {**result, "status": f"failed: se_initializePuk ({user}, {rc})"}
+                    self._record_progress("puk_set", user=user)
                 if state & pin_bit:
                     unblock = ctypes.c_int(0)
                     rc = self.lib.se_unblockUser(
@@ -626,6 +650,7 @@ class TSEClient:
                             "unblock_result": unblock_result,
                             "status": f"failed: se_unblockUser ({user}, rc={rc}, {unblock_result})",
                         }
+                    self._record_progress("pin_set", user=user)
             result["transport_state"] = self.pin_state() != PIN_STATE_INITIALIZED
             if result["transport_state"]:
                 return {**result, "status": "failed: PINs and PUKs are still in transport state"}
@@ -652,6 +677,7 @@ class TSEClient:
                 self._log_out("Admin")
                 return {**result, "status": f"failed: se_initialize ({rc})"}
             self.initialized = True
+            self._record_progress("tse_initialized")
         elif lcs not in (LCS_NO_TIME, LCS_ACTIVE):
             return {**result, "status": f"failed: life cycle state {lcs}"}
 
@@ -661,12 +687,18 @@ class TSEClient:
                 "remaining_retries": self.remaining_retries,
                 "status": f"failed: {self.time_error}",
             }
+        self._record_progress("time_set")
         if not self.register_client():
             self._log_out("Admin")
             return {**result, "status": "failed: se_registerClient"}
+        self._record_progress("client_registered", client_id=CLIENT_ID.decode("utf-8", "replace"))
         self._log_out("Admin")
 
         state = self.status()
+        self._record_progress(
+            "commissioning_finished",
+            serial_number=(state.get("tse") or {}).get("serial_number"),
+        )
         return {**result, **state, "status": "initialized"}
 
     @_locked

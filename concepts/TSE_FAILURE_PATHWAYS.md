@@ -223,7 +223,7 @@ These are the good cases — they abort before or without corrupting the TSE:
 | G6 | ~~Partial state + new PUK → `se_unblockUser` with an unverified PUK~~ **closed 2026-11-13** (refused before any write unless `confirm_stored_puks=true`; response lists what is already set) | `utils/tse_client.py`, `routers/tse.py` | C4 |
 | G7 | ~~No lock around SE-API calls~~ **closed 2026-11-13** (every public operation under a reentrant lock; one worker still required) | `utils/tse_client.py` | C5, P3 |
 | G8 | ~~`unblockResult` / `remainingRetries` discarded~~ **closed 2026-11-13** (named `unblock_result` and `remaining_retries` in failed responses) | `utils/tse_client.py` | diagnosis of R1/C4 |
-| G9 | No record of what was written (no secrets, but also no progress state) | — | C6, P2 |
+| G9 | ~~No record of what was written (no secrets, but also no progress state)~~ **closed 2026-11-13** (`TSE_COMMISSIONING_LOG` JSONL: pin_state, fields set, timestamps, client id, serial; never secrets) | `utils/tse_client.py`, `config.py` | C6, P2 |
 | G10 | No preflight/dry-run endpoint | `routers/tse.py:157` | all |
 | G11 | Server clock not validated | `utils/tse_client.py:307` | W1 |
 | G12 | `/tse/export/delete` only user-protected | `routers/tse.py:237` | R5 |
@@ -299,8 +299,8 @@ Must be done **before** the live run (tracked in `TODO.md`):
 7. **Done (2026-11-13):** Guard `_ensure_time`: skip unless `pin_state == 0` and LCS is `noTime`/`active`.
 8. ✅ Report `unblockResult` and `remainingRetries` in the response and stop on the first
    failure (never loop retries) (G8, 2026-11-13).
-9. Record commissioning progress server-side (which fields were set, timestamps, client id
-   — **never the secrets**) so a retry knows what happened.
+9. ✅ Record commissioning progress server-side (which fields were set, timestamps, client id
+   — **never the secrets**) so a retry knows what happened (G9, 2026-11-13).
 10. `/tse/export/delete` → `require_admin`.
 11. Repair endpoint for `se_unblockUser` (Admin/TimeAdmin) so a lost/blocked PIN is
     recoverable with the PUK.
