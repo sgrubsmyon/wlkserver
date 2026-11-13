@@ -1,6 +1,6 @@
 import io
 import tarfile
-from typing import Annotated, Optional
+from typing import Annotated, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.security import HTTPAuthorizationCredentials
@@ -54,6 +54,14 @@ class TSEInitializeRequest(BaseModel):
     # Only for a partly commissioned TSE: confirms that the PUKs in this body
     # are the ones already stored, so a PIN may be unblocked with them (gap G6).
     confirm_stored_puks: bool = False
+
+
+class TSEUnblockRequest(BaseModel):
+    """Repair a blocked PIN with its PUK (recovery matrix)."""
+
+    user: Literal["Admin", "TimeAdmin"]
+    puk: str
+    new_pin: str
 
 
 class TSEExportDeleteRequest(BaseModel):
@@ -225,6 +233,25 @@ def init_tse(payload: Optional[TSEInitializeRequest] = None, _user: User = Depen
         admin_pin, admin_puk, configured, time_admin_puk,
         confirm_stored_puks=payload.confirm_stored_puks,
     )
+
+
+@router.post("/unblock")
+def unblock_tse(payload: TSEUnblockRequest, _user: User = Depends(require_admin)):
+    """Repair a blocked Admin/TimeAdmin PIN with its PUK (recovery matrix).
+
+    The PUK cannot be verified with a read call, so a wrong PUK may block it
+    permanently. TimeAdmin must keep `TSE_TIME_ADMIN_PIN` as its new PIN,
+    otherwise the next restart cannot set the time (gap G2).
+    """
+    puk = _credential_bytes("puk", payload.puk, PUK_LENGTH)
+    new_pin = _credential_bytes("new_pin", payload.new_pin, PIN_LENGTH)
+    if payload.user == "TimeAdmin":
+        configured = tse_time_admin_pin()
+        if configured is None:
+            raise HTTPException(status_code=400, detail="TSE_TIME_ADMIN_PIN is not set in .env")
+        if new_pin != configured:
+            raise HTTPException(status_code=400, detail="new_pin must equal TSE_TIME_ADMIN_PIN")
+    return tse_client.unblock_user(payload.user, puk, new_pin)
 
 
 @router.post("/certificates")

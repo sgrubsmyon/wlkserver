@@ -433,6 +433,29 @@ class TSEClient:
         return rc in (0, ERS_ALREADY_MAPPED)
 
     @_locked
+    def unblock_user(self, user, puk, new_pin):
+        """Repair a blocked PIN with its PUK (`se_unblockUser`).
+
+        The recovery path of the failure analysis: the PUK is supplied by the
+        caller and cannot be verified beforehand, so a wrong PUK may block it
+        permanently. The new PIN must differ from the old one (se_api.h).
+        """
+        if self.lib is None:
+            return {"status": "initialized (stub: no C library)"}
+        if not self._open():
+            return {"status": "failed: device not available", "device_path": self.device_path}
+        unblock = ctypes.c_int(0)
+        rc = self.lib.se_unblockUser(
+            user.encode(), len(user), puk, len(puk), new_pin, len(new_pin), ctypes.byref(unblock)
+        )
+        unblock_result = UNBLOCK_RESULTS.get(unblock.value, str(unblock.value))
+        result = {"user": user, "unblock_result": unblock_result}
+        if rc != 0 or unblock.value != 0:
+            return {**result, "status": f"failed: se_unblockUser ({user}, rc={rc}, {unblock_result})"}
+        self._record_progress("pin_unblocked", user=user)
+        return {**result, "status": "unblocked"}
+
+    @_locked
     def status(self):
         result = {
             "initialized": self.initialized,

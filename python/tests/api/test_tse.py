@@ -150,6 +150,38 @@ def test_tse_preflight(client, monkeypatch):
     assert client.post("/tse/init/preflight", json={**body, "time_admin_pin": "11111111"}).status_code == 400
 
 
+def test_tse_unblock_requires_admin(client, session):
+    from python.models import User
+    from python.utils.auth import hash_password
+
+    cashier = User(username="kassierer4", password_hash=hash_password("pw"), role="mitarbeiter", active=True)
+    cashier.user_id = None
+    session.add(cashier)
+    session.commit()
+    token = client.post("/auth/login", json={"username": "kassierer4", "password": "pw"}).json()["access_token"]
+    r = client.post(
+        "/tse/unblock",
+        json={"user": "Admin", "puk": "1234567890", "new_pin": "12345678"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert r.status_code == 403
+
+
+def test_tse_unblock_validates_values(client, monkeypatch):
+    from python.utils.tse_client import tse_client
+
+    body = {"user": "TimeAdmin", "puk": "0987654321", "new_pin": "87654321"}
+    monkeypatch.setattr(tse_client, "lib", None)
+    # TimeAdmin must keep TSE_TIME_ADMIN_PIN, otherwise the next restart cannot set the time.
+    monkeypatch.setenv("TSE_TIME_ADMIN_PIN", "11111111")
+    assert client.post("/tse/unblock", json=body).status_code == 400
+    monkeypatch.setenv("TSE_TIME_ADMIN_PIN", "87654321")
+    assert client.post("/tse/unblock", json={**body, "puk": "098765432"}).status_code == 400
+    r = client.post("/tse/unblock", json=body)
+    assert r.status_code == 200
+    assert r.json()["status"].startswith("initialized (stub")
+
+
 def test_tse_transaction_flow(client):
     # Create a sale first (for the rechnungs_nr FK)
     sale = _create_sale(client)

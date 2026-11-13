@@ -274,7 +274,7 @@ Do this in order; stop at the first deviation.
 | Retry must use a different PUK than before | **Stop.** Wrong PUKs can block the PUK permanently (C4) |
 | LCS `noTime`, PINs known | Re-run init (or `ensure_ready`) to set the time |
 | LCS `active`, client id wrong | Re-register (Admin) — needs the Admin PIN |
-| TimeAdmin PIN unknown, PUK known | `se_unblockUser("TimeAdmin", puk, newPin)` — **no API endpoint yet**, must be added |
+| TimeAdmin PIN unknown, PUK known | `POST /tse/unblock` with the PUK and `TSE_TIME_ADMIN_PIN` (2026-11-13) |
 | `.env` value wrong | Fix `.env`, restart; watch for burnt retries |
 | PUK lost/wrong | Not recoverable in the field; contact the manufacturer |
 
@@ -304,8 +304,9 @@ Must be done **before** the live run (tracked in `TODO.md`):
 9. ✅ Record commissioning progress server-side (which fields were set, timestamps, client id
    — **never the secrets**) so a retry knows what happened (G9, 2026-11-13).
 10. ✅ `/tse/export/delete` → `require_admin` (G12, 2026-11-13).
-11. Repair endpoint for `se_unblockUser` (Admin/TimeAdmin) so a lost/blocked PIN is
-    recoverable with the PUK.
+11. ✅ Repair endpoint `POST /tse/unblock` for `se_unblockUser` (Admin/TimeAdmin) so a
+    lost/blocked PIN is recoverable with the PUK (admin-only, same byte validation as init,
+    TimeAdmin keeps `TSE_TIME_ADMIN_PIN`; 2026-11-13).
 12. Client GUI (see §12) with masked double-entry, confirmation, preflight button, and
     clear per-field reporting.
 13. ✅ Validate the server clock before commissioning: `initialize()` refuses before any

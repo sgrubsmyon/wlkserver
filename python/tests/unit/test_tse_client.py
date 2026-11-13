@@ -210,6 +210,41 @@ def test_authentication_failure_reports_remaining_retries(monkeypatch):
     assert "initialize" not in calls
 
 
+def test_unblock_user_repairs_pin_with_puk(monkeypatch):
+    calls = []
+
+    class FakeLib:
+        def se_unblockUser(self, user, user_len, puk, puk_len, pin, pin_len, result):
+            calls.append((user, puk, pin))
+            result._obj.value = 0
+            return 0
+
+    client = tse_module.tse_client
+    monkeypatch.setattr(client, "lib", FakeLib())
+    monkeypatch.setattr(client, "_open", lambda: True)
+
+    result = client.unblock_user("Admin", b"1234567890", b"87654321")
+
+    assert result == {"user": "Admin", "unblock_result": "unblockOk", "status": "unblocked"}
+    assert calls == [(b"Admin", b"1234567890", b"87654321")]
+
+
+def test_unblock_user_reports_failed_unblock(monkeypatch):
+    class FakeLib:
+        def se_unblockUser(self, user, user_len, puk, puk_len, pin, pin_len, result):
+            result._obj.value = 2
+            return 0
+
+    client = tse_module.tse_client
+    monkeypatch.setattr(client, "lib", FakeLib())
+    monkeypatch.setattr(client, "_open", lambda: True)
+
+    result = client.unblock_user("TimeAdmin", b"0987654321", b"87654321")
+
+    assert result["unblock_result"] == "unblockPinIsBlocked"
+    assert result["status"].startswith("failed: se_unblockUser (TimeAdmin")
+
+
 def test_commissioning_refuses_unsynchronised_clock(monkeypatch):
     """A skewed host clock must not be written into the TSE (gap G11)."""
     calls = []
