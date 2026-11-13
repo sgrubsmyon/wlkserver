@@ -361,7 +361,7 @@ All functional audit gaps and the edge-case validation pass are done; the only r
   - by TX number range (mirrors `exportPartialTransactionDataByTXNumber(filename, startTXNumber, endTXNumber, maxRecords)`)
   - by date range (mirrors `exportPartialTransactionDataByDate(filename, startDate, endDate, maxRecords)`)
   - by signature counter (mirrors `exportPartialTransactionDataBySigCounter(filename, lastExcludedSignatureCounter, maxRecords)`)
-- POST /tse/export/delete - Partial export (up to a given signature counter) followed by deletion of the stored TSE data up to the highest exported signature counter (mirrors the "TSE-Log exportieren und löschen" flow in `TSEStatus.java`, which calls `deletePartialTransactionDataBySigCounter()`)
+- POST /tse/export/delete - Partial export (up to a given signature counter) followed by deletion of the stored TSE data up to the highest exported signature counter (mirrors the "TSE-Log exportieren und löschen" flow in `TSEStatus.java`, which calls `deletePartialTransactionDataBySigCounter()`); admin-only since 2026-11-13 (gap G12)
 
 The export endpoints return the generated `.tar` file as a file download (in Java the file is written to a local export directory, e.g. `tse_export_<date>_Sig_from_X_to_Y.tar`).
 

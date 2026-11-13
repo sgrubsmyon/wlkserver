@@ -283,7 +283,7 @@ def export_partial(payload: Optional[TSEExportPartialRequest] = None):
 
 
 @router.post("/export/delete")
-def export_delete(payload: Optional[TSEExportDeleteRequest] = None):
+def export_delete(payload: Optional[TSEExportDeleteRequest] = None, _user: User = Depends(require_admin)):
     p = payload or TSEExportDeleteRequest()
     kwargs = {
         "last_excluded_signature_counter": p.last_excluded_signature_counter,

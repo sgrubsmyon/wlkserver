@@ -256,6 +256,19 @@ def test_tse_export_delete(client):
     assert len(r.content) > 0
 
 
+def test_tse_export_delete_requires_admin(client, session):
+    from python.models import User
+    from python.utils.auth import hash_password
+
+    cashier = User(username="kassierer3", password_hash=hash_password("pw"), role="mitarbeiter", active=True)
+    cashier.user_id = None
+    session.add(cashier)
+    session.commit()
+    token = client.post("/auth/login", json={"username": "kassierer3", "password": "pw"}).json()["access_token"]
+    r = client.post("/tse/export/delete", json={}, headers={"Authorization": f"Bearer {token}"})
+    assert r.status_code == 403
+
+
 def test_tse_certificates(client):
     r = client.post("/tse/certificates")
     assert r.status_code == 200

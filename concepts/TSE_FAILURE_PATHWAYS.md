@@ -135,9 +135,9 @@ step 6 still authenticates TimeAdmin with the *request's* PIN. A typo there burn
 A cashier or a misbehaving client can trigger C4/C5/R1.
 
 **R5 — Destructive export without admin rights.**
-`POST /tse/export/delete` (`routers/tse.py:237`) deletes stored TSE data and is only
-user-protected. Not an init risk, but it destroys the evidence needed to reconstruct what
-happened during commissioning.
+`POST /tse/export/delete` deletes stored TSE data and was only user-protected. Not an
+init risk, but it destroys the evidence needed to reconstruct what happened during
+commissioning. Closed 2026-11-13 (gap G12): the endpoint now requires an admin.
 
 ---
 
@@ -228,7 +228,7 @@ These are the good cases — they abort before or without corrupting the TSE:
 | G9 | ~~No record of what was written (no secrets, but also no progress state)~~ **closed 2026-11-13** (`TSE_COMMISSIONING_LOG` JSONL: pin_state, fields set, timestamps, client id, serial; never secrets) | `utils/tse_client.py`, `config.py` | C6, P2 |
 | G10 | ~~No preflight/dry-run endpoint~~ **closed 2026-11-13** (`POST /tse/init/preflight`: read-only state + expected writes) | `routers/tse.py:157`, `utils/tse_client.py` | all |
 | G11 | ~~Server clock not validated~~ **closed 2026-11-13** (`_clock_error`: init refuses before any write unless NTP-synchronised; preflight reports it) | `utils/tse_client.py` | W1 |
-| G12 | `/tse/export/delete` only user-protected | `routers/tse.py:237` | R5 |
+| G12 | ~~`/tse/export/delete` only user-protected~~ **closed 2026-11-13** (`require_admin`) | `routers/tse.py` | R5 |
 
 ---
 
@@ -303,7 +303,7 @@ Must be done **before** the live run (tracked in `TODO.md`):
    failure (never loop retries) (G8, 2026-11-13).
 9. ✅ Record commissioning progress server-side (which fields were set, timestamps, client id
    — **never the secrets**) so a retry knows what happened (G9, 2026-11-13).
-10. `/tse/export/delete` → `require_admin`.
+10. ✅ `/tse/export/delete` → `require_admin` (G12, 2026-11-13).
 11. Repair endpoint for `se_unblockUser` (Admin/TimeAdmin) so a lost/blocked PIN is
     recoverable with the PUK.
 12. Client GUI (see §12) with masked double-entry, confirmation, preflight button, and
