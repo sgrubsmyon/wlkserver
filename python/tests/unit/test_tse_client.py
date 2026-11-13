@@ -1,3 +1,6 @@
+import threading
+import time
+
 from python.utils import tse_client as tse_module
 from python.utils.tse_client import _first_serial_number, _oid_from_asn1
 
@@ -27,6 +30,34 @@ def test_first_serial_number_offset():
 
 def test_first_serial_number_rejects_other_encoding():
     assert _first_serial_number(bytes([0x30, 5, 0x04, 0x01, 1, 2, 3])) is None
+
+
+def test_se_api_calls_are_serialized(monkeypatch):
+    """Two requests must not interleave their SE-API calls (gap G7)."""
+    active = 0
+    peak = 0
+    guard = threading.Lock()
+
+    class FakeLib:
+        def se_getPinStatus(self, state):
+            nonlocal active, peak
+            with guard:
+                active += 1
+                peak = max(peak, active)
+            time.sleep(0.05)
+            with guard:
+                active -= 1
+            state._obj.value = 0
+            return 0
+
+    client = tse_module.tse_client
+    monkeypatch.setattr(client, "lib", FakeLib())
+    threads = [threading.Thread(target=client.pin_state) for _ in range(4)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+    assert peak == 1
 
 
 def test_commissioning_uses_v3_puk_and_unblock(monkeypatch):

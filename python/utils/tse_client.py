@@ -9,14 +9,26 @@ hardware and may need adjustments.
 import ctypes
 import logging
 import os
+import threading
 from base64 import b64encode
 from datetime import datetime
+from functools import wraps
 from io import BytesIO
 from tarfile import open as tarfile_open
 
 from .. import config
 
 logger = logging.getLogger(__name__)
+
+
+def _locked(method):
+    """Serialize a public operation: the SE-API has one device handle and no
+    lock of its own, so interleaved commissioning/writes corrupt the state."""
+    @wraps(method)
+    def wrapper(self, *args, **kwargs):
+        with self._lock:
+            return method(self, *args, **kwargs)
+    return wrapper
 
 _LIB_PATHS = [
     config.tse_lib_path(),
@@ -268,6 +280,7 @@ def _load_library():
 
 class TSEClient:
     def __init__(self):
+        self._lock = threading.RLock()
         self.lib = _load_library()
         self.initialized = False
         self.opened = False
@@ -342,23 +355,27 @@ class TSEClient:
         self._ensure_time()
         return True
 
+    @_locked
     def pin_state(self):
         state = ctypes.c_uint32(0)
         if self.lib.se_getPinStatus(ctypes.byref(state)) != 0:
             return None
         return state.value
 
+    @_locked
     def life_cycle_state(self):
         state = ctypes.c_int(0)
         if self.lib.se_getLifeCycleState(ctypes.byref(state)) != 0:
             return None
         return state.value
 
+    @_locked
     def register_client(self):
         """`se_registerClient`: map this client id to the TSE key (Admin rights)."""
         rc = self.lib.se_registerClient(CLIENT_ID, len(CLIENT_ID))
         return rc in (0, ERS_ALREADY_MAPPED)
 
+    @_locked
     def status(self):
         result = {
             "initialized": self.initialized,
@@ -383,6 +400,7 @@ class TSEClient:
                 result["tse"] = self.status_values()
         return result
 
+    @_locked
     def status_values(self):
         """TSE identification values (Java `WeltladenTSE.updateTSEStatusValues`).
 
@@ -519,6 +537,7 @@ class TSEClient:
             logger.exception("Extracting the TSE certificate failed")
         return None
 
+    @_locked
     def initialize(self, admin_pin, admin_puk, time_admin_pin, time_admin_puk, confirm_stored_puks=False):
         """First use of a brand-new TSE (SE-API v3.1 `firstBootTest` sequence).
 
@@ -619,6 +638,7 @@ class TSEClient:
         state = self.status()
         return {**result, **state, "status": "initialized"}
 
+    @_locked
     def ensure_ready(self):
         """Open the device and keep its time set, without touching PINs or PUKs."""
         if self.lib is None:
@@ -630,6 +650,7 @@ class TSEClient:
         self.initialized = self.life_cycle_state() == LCS_ACTIVE
         return {"status": "initialized" if ready else f"failed: {self.time_error}", **self.status()}
 
+    @_locked
     def close(self):
         if self.lib is not None and self.opened:
             try:
@@ -640,6 +661,7 @@ class TSEClient:
         self.initialized = False
         self._next_sync = 0
 
+    @_locked
     def start_transaction(self):
         """Start a Vorgang. processType/processData stay empty (DSFinV-K)."""
         if not self._ensure_open():
@@ -674,6 +696,7 @@ class TSEClient:
             "tse_error": None,
         }
 
+    @_locked
     def finish_transaction(self, transaction_number, process_type, process_data):
         """Finish a started Vorgang with its processType and processData."""
         if not self._ensure_open():
@@ -716,10 +739,12 @@ class TSEClient:
             "tse_error": None,
         }
 
+    @_locked
     def abort_transaction(self, transaction_number, process_type=PROCESS_TYPE):
         """Abort a started Vorgang: the sale did not happen, nothing was paid."""
         return self.finish_transaction(transaction_number, process_type, ABORT_PROCESS_DATA)
 
+    @_locked
     def create_transaction(self, process_type, process_data, training=False):
         """Start and finish in one go (stornos at the counter, scripted bookings)."""
         started = self.start_transaction()
@@ -770,10 +795,12 @@ class TSEClient:
             self.lib.se_free(exported)
             return data
 
+    @_locked
     def export_full(self):
         data = self._export_bytes(CLIENT_ID, max_records=0)
         return data
 
+    @_locked
     def export_certificates(self):
         if not self._ensure_open():
             return b""
@@ -789,6 +816,7 @@ class TSEClient:
         except Exception:
             return b""
 
+    @_locked
     def export_partial(self, **kwargs):
         # Prefer exportMoreData by signature counter if provided
         prev = kwargs.get("last_excluded_signature_counter", 0) or 0
@@ -817,6 +845,7 @@ class TSEClient:
             return self._export_bytes(CLIENT_ID, start_date=sd, end_date=ed, max_records=kwargs.get("max_records", 0) or 0)
         return self._export_bytes(CLIENT_ID, use_more=True, previous_sig_counter=prev, max_records2=maxr)
 
+    @_locked
     def get_signature_counter(self):
         if not self._ensure_open():
             return None
@@ -829,6 +858,7 @@ class TSEClient:
             pass
         return None
 
+    @_locked
     def export_and_delete(self, **kwargs):
         prev = kwargs.get("last_excluded_signature_counter", 0) or 0
         data = self.export_partial(last_excluded_signature_counter=prev, max_records=kwargs.get("max_records", 0))
