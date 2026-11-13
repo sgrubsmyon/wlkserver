@@ -155,6 +155,25 @@ def get_tse_status():
     return tse_client.status()
 
 
+def _credential_bytes(name: str, value: str, length: int) -> bytes:
+    """Validate a PIN/PUK before the device is opened (gap G5).
+
+    The C API counts bytes while Python counts characters, and a written
+    whitespace or control character passes commissioning but fails later when a
+    human types the intended value. Only printable, non-whitespace ASCII is
+    accepted.
+    """
+    raw = value.encode("utf-8")
+    if len(raw) != length:
+        raise HTTPException(status_code=400, detail=f"{name} must be {length} ASCII bytes")
+    if not all(0x21 <= byte <= 0x7E for byte in raw):
+        raise HTTPException(
+            status_code=400,
+            detail=f"{name} must contain only printable ASCII characters without whitespace",
+        )
+    return raw
+
+
 @router.post("/init")
 def init_tse(payload: Optional[TSEInitializeRequest] = None, _user: User = Depends(require_admin)):
     """Commission a brand-new TSE, or keep the time of a running one set.
@@ -167,23 +186,18 @@ def init_tse(payload: Optional[TSEInitializeRequest] = None, _user: User = Depen
     """
     if payload is None:
         return tse_client.ensure_ready()
-    for name in ("admin_pin", "time_admin_pin"):
-        if len(getattr(payload, name)) != PIN_LENGTH:
-            raise HTTPException(status_code=400, detail=f"{name} must be {PIN_LENGTH} characters")
-    for name in ("admin_puk", "time_admin_puk"):
-        if len(getattr(payload, name)) != PUK_LENGTH:
-            raise HTTPException(status_code=400, detail=f"{name} must be {PUK_LENGTH} characters")
+    admin_pin = _credential_bytes("admin_pin", payload.admin_pin, PIN_LENGTH)
+    admin_puk = _credential_bytes("admin_puk", payload.admin_puk, PUK_LENGTH)
+    time_admin_pin = _credential_bytes("time_admin_pin", payload.time_admin_pin, PIN_LENGTH)
+    time_admin_puk = _credential_bytes("time_admin_puk", payload.time_admin_puk, PUK_LENGTH)
     # Later time syncs use TSE_TIME_ADMIN_PIN, so a different value here would be
     # written to the TSE and then burn a PIN retry on every restart (gap G2).
     configured = tse_time_admin_pin()
     if configured is None:
         raise HTTPException(status_code=400, detail="TSE_TIME_ADMIN_PIN is not set in .env")
-    if payload.time_admin_pin.encode() != configured:
+    if time_admin_pin != configured:
         raise HTTPException(status_code=400, detail="time_admin_pin must equal TSE_TIME_ADMIN_PIN")
-    return tse_client.initialize(
-        payload.admin_pin.encode(), payload.admin_puk.encode(),
-        configured, payload.time_admin_puk.encode(),
-    )
+    return tse_client.initialize(admin_pin, admin_puk, configured, time_admin_puk)
 
 
 @router.post("/certificates")

@@ -103,6 +103,22 @@ def test_tse_init_rejects_wrong_pin_and_puk_length(client):
     assert client.post("/tse/init", json=body).status_code == 400
 
 
+def test_tse_init_rejects_whitespace_control_and_non_ascii(client, monkeypatch):
+    from python.utils.tse_client import tse_client
+
+    monkeypatch.setenv("TSE_TIME_ADMIN_PIN", "87654321")
+    monkeypatch.setattr(tse_client, "lib", None)
+    body = {
+        "admin_pin": "12345678",
+        "admin_puk": "1234567890",
+        "time_admin_pin": "87654321",
+        "time_admin_puk": "0987654321",
+    }
+    # 8 characters each, but none is a plain printable ASCII PIN.
+    for bad_pin in ("1234 567", " 1234567", "1234567\n", "1234567é"):
+        assert client.post("/tse/init", json={**body, "admin_pin": bad_pin}).status_code == 400
+
+
 def test_tse_transaction_flow(client):
     # Create a sale first (for the rechnungs_nr FK)
     sale = _create_sale(client)

@@ -220,7 +220,7 @@ These are the good cases — they abort before or without corrupting the TSE:
 | G2 | ~~TimeAdmin PIN comes from the request at init but from `.env` afterwards; no consistency check~~ **closed 2026-11-13** (init rejects a body value != `TSE_TIME_ADMIN_PIN` with 400) | `utils/tse_client.py:513`, `config.py:96` | R1, W4 |
 | G3 | ~~`_ensure_time` authenticates before checking `pin_state`/LCS~~ **fixed 2026-11-13**: guarded on `pin_state == 0` + LCS `noTime`/`active`; reports "not ready" without authenticating | `utils/tse_client.py:324` | R2 |
 | G4 | ~~Re-running init on a commissioned TSE still performs a TimeAdmin auth with the request PIN~~ **closed 2026-11-13** (refused before any authentication, points to `ensure_ready`) | `utils/tse_client.py` | R3 |
-| G5 | Length validation on characters, not ASCII bytes; no charset check | `routers/tse.py:170-177` | C2, C3 |
+| G5 | ~~Length validation on characters, not ASCII bytes; no charset check~~ **closed 2026-11-13** (`_credential_bytes`: UTF-8 byte count, printable non-whitespace ASCII only) | `routers/tse.py` | C2, C3 |
 | G6 | Partial state + new PUK → `se_unblockUser` with an unverified PUK | `utils/tse_client.py:513-560` | C4 |
 | G7 | No lock around SE-API calls | `utils/tse_client.py` | C5, P3 |
 | G8 | `unblockResult` / `remainingRetries` discarded | `utils/tse_client.py:293-299`, `~545` | diagnosis of R1/C4 |
@@ -284,11 +284,10 @@ Do this in order; stop at the first deviation.
 Must be done **before** the live run (tracked in `TODO.md`):
 
 1. ✅ `POST /tse/init` → `require_admin`; refuse when `pin_state == 0` (already commissioned) and point to `ensure_ready` for time refresh (G1+G4, 2026-11-13).
-2. Single source of truth for the TimeAdmin PIN: accept the body value only if it equals
-   `TSE_TIME_ADMIN_PIN`, otherwise 400 **before** any write (or drop it from the body
-   entirely and take it from `.env`).
-3. Byte-accurate validation of all four values before opening the device: exact ASCII byte
-   length, printable charset, no leading/trailing whitespace, no control characters.
+2. ✅ Single source of truth for the TimeAdmin PIN: the body value must equal
+   `TSE_TIME_ADMIN_PIN`, otherwise 400 **before** any write (G2, 2026-11-13).
+3. ✅ Byte-accurate validation of all four values before opening the device: exact ASCII byte
+   length, printable charset, no whitespace, no control characters (G5, 2026-11-13).
 4. Read-only preflight endpoint that reports library version, device path, `pin_state`,
    LCS, client-id length, `.env` consistency, server clock, and whether commissioning is
    possible — without a single write.
