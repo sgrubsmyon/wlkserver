@@ -1,0 +1,20 @@
+[Unit]
+Description=Weltladenkasse API (wlkserver)
+Wants=network-online.target
+After=network-online.target mariadb.service
+
+[Service]
+Type=simple
+# Adjust the path to the checkout, create the service user, and add it to the
+# group that owns the TSE serial device (usually dialout) if the TSE is used.
+WorkingDirectory=/opt/wlkserver
+User=wlkserver
+Group=wlkserver
+#SupplementaryGroups=dialout
+# One worker only: the TSE client serializes SE-API calls with a per-process lock.
+ExecStart=/opt/wlkserver/python/venv/bin/uvicorn python.main:app --host 0.0.0.0 --port 8000 --workers 1
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

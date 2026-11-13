@@ -9,6 +9,37 @@ python -m pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
+## Run in dev mode
+
+```
+source venv/bin/activate
+fastapi dev
+# (or:)
+fastapi dev --port 8080
+```
+
+## Run in production mode
+
+From the repository root, so that the `python.main` package imports resolve and
+the venv's `uvicorn` is used instead of a system-wide one:
+
+```
+python/venv/bin/uvicorn python.main:app --host 0.0.0.0 --port 8000
+```
+
+Keep it at one worker (`--workers 1`, the default): the TSE client serializes
+SE-API calls with a per-process lock, so a second worker would break that
+guarantee.
+
+For a server, use the systemd unit in `../deployment/wlkserver.service`: adjust
+its paths and `User`, then
+
+```
+sudo cp deployment/wlkserver.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now wlkserver
+```
+
 ## Run tests
 
 ```
@@ -142,27 +173,6 @@ writes and `GET /auth/anmeldungen`) require a JWT for a user with role `admin`.
 The API should run as the `kassenadmin` DB user (see
 `concepts/IMPLEMENTATION_PLAN.md`, Phase 7.4) so that admin operations
 like DELETE are permitted by the database grants.
-
-## Run API in development mode
-
-```
-source venv/bin/activate
-fastapi dev main.py
-```
-
-Or simply:
-
-```
-source venv/bin/activate
-fastapi dev
-```
-
-## Run API in production mode
-
-```
-source venv/bin/activate
-fastapi run
-```
 
 ## Authentication
 
