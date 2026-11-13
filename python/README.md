@@ -50,6 +50,28 @@ is stored in `verkauf_mwst`); existing sales keep their stored amounts. Invoices
 must always use the vertical method (EN 16931 BR-CO-17) — see
 `docs/VAT_ROUNDING.md` for the legal background.
 
+## TSE C library
+
+The TSE adapter (`utils/tse_client.py`) calls the cryptovision SE-API through
+ctypes. The compiled Linux x86-64 libraries are vendored in
+`../assets/SE-API-C/bin/` and committed, so no compiler is needed: `pip install
+-r requirements.txt` is the complete setup. The library is loaded from
+`TSE_LIB_PATH` if set, otherwise from `assets/SE-API-C/bin/libse-api-c.so`,
+otherwise from the system search path (`ldd` must find
+`libse-msc-io_linux-x86-64.so` next to it).
+
+The `.c` sources in `assets/SE-API-C/` are only needed to rebuild the binaries,
+e.g. for another architecture or a new vendor release:
+
+```
+cd assets/SE-API-C
+rm -rf build              # build-c-linux.sh refuses to reuse an existing build dir
+./build-c-linux.sh        # needs cmake and gcc, writes into bin/
+```
+
+Keep the complete `bin/` folder in sync — the main library loads the MSC I/O
+shared object at runtime.
+
 ## Training mode
 
 The Java POS only redirects the cashier tables to `training_*` tables; editing
