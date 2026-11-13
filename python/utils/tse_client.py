@@ -10,6 +10,7 @@ import ctypes
 import json
 import logging
 import os
+import subprocess
 import threading
 from base64 import b64encode
 from datetime import datetime
@@ -115,6 +116,26 @@ def _first_serial_number(data: bytes) -> bytes | None:
 def now_iso() -> str:
     """Current time in the DSFinV-K format `yyyy-MM-dd'T'HH:mm:ss.SSSXXX`."""
     return datetime.now().astimezone().isoformat(timespec="milliseconds")
+
+
+def _clock_error() -> str | None:
+    """Refuse to sink an unverified host clock into the TSE (gap G11).
+
+    Commissioning writes `se_updateTime` from `datetime.now()`, and a skewed
+    clock is signed into every later log and cannot be corrected afterwards.
+    `timedatectl` reports systemd's NTP state; anything but a confirmed sync is
+    treated as not validated.
+    """
+    try:
+        result = subprocess.run(
+            ["timedatectl", "show", "--property=NTPSynchronized", "--value"],
+            capture_output=True, text=True, timeout=5,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return "cannot verify the server clock (timedatectl unavailable)"
+    if result.returncode != 0 or result.stdout.strip() != "yes":
+        return "server clock is not NTP-synchronised (timedatectl NTPSynchronized)"
+    return None
 
 
 def _log_time(value) -> str:
@@ -588,6 +609,7 @@ class TSEClient:
             "client_id": CLIENT_ID.decode("utf-8", "replace"),
             "client_id_length": len(CLIENT_ID),
             "time_admin_pin_configured": config.tse_time_admin_pin() is not None,
+            "clock_error": _clock_error(),
             "pin_state": None,
             "life_cycle_state": None,
             "already_set": [],
@@ -628,6 +650,8 @@ class TSEClient:
             }
         if lcs not in (LCS_NOT_INITIALIZED, LCS_NO_TIME, LCS_ACTIVE):
             return {**result, "status": f"failed: life cycle state {lcs}"}
+        if result["clock_error"]:
+            return {**result, "status": f"failed: {result['clock_error']}"}
 
         result["can_commission"] = True
         result["expected_writes"] = [
@@ -661,6 +685,9 @@ class TSEClient:
             return {"status": "initialized (stub: no C library)"}
         if not self._open():
             return {"status": "failed: device not available", "device_path": self.device_path}
+        clock_error = _clock_error()
+        if clock_error:
+            return {"status": f"failed: {clock_error}", "device_path": self.device_path}
 
         state = self.pin_state()
         if state is None:

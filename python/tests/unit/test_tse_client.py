@@ -12,6 +12,11 @@ from python.utils.tse_client import _first_serial_number, _oid_from_asn1
 def _commissioning_log(tmp_path, monkeypatch):
     monkeypatch.setenv("TSE_COMMISSIONING_LOG", str(tmp_path / "commissioning.jsonl"))
 
+
+@pytest.fixture(autouse=True)
+def _synced_clock(monkeypatch):
+    monkeypatch.setattr(tse_module, "_clock_error", lambda: None)
+
 # ASN.1 dump of a cryptovision TSE (TSEUntar.java:89): algorithm=ecdsa-plain-SHA256.
 _SHA256_OID_TLV = bytes.fromhex("060a04007f00070101040103")
 _SHA256_OID_CONTENT = bytes.fromhex("04007f00070101040103")
@@ -203,6 +208,40 @@ def test_authentication_failure_reports_remaining_retries(monkeypatch):
     assert result["remaining_retries"] == 2
     assert "2 retries left" in result["status"]
     assert "initialize" not in calls
+
+
+def test_commissioning_refuses_unsynchronised_clock(monkeypatch):
+    """A skewed host clock must not be written into the TSE (gap G11)."""
+    calls = []
+    client = tse_module.tse_client
+    monkeypatch.setattr(client, "lib", _first_boot_fake(calls))
+    monkeypatch.setattr(client, "_open", lambda: True)
+    monkeypatch.setattr(
+        tse_module, "_clock_error", lambda: "server clock is not NTP-synchronised"
+    )
+
+    result = client.initialize(
+        b"12345678", b"1234567890", b"87654321", b"0987654321"
+    )
+
+    assert result["status"] == "failed: server clock is not NTP-synchronised"
+    assert calls == []
+
+
+def test_preflight_reports_clock_error(monkeypatch):
+    calls = []
+    client = tse_module.tse_client
+    monkeypatch.setattr(client, "lib", _first_boot_fake(calls))
+    monkeypatch.setattr(client, "_open", lambda: True)
+    monkeypatch.setattr(
+        tse_module, "_clock_error", lambda: "server clock is not NTP-synchronised"
+    )
+
+    result = client.preflight()
+
+    assert result["clock_error"] == "server clock is not NTP-synchronised"
+    assert result["can_commission"] is False
+    assert result["status"] == "failed: server clock is not NTP-synchronised"
 
 
 def test_preflight_reports_expected_writes_without_writing(monkeypatch):

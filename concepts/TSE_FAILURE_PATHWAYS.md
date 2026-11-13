@@ -145,8 +145,10 @@ happened during commissioning.
 
 **W1 — Wrong server clock.**
 The TSE time is `int(datetime.now().timestamp())` from the API host
-(`utils/tse_client.py:307-316`). A skewed clock is signed into every subsequent log and
-cannot be corrected retroactively. → NTP-check the host before the run.
+(`utils/tse_client.py`). A skewed clock is signed into every subsequent log and
+cannot be corrected retroactively. Closed 2026-11-13 (gap G11): `initialize()` refuses
+before any write unless `timedatectl` reports `NTPSynchronized=yes`, and the preflight
+reports the clock state; the NTP check remains part of the live-run protocol.
 
 **W2 — Wrong `TSE_CLIENT_ID`.**
 `config.tse_client_id()` defaults to `WeltladenKasse` (14 bytes; valid 1–30). A value
@@ -225,7 +227,7 @@ These are the good cases — they abort before or without corrupting the TSE:
 | G8 | ~~`unblockResult` / `remainingRetries` discarded~~ **closed 2026-11-13** (named `unblock_result` and `remaining_retries` in failed responses) | `utils/tse_client.py` | diagnosis of R1/C4 |
 | G9 | ~~No record of what was written (no secrets, but also no progress state)~~ **closed 2026-11-13** (`TSE_COMMISSIONING_LOG` JSONL: pin_state, fields set, timestamps, client id, serial; never secrets) | `utils/tse_client.py`, `config.py` | C6, P2 |
 | G10 | ~~No preflight/dry-run endpoint~~ **closed 2026-11-13** (`POST /tse/init/preflight`: read-only state + expected writes) | `routers/tse.py:157`, `utils/tse_client.py` | all |
-| G11 | Server clock not validated | `utils/tse_client.py:307` | W1 |
+| G11 | ~~Server clock not validated~~ **closed 2026-11-13** (`_clock_error`: init refuses before any write unless NTP-synchronised; preflight reports it) | `utils/tse_client.py` | W1 |
 | G12 | `/tse/export/delete` only user-protected | `routers/tse.py:237` | R5 |
 
 ---
@@ -306,6 +308,9 @@ Must be done **before** the live run (tracked in `TODO.md`):
     recoverable with the PUK.
 12. Client GUI (see §12) with masked double-entry, confirmation, preflight button, and
     clear per-field reporting.
+13. ✅ Validate the server clock before commissioning: `initialize()` refuses before any
+    write unless `timedatectl` confirms `NTPSynchronized=yes`; preflight reports it
+    (G11, 2026-11-13).
 
 ---
 
