@@ -51,6 +51,8 @@ PIN_STATE_INITIALIZED = 0x00
 LCS_NOT_INITIALIZED = 1
 LCS_NO_TIME = 2
 LCS_ACTIVE = 3
+# `se_authentication_result_t` (se_types.h): the PIN entry is blocked.
+AUTHENTICATION_PIN_BLOCKED = 2
 # `ErrorERSalreadyMapped` (se_result_t.h): the client id is registered already.
 ERS_ALREADY_MAPPED = 0x3006
 
@@ -319,6 +321,11 @@ class TSEClient:
         self.time_error = None
         self.remaining_retries = None
         self._next_sync = 0
+        # Learned from authentication attempts: the TSE has no read-only
+        # "is this PIN blocked" call, so None means "not observed yet".
+        self.pin_blocked = {"Admin": None, "TimeAdmin": None}
+        self.pin_retries = {"Admin": None, "TimeAdmin": None}
+        self.client_registered = None
 
     def _open(self):
         """Open the device. `se_initialize` is not part of opening: it fails on an
@@ -342,6 +349,9 @@ class TSEClient:
             user.encode(), len(user), pin, len(pin), ctypes.byref(result), ctypes.byref(remaining)
         )
         self.remaining_retries = remaining.value
+        if rc == 0:
+            self.pin_blocked[user] = result.value == AUTHENTICATION_PIN_BLOCKED
+            self.pin_retries[user] = remaining.value
         return rc == 0 and result.value == 0
 
     def _log_out(self, user):
@@ -428,9 +438,42 @@ class TSEClient:
 
     @_locked
     def register_client(self):
-        """`se_registerClient`: map this client id to the TSE key (Admin rights)."""
+        """`se_registerClient`: map this client id to the TSE key.
+
+        With SE-API v3.1 this needs no authentication; `ErrorERSalreadyMapped`
+        means the id is already registered and is treated as success.
+        """
+        client_id = CLIENT_ID.decode("utf-8", "replace")
+        if self.lib is None:
+            self.client_registered = True
+            return {
+                "registered": True,
+                "already_registered": False,
+                "client_id": client_id,
+                "status": "registered (stub: no C library)",
+            }
+        if not self._open():
+            return {
+                "registered": False,
+                "client_id": client_id,
+                "status": "failed: device not available",
+                "device_path": self.device_path,
+            }
         rc = self.lib.se_registerClient(CLIENT_ID, len(CLIENT_ID))
-        return rc in (0, ERS_ALREADY_MAPPED)
+        ok = rc in (0, ERS_ALREADY_MAPPED)
+        self.client_registered = ok
+        if ok:
+            self._record_progress("client_registered", client_id=client_id)
+        return {
+            "registered": ok,
+            "already_registered": rc == ERS_ALREADY_MAPPED,
+            "client_id": client_id,
+            "status": (
+                "already registered" if rc == ERS_ALREADY_MAPPED
+                else "registered" if rc == 0
+                else f"failed: se_registerClient ({rc})"
+            ),
+        }
 
     @_locked
     def unblock_user(self, user, puk, new_pin):
@@ -452,34 +495,54 @@ class TSEClient:
         result = {"user": user, "unblock_result": unblock_result}
         if rc != 0 or unblock.value != 0:
             return {**result, "status": f"failed: se_unblockUser ({user}, rc={rc}, {unblock_result})"}
+        self.pin_blocked[user] = False
+        self.pin_retries[user] = None
         self._record_progress("pin_unblocked", user=user)
         return {**result, "status": "unblocked"}
 
     @_locked
     def status(self):
         result = {
+            "mode": "hardware" if self.lib is not None else "stub",
             "initialized": self.initialized,
             "opened": self.opened,
             "library_loaded": self.lib is not None,
             "api_version": None,
             "device_path": self.device_path,
+            "device_error": None,
             "pin_state": None,
             "life_cycle_state": None,
             "time_error": self.time_error,
+            "client_registered": self.client_registered,
+            # `None` = not observed yet; the TSE has no read-only blocked check.
+            "pins": {
+                user: {
+                    "blocked": self.pin_blocked[user],
+                    "remaining_retries": self.pin_retries[user],
+                }
+                for user in ("Admin", "TimeAdmin")
+            },
         }
-        if self.lib is not None:
-            try:
-                result["api_version"] = self.lib.se_getApiVersionString().decode("utf-8", "replace")
-            except Exception:
-                pass
-            # Probe the device so status reflects presence, not just prior use.
-            self._open()
-            if self.opened:
-                result["pin_state"] = self.pin_state()
-                result["life_cycle_state"] = self.life_cycle_state()
-                self.initialized = result["life_cycle_state"] == LCS_ACTIVE
-                result["initialized"] = self.initialized
-                result["tse"] = self.status_values()
+        if self.lib is None:
+            result["device_error"] = "TSE library not loaded (stub mode)"
+            return result
+        try:
+            result["api_version"] = self.lib.se_getApiVersionString().decode("utf-8", "replace")
+        except Exception:
+            pass
+        if not self.device_path:
+            result["device_error"] = "TSE_DEVICE_PATH is not set"
+            return result
+        # Probe the device so status reflects presence, not just prior use.
+        self._open()
+        if not self.opened:
+            result["device_error"] = f"TSE not reachable at {self.device_path}"
+            return result
+        result["pin_state"] = self.pin_state()
+        result["life_cycle_state"] = self.life_cycle_state()
+        self.initialized = result["life_cycle_state"] == LCS_ACTIVE
+        result["initialized"] = self.initialized
+        result["tse"] = self.status_values()
         return result
 
     @_locked
@@ -809,10 +872,10 @@ class TSEClient:
                 "status": f"failed: {self.time_error}",
             }
         self._record_progress("time_set")
-        if not self.register_client():
+        registration = self.register_client()
+        if not registration["registered"]:
             self._log_out("Admin")
             return {**result, "status": "failed: se_registerClient"}
-        self._record_progress("client_registered", client_id=CLIENT_ID.decode("utf-8", "replace"))
         self._log_out("Admin")
 
         state = self.status()

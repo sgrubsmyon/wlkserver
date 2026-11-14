@@ -236,6 +236,16 @@ def init_tse(payload: Optional[TSEInitializeRequest] = None, force: bool = False
     )
 
 
+@router.post("/register-client")
+def register_client(_user: User = Depends(require_admin)):
+    """Map this API's client id on the TSE (idempotent, admin-only).
+
+    `ErrorERSalreadyMapped` is reported as `already_registered`, not as an error
+    (TSE_FAILURE_PATHWAYS.md W3).
+    """
+    return tse_client.register_client()
+
+
 @router.post("/unblock")
 def unblock_tse(payload: TSEUnblockRequest, _user: User = Depends(require_admin)):
     """Repair a blocked Admin/TimeAdmin PIN with its PUK (recovery matrix).
