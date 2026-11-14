@@ -823,14 +823,18 @@ class TSEClient:
         return {**result, **state, "status": "initialized"}
 
     @_locked
-    def ensure_ready(self):
-        """Open the device and keep its time set, without touching PINs or PUKs."""
+    def ensure_ready(self, force=False):
+        """Open the device and keep its time set, without touching PINs or PUKs.
+
+        `force` skips the sync-interval shortcut: after a power-up the TSE's
+        clock is unset even if the last successful sync was recent.
+        """
         if self.lib is None:
             self.initialized = True
             return {"status": "initialized (stub: no C library)"}
         if not self._open():
             return {"status": "failed: device not available", "device_path": self.device_path}
-        ready = self._ensure_time()
+        ready = self._ensure_time(force=force)
         self.initialized = self.life_cycle_state() == LCS_ACTIVE
         return {"status": "initialized" if ready else f"failed: {self.time_error}", **self.status()}
 

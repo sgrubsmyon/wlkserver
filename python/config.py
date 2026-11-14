@@ -5,10 +5,13 @@ processes see environment changes, like the per-request VAT rounding method.
 """
 import os
 
-from dotenv import load_dotenv
+from dotenv import load_dotenv, dotenv_values
 from sqlalchemy.engine import make_url
 
-load_dotenv()  # optional python/.env; real environment variables take precedence
+# Keys that came from python/.env; re-read below so edited secrets apply without a restart.
+_REAL_ENV = set(os.environ)  # real environment variables take precedence
+load_dotenv()
+_DOTENV_KEYS = set(dotenv_values().keys()) - _REAL_ENV
 
 TRAINING_VALUES = ("1", "true", "yes", "on")
 DEFAULT_CORS_ORIGINS = "http://localhost:5173,http://127.0.0.1:5173"
@@ -94,8 +97,16 @@ def tse_client_id() -> bytes:
 
 
 def tse_time_admin_pin() -> bytes | None:
-    """TimeAdmin PIN: the SE API needs a time update after every power-up."""
+    """TimeAdmin PIN: the SE API needs a time update after every power-up.
+
+    When the value came from `python/.env`, re-read the file: a corrected PIN
+    must work for the next time sync without restarting the API.
+    """
     value = env("TSE_TIME_ADMIN_PIN")
+    if "TSE_TIME_ADMIN_PIN" in _DOTENV_KEYS:
+        fresh = dotenv_values().get("TSE_TIME_ADMIN_PIN")
+        if fresh is not None:
+            value = fresh
     return value.encode("utf-8") if value else None
 
 

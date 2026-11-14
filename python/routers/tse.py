@@ -217,17 +217,18 @@ def preflight_tse(
 
 
 @router.post("/init")
-def init_tse(payload: Optional[TSEInitializeRequest] = None, _user: User = Depends(require_admin)):
+def init_tse(payload: Optional[TSEInitializeRequest] = None, force: bool = False, _user: User = Depends(require_admin)):
     """Commission a brand-new TSE, or keep the time of a running one set.
 
     With a body: sets both PINs and both PUKs while the TSE is still in transport
     state, initializes it, sets its time and registers this client id
     (`se_initializePuk` + `se_unblockUser`, `se_initialize`, `se_updateTime`,
     `se_registerClient`; v3.1 replaces the deprecated `se_initializePinValues`).
-    Without a body: opens the device and keeps its time set.
+    Without a body: opens the device and keeps its time set; `force=true` skips
+    the sync-interval shortcut (used by the GUI's "set time now" button).
     """
     if payload is None:
-        return tse_client.ensure_ready()
+        return tse_client.ensure_ready(force=force)
     admin_pin, admin_puk, configured, time_admin_puk = _init_values(payload)
     return tse_client.initialize(
         admin_pin, admin_puk, configured, time_admin_puk,
