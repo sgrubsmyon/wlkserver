@@ -104,6 +104,8 @@ class ArtikelBase(SQLModel):
     lieferbar: bool = Field(nullable=False, default=False)
     beliebtheit: int = Field(nullable=False, default=0)
     bestand: int | None = Field(default=None) # sa_column_kwargs={"unsigned": True}
+    bio: bool | None = Field(default=None)
+    vegan: bool | None = Field(default=None)
 
 
 # The table model

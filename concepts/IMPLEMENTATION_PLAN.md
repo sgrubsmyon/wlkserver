@@ -11,7 +11,7 @@ This document outlines the comprehensive implementation plan to complete the Fas
 ## Current Status Summary
 
 ### ✅ Already Implemented
-- **Database Models**: All core tables have SQLModel definitions in `python/models/tables.py` (`user_id` columns on all 8 transaction tables). The Java `training_*` models were removed: training mode now uses a separate sandbox database with the same schema
+- **Database Models**: All core tables have SQLModel definitions in `python/models/tables.py` (`user_id` columns on all 8 transaction tables, nullable `artikel.bio`/`artikel.vegan`, migration `migrations/04_artikel_bio_vegan/`). The Java `training_*` models were removed: training mode now uses a separate sandbox database with the same schema
 - **CRUD Operations**: All planned entities have CRUD functionality, including Bestellung positions (`details` embedded in the order payload) and the Java order types `LM`/`KHW`/`IVT` (default `LM`; `IVT` holds the inventory count)
 - **Business Logic**: Modules under `python/business/` are wired into the main flows (VAT, sale workflow incl. vouchers/discounts and detail validation, storno incl. voucher/installment reversal and kassenstand reversal, cash-register side-effects incl. balance validation, DSFinV-K export, TSE signing of every sale/storno + TSE export + settlement TSE metadata best-effort, training sandbox). VAT module and sale workflow are Java-parity checked and fully tested. The 2026-10-28 audit gaps #1-#7 are closed, as is the edge-case validation pass (2026-10-31); remaining work is the untested TSE hardware adapter (see 5.1).
 - **API Structure**: Clean FastAPI structure with proper routing

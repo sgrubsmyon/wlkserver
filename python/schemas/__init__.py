@@ -141,6 +141,8 @@ class ArtikelUpdate(SQLModel):
     lieferbar: bool | None = None
     beliebtheit: int | None = None
     bestand: int | None = None
+    bio: bool | None = None
+    vegan: bool | None = None
 
 
 # For reading

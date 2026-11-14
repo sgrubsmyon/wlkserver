@@ -23,3 +23,8 @@ echo "***"
 echo "*** MIGRATION 03: VOUCHER COUNTER ***"
 echo "***"
 $SCRIPT_DIR/03_gutschein_counter/migrate.sh
+echo ""
+echo "***"
+echo "*** MIGRATION 04: ARTIKEL BIO/VEGAN ***"
+echo "***"
+$SCRIPT_DIR/04_artikel_bio_vegan/migrate.sh
