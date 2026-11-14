@@ -114,6 +114,11 @@ def dsfinvk_export_dir() -> str | None:
     return env("DSFINVK_EXPORT_DIR")
 
 
+def images_dir() -> str | None:
+    """Directory with the article pictures, one file named `<artikel_id>.<ext>`."""
+    return env("IMAGES_DIR")
+
+
 def tse_commissioning_log() -> str:
     """JSONL file with commissioning progress (which fields were set; never secrets)."""
     return env("TSE_COMMISSIONING_LOG") or os.path.join(

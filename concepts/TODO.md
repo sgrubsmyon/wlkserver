@@ -25,7 +25,8 @@
 - [x] MwSt models (Base, Table, Public, Create, Update)
 - [x] Pfand models (Table, Public, Create, Update)
 - [x] Produktgruppe models (Base, Table, Public, Create, Update)
-- [x] Artikel models (Base, Table, Public, Create, Update) incl. nullable `bio`/`vegan` flags (migration `migrations/04_artikel_bio_vegan/`); product images are planned as files on disk, not in the DB
+- [x] Artikel models (Base, Table, Public, Create, Update) incl. nullable `bio`/`vegan` flags (migration `migrations/04_artikel_bio_vegan/`)
+- [x] Artikel pictures as files in `IMAGES_DIR` (not BLOBs): `GET`/`PUT`/`DELETE /artikel/{id}/bild`, JPEG/PNG/WebP checked by magic bytes, hardlink to the new id on versioning; no thumbnail/embedding in list responses yet
 - [x] Rabattaktion models (Base, Table, Public, Create, Update)
 - [x] Verkauf models (Base, Table, Public, Create)
 - [x] VerkaufMwst models (Base, Table, Public, Create)

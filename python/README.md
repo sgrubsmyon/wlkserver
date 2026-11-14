@@ -74,6 +74,14 @@ once). `.env` is git-ignored — never commit secrets.
 | `TSE_COMMISSIONING_LOG` | `python/tse_commissioning.jsonl` | JSONL file recording the TSE commissioning steps (no PINs/PUKs) |
 | `VAT_ROUNDING_METHOD` | `horizontal` | Receipt VAT rounding: `horizontal` (per position, Java POS) or `vertical` (per VAT rate, e-invoice compatible). Invalid values abort startup |
 | `DSFINVK_EXPORT_DIR` | unset | Directory for the DSFinV-K ZIP written after every Tagesabschluss; unset means on-demand only |
+| `IMAGES_DIR` | unset | Directory with the article pictures (`<artikel_id>.jpg|png|webp`); unset disables the picture endpoints (503) |
+
+Article pictures are files, not DB rows: `PUT /artikel/{id}/bild` (multipart
+field `bild`, max. 5 MB, JPEG/PNG/WebP detected by magic bytes) stores
+`<id>.<ext>`, `GET /artikel/{id}/bild` serves the bytes with `ETag` and
+`DELETE /artikel/{id}/bild` removes them. All three require a login. When
+`PATCH /artikel/{id}` creates a new version, the picture is hardlinked to the
+new id, so both ids share one file on disk.
 | `DSFINVK_<KEY>` | see below | DSFinV-K Stammdaten (`Z_KASSE_ID`, `TAXONOMIE_VERSION`, `NAME`, `STRASSE`, `PLZ`, `ORT`, `LAND`, `STNR`, `USTID`, `LOC_*`, `KASSE_*`, `TERMINAL_*`) |
 
 `VAT_ROUNDING_METHOD` affects only receipts/sales created from now on (the value

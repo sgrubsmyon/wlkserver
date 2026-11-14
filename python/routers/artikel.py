@@ -1,12 +1,17 @@
 from datetime import datetime, timezone
 
+import os
+from pathlib import Path
+
 from typing import Annotated
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, UploadFile
+from fastapi.responses import FileResponse
 from sqlmodel import select
 
 # from ..dependencies import get_token_header
 
+from .. import config
 from ..models import (
     Artikel,
     Lieferant,
@@ -27,6 +32,97 @@ router = APIRouter(
     # dependencies=[Depends(get_token_header)],
     responses={404: {"description": "Not found"}},
 )
+
+
+# Article pictures are files next to the DB, named `<artikel_id>.<ext>`.
+# JPEG, PNG and WebP are accepted; the type comes from the magic bytes, never
+# from the client-provided filename.
+MAX_BILD_BYTES = 5 * 1024 * 1024
+BILD_TYPES = {".jpg": "image/jpeg", ".png": "image/png", ".webp": "image/webp"}
+
+
+def _bild_dir() -> Path:
+    folder = config.images_dir()
+    if not folder:
+        raise HTTPException(status_code=503, detail="IMAGES_DIR is not configured")
+    try:
+        Path(folder).mkdir(parents=True, exist_ok=True)
+    except OSError:
+        raise HTTPException(status_code=503, detail="IMAGES_DIR is not writable")
+    return Path(folder)
+
+
+def _bild_path(artikel_id: int) -> Path | None:
+    folder = _bild_dir()
+    for ext in BILD_TYPES:
+        path = folder / f"{artikel_id}{ext}"
+        if path.is_file():
+            return path
+    return None
+
+
+def _bild_extension(data: bytes) -> str | None:
+    if data.startswith(b"\xff\xd8\xff"):
+        return ".jpg"
+    if data.startswith(b"\x89PNG\r\n\x1a\n"):
+        return ".png"
+    if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return ".webp"
+    return None
+
+
+def _link_bild(old_id: int, new_id: int) -> None:
+    """Share the picture of a versioned article: a hardlink, not a copy."""
+    if not config.images_dir():
+        return  # pictures not configured here; versioning must still work
+    old = _bild_path(old_id)
+    if old is None or _bild_path(new_id) is not None:
+        return
+    try:
+        os.link(old, old.with_name(f"{new_id}{old.suffix}"))
+    except OSError:
+        pass  # no hardlink support here; the picture can be uploaded again
+
+
+@router.get("/{artikel_id}/bild")
+def read_artikel_bild(artikel_id: int):
+    path = _bild_path(artikel_id)
+    if path is None:
+        raise HTTPException(status_code=404, detail="No picture for this artikel")
+    # Starlette adds ETag/Last-Modified from the file and answers 304 itself.
+    return FileResponse(path, media_type=BILD_TYPES[path.suffix])
+
+
+@router.put("/{artikel_id}/bild")
+def upload_artikel_bild(artikel_id: int, bild: UploadFile, session: SessionDep):
+    if not session.get(Artikel, artikel_id):
+        raise HTTPException(status_code=404, detail="Artikel not found")
+    folder = _bild_dir()
+    data = bild.file.read(MAX_BILD_BYTES + 1)
+    if len(data) > MAX_BILD_BYTES:
+        raise HTTPException(status_code=413, detail="Bild too large (max. 5 MB)")
+    ext = _bild_extension(data)
+    if ext is None:
+        raise HTTPException(status_code=415, detail="Only JPEG, PNG or WebP pictures")
+    # Write next to the target and rename, so a failed upload never leaves half a file.
+    tmp = folder / f".{artikel_id}.tmp"
+    tmp.write_bytes(data)
+    os.replace(tmp, folder / f"{artikel_id}{ext}")
+    for other in BILD_TYPES:
+        if other != ext:
+            (folder / f"{artikel_id}{other}").unlink(missing_ok=True)
+    return {"bild": f"/artikel/{artikel_id}/bild"}
+
+
+@router.delete("/{artikel_id}/bild")
+def delete_artikel_bild(artikel_id: int, session: SessionDep):
+    if not session.get(Artikel, artikel_id):
+        raise HTTPException(status_code=404, detail="Artikel not found")
+    path = _bild_path(artikel_id)
+    if path is None:
+        raise HTTPException(status_code=404, detail="No picture for this artikel")
+    path.unlink()
+    return {"message": "Bild deleted"}
 
 
 @router.get("/")
@@ -204,5 +300,6 @@ def update_artikel(artikel_id: int, artikel: ArtikelUpdate, session: SessionDep)
     for key, value in artikel_data.items():
         old_artikel_data[key] = value
     new_artikel = create_artikel(old_artikel_data, session)
+    _link_bild(artikel_id, new_artikel.artikel_id)
 
     return new_artikel
