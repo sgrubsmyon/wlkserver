@@ -472,6 +472,8 @@ class TSEClient:
                 result["api_version"] = self.lib.se_getApiVersionString().decode("utf-8", "replace")
             except Exception:
                 pass
+            # Probe the device so status reflects presence, not just prior use.
+            self._open()
             if self.opened:
                 result["pin_state"] = self.pin_state()
                 result["life_cycle_state"] = self.life_cycle_state()
