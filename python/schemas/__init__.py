@@ -502,6 +502,8 @@ class UserPublic(SQLModel):
     username: str
     role: str
     active: bool
+    full_name: str | None = None
+    pref_theme: str | None = None
 
 
 class UserCreate(SQLModel):
@@ -509,6 +511,8 @@ class UserCreate(SQLModel):
     password: str = Field(min_length=1)
     role: Literal["admin", "mitarbeiter"] = Field(default="mitarbeiter")
     active: bool = Field(default=True)
+    full_name: str | None = Field(default=None, max_length=50)
+    pref_theme: Literal["light", "dark"] | None = None
 
 
 class UserUpdate(SQLModel):
@@ -516,6 +520,8 @@ class UserUpdate(SQLModel):
     role: Literal["admin", "mitarbeiter"] | None = None
     active: bool | None = None
     password: str | None = None
+    full_name: str | None = Field(default=None, max_length=50)
+    pref_theme: Literal["light", "dark"] | None = None
 
 
 class AnmeldungPublic(SQLModel):

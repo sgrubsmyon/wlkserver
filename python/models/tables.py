@@ -433,6 +433,8 @@ class User(SQLModel, table=True):
     password_hash: str = Field(max_length=255, nullable=False)
     role: str = Field(max_length=20, nullable=False, default="mitarbeiter")  # admin | mitarbeiter
     active: bool = Field(nullable=False, default=True)
+    full_name: str | None = Field(max_length=50, default=None)
+    pref_theme: str | None = Field(max_length=20, default=None)  # light | dark
 
     anmeldungen: list["Anmeldung"] = Relationship(back_populates="user")
 

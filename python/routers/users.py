@@ -55,6 +55,8 @@ def create_user(user: UserCreate, session: SessionDep, _admin=Depends(require_ad
         password_hash=hash_password(user.password),
         role=user.role,
         active=user.active,
+        full_name=user.full_name,
+        pref_theme=user.pref_theme,
     )
     new_u.user_id = None
     session.add(new_u)
@@ -76,6 +78,10 @@ def update_user(user_id: int, user: UserUpdate, session: SessionDep, _admin=Depe
         u.active = user.active
     if user.password is not None:
         u.password_hash = hash_password(user.password)
+    if user.full_name is not None:
+        u.full_name = user.full_name
+    if user.pref_theme is not None:
+        u.pref_theme = user.pref_theme
     session.add(u)
     session.commit()
     session.refresh(u)

@@ -14,8 +14,10 @@
 CREATE TABLE IF NOT EXISTS `user` (
     user_id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
     username VARCHAR(50) NOT NULL UNIQUE,
+    full_name VARCHAR(50) NULL,
     password_hash VARCHAR(255) NOT NULL,
     role VARCHAR(20) NOT NULL DEFAULT 'mitarbeiter',
+    pref_theme VARCHAR(20) NULL,
     active TINYINT(1) NOT NULL DEFAULT 1
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
