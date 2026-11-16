@@ -153,8 +153,9 @@ still works on sandbox data).
 
 The training instance needs access to the production database for the user
 mirror. Never point `TRAINING_DB_URL` at the production database — startup
-refuses a matching non-SQLite URL. The `training_*` tables of the Java POS are
-not used by the API anymore.
+refuses a matching non-SQLite URL. The legacy `training_*` tables of the Java
+POS are not used by the API anymore and are dropped by
+`migrations/05_drop_training_tables/`.
 
 ## DSFinV-K export
 

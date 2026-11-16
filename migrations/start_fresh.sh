@@ -28,3 +28,8 @@ echo "***"
 echo "*** MIGRATION 04: ARTIKEL BIO/VEGAN ***"
 echo "***"
 $SCRIPT_DIR/04_artikel_bio_vegan/migrate.sh
+echo ""
+echo "***"
+echo "*** MIGRATION 05: DROP LEGACY TRAINING TABLES ***"
+echo "***"
+$SCRIPT_DIR/05_drop_training_tables/migrate.sh

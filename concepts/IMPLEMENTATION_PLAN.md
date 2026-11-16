@@ -620,7 +620,7 @@ Once the frontend exists, the API and the SvelteKit client are planned to be ser
 - nginx terminates TLS with the internal CA certificate (Option 1 above) and redirects/blocks plain HTTP.
 - Because frontend and API share an origin, **CORS is not exercised in production**. The `CORS_ORIGINS` allowlist stays for the Vite dev server (`:5173`) and for any deployment where the client is served from a different host; it remains irrelevant for scripts.
 - This is a deployment-time arrangement, not an API change. Caddy or Uvicorn with a certificate directly are equivalent alternatives; the nginx variant is the one documented here.
-- Still to be written: the nginx site config, systemd units and the backup procedure (tracked in `concepts/TODO.md`).
+- Still to be written: the nginx site config, the TLS certificate setup and the backup procedure (tracked in `concepts/TODO.md`). A fresh-install guide for Ubuntu (MariaDB packages, database users, `deployment/create_db.sql`, venv/.env, systemd unit in `deployment/`) is in `README.md`.
 
 **Calling the API from automation scripts (planned use case)**
 
@@ -889,4 +889,4 @@ Note: There are deliberately **no** `routers/verkauf_mwst.py` and `routers/verka
 6. **Remaining business logic** (2026-10-28 audit, see above): none; #1-#7 done
 7. **Training mode**: run a second API instance with `TRAINING_MODE=1` and `TRAINING_DB_URL`; `POST /training/reset` reseeds the sandbox
 8. **Import/Export**: CSV exports for Bestellung and Inventur exist; ODS export is deferred to a later phase (needs an ODS library and the Java templates)
-9. **Documentation**: migration guide (Java POS → API), database schema reference, consistent docstrings, deployment/HTTPS docs (same-origin nginx topology and script automation are documented in Phase 7.4; nginx/systemd artifacts still missing)
+9. **Documentation**: migration guide (Java POS → API), database schema reference, consistent docstrings, deployment/HTTPS docs (same-origin nginx topology and script automation are documented in Phase 7.4; fresh-install guide + `deployment/create_db.sql` + systemd unit exist, nginx site config/TLS/backup artifacts still missing)
