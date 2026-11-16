@@ -57,7 +57,8 @@ sudo mariadb < deployment/create_db.sql
 
 This **drops and recreates** the databases `kasse` and `kasse_training`, creates all tables
 (the Java POS schema plus all migrations from `migrations/`), fills in the
-internal master data (VAT rates, internal articles/groups, deposit articles),
+master data (VAT rates, internal articles/groups, deposit articles, plus the
+example suppliers/groups/articles of `../git/mysql/fillWithExampleData.sql`),
 creates the bootstrap `admin` user and grants the privileges for both database
 users. There is no separate migration step for a fresh install.
 
