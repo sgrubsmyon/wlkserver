@@ -17,7 +17,7 @@ CREATE TABLE IF NOT EXISTS `user` (
     full_name VARCHAR(50) NULL,
     password_hash VARCHAR(255) NOT NULL,
     role VARCHAR(20) NOT NULL DEFAULT 'mitarbeiter',
-    pref_theme VARCHAR(20) NULL,
+    pref_theme VARCHAR(20) NULL DEFAULT 'light',
     active TINYINT(1) NOT NULL DEFAULT 1
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
@@ -55,6 +55,6 @@ ALTER TABLE tse_transaction ADD COLUMN user_id INT NULL;
 ALTER TABLE tse_transaction ADD CONSTRAINT fk_tse_transaction_user FOREIGN KEY (user_id) REFERENCES `user`(user_id);
 
 -- Bootstrap admin user (password: changeme)
-INSERT INTO `user` (username, password_hash, role, active)
-SELECT 'admin', '$2b$12$0Hm8ZRJY/DoPvFihPWckBOsAhqUzP.t8RFJeZFnC5Xq1ogtZI7rYK', 'admin', 1
+INSERT INTO `user` (username, full_name, password_hash, role, pref_theme, active)
+SELECT 'admin', 'Ad Min', '$2b$12$0Hm8ZRJY/DoPvFihPWckBOsAhqUzP.t8RFJeZFnC5Xq1ogtZI7rYK', 'admin', 'light', 1
 WHERE NOT EXISTS (SELECT 1 FROM `user` WHERE username = 'admin');
