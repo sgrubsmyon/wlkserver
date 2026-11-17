@@ -11,6 +11,7 @@ from fastapi import APIRouter
 
 from ..business.errors import DomainError
 from ..business.sale_workflow import (
+    apply_anzahlung,
     expand_details,
     receipt_discount_rows,
     calculate_mwst_summary,
@@ -25,6 +26,8 @@ from ..schemas import (
     WarenkorbSummenAnfrage,
     WarenkorbSummen,
     WarenkorbMwst,
+    WarenkorbAnzahlung,
+    WarenkorbRabattEingabe,
 )
 from ..session import SessionDep
 
@@ -168,6 +171,7 @@ def rabatt(payload: WarenkorbRabatt, session: SessionDep):
                 stueckzahl=item.stueckzahl,
                 ges_preis=item.ges_preis,
                 rabatt_id=item.rabatt_id,
+                rabatt_absolut=item.rabatt_absolut,
             )
             for item in payload.positionen
         ]
@@ -216,6 +220,58 @@ def rabatt(payload: WarenkorbRabatt, session: SessionDep):
             positions.append(_position(
                 session, row, f"{item.ref}-{kind}-{index}",
                 parent_ref=item.ref, kind=kind))
+    return positions
+
+
+def _details_from(payload_rows: list[WarenkorbRabattEingabe]):
+    return [
+        VerkaufDetailsCreate(
+            artikel_id=item.artikel_id,
+            stueckzahl=item.stueckzahl,
+            ges_preis=item.ges_preis,
+            rabatt_id=item.rabatt_id,
+            rabatt_absolut=item.rabatt_absolut,
+        )
+        for item in payload_rows
+    ]
+
+
+@router.post("/anzahlung", response_model=list[WarenkorbPosition])
+def anzahlung(payload: WarenkorbAnzahlung, session: SessionDep):
+    """Preview an Anzahlung (new deposit or resolving an open one).
+
+    Returns the whole cart as it will be booked: the article rows (zeroed for a
+    new deposit), the ANZAHLUNG lines, or the re-added deposit positions and
+    the negative ANZAHLAUFLOES lines. Display-only; the sale is still created
+    with `anzahlung_betrag`/`anzahlung_aufloesen_nr`.
+    """
+    from types import SimpleNamespace
+
+    rows, article_rows = expand_details(session, _details_from(payload.positionen))
+    if payload.rechnung_rabatt_relativ:
+        rows.extend(receipt_discount_rows(
+            session, article_rows, Decimal(str(payload.rechnung_rabatt_relativ))))
+    refs = [f"pos-{index}" for index in range(len(rows))]
+    apply_anzahlung(
+        session,
+        SimpleNamespace(
+            anzahlung_betrag=payload.betrag,
+            anzahlung_aufloesen_nr=payload.aufloesen_nr,
+        ),
+        rows,
+    )
+
+    positions: list[WarenkorbPosition] = []
+    child_kinds = {"pfand", "rabatt", "preisanpassung", "rechnung_rabatt"}
+    current_source = None
+    for index, row in enumerate(rows):
+        ref = refs[index] if index < len(refs) else f"anzahlung-{index}"
+        position = _position(session, row, ref)
+        if position.kind in child_kinds and current_source is not None:
+            position.parent_ref = current_source
+        else:
+            current_source = ref
+        positions.append(position)
     return positions
 
 

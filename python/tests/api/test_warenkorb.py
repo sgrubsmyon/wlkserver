@@ -63,6 +63,7 @@ def _seed(session):
     # Special articles used by the discount lines.
     artikel("RABATT1", None, pg("Rabatt"), name="Rabatt")
     artikel("RABATT2", None, pg("Rabatt"), name="Rabatt auf Rechnung")
+    artikel("ANZAHLUNG", None, pg("Anzahlung"), name="Anzahlung")
     return with_pfand, without_pfand, variabel
 
 
@@ -199,3 +200,20 @@ def test_summen_with_discount_rows(client, session):
     assert totals["zwischensumme"] == 4.0
     assert totals["rabatte"] == 1.0
     assert totals["zu_zahlen"] == 3.0
+
+
+def test_anzahlung_preview_zeroes_articles_and_adds_deposit_rows(client, session):
+    _, without_pfand, _ = _seed(session)
+    r = client.post("/warenkorb/anzahlung", json={
+        "positionen": [{
+            "ref": "r1", "artikel_id": without_pfand.artikel_id,
+            "stueckzahl": 1, "ges_preis": 4.0,
+        }],
+        "betrag": 3.0,
+    })
+    assert r.status_code == 200, r.json()
+    rows = r.json()
+    assert rows[0]["ges_preis"] == 0.0
+    anzahlung_rows = [row for row in rows if row["kind"] == "anzahlung"]
+    assert len(anzahlung_rows) == 1
+    assert anzahlung_rows[0]["ges_preis"] == 3.0

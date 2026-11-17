@@ -584,6 +584,8 @@ class WarenkorbRabattEingabe(SQLModel):
     ges_preis: float | None = None
     variabler_preis: bool = False
     rabatt_id: int | None = None
+    # An already applied per-unit discount, so receipt discounts skip the line.
+    rabatt_absolut: float | None = None
 
 
 class WarenkorbRabattSpec(SQLModel):
@@ -596,6 +598,13 @@ class WarenkorbRabatt(SQLModel):
     rabatt: WarenkorbRabattSpec
     # True: "Rabatt auf Rechnung" across all positions (one row per VAT rate).
     rechnung: bool = False
+
+
+class WarenkorbAnzahlung(SQLModel):
+    positionen: list[WarenkorbRabattEingabe]
+    betrag: float | None = Field(default=None, gt=0)
+    aufloesen_nr: int | None = None
+    rechnung_rabatt_relativ: float | None = None
 
 
 class WarenkorbMwst(SQLModel):
