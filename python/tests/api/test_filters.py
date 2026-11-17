@@ -59,6 +59,18 @@ def _seed_rabatt(session, name, von, bis=None, artikel_id=None, produktgruppen_i
     return r
 
 
+def test_artikel_name_search_matches_all_terms_in_any_order(client, session):
+    _seed_artikel(session, nr="T1", name="Bio Apfel Saft")
+    _seed_artikel(session, nr="T2", name="Apfel Schorle")
+    _seed_artikel(session, nr="T3", name="Birne bio")
+
+    body = client.get("/artikel/", params={"artikel_name": "apfel bio"}).json()
+    assert [a["artikel_nr"] for a in body] == ["T1"]
+
+    body = client.get("/artikel/", params={"artikel_name": "bio"}).json()
+    assert sorted(a["artikel_nr"] for a in body) == ["T1", "T3"]
+
+
 # ------------------------------------------------------------ rabattaktion
 
 def test_rabattaktion_open_ended_is_listed_by_default(client, session):

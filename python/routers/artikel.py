@@ -182,7 +182,11 @@ def read_artikel(
     elif produktgruppen_id:
         selection = selection.where(Artikel.produktgruppen_id == produktgruppen_id)
     elif artikel_name:
-        selection = selection.where(Artikel.artikel_name.contains(artikel_name) | Artikel.kurzname.contains(artikel_name))
+        # Space separated terms must all match (in any order), e.g.
+        # "bio apfel" finds "Apfel bio" and "Bio-Apfel".
+        for term in artikel_name.split():
+            selection = selection.where(
+                Artikel.artikel_name.contains(term) | Artikel.kurzname.contains(term))
     artikel = paginate(session, selection, offset, limit, Artikel.artikel_name, Artikel.lieferant_id)
     
     # Prepare the response

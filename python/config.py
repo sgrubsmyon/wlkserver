@@ -4,6 +4,7 @@ Values are read on access (not cached at import), so tests and long-running
 processes see environment changes, like the per-request VAT rounding method.
 """
 import os
+from pathlib import Path
 
 from dotenv import load_dotenv, dotenv_values
 from sqlalchemy.engine import make_url
@@ -117,6 +118,13 @@ def dsfinvk_export_dir() -> str | None:
 def images_dir() -> str | None:
     """Directory with the article pictures, one file named `<artikel_id>.<ext>`."""
     return env("IMAGES_DIR")
+
+
+def templates_dir() -> str:
+    """ODS/ODT templates of the Java POS (`vorlagen`), editable in LibreOffice."""
+    return env("VORLAGEN_DIR") or str(
+        Path(__file__).resolve().parents[1] / ".." / "git" / "vorlagen"
+    )
 
 
 def tse_commissioning_log() -> str:
