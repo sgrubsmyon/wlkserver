@@ -51,7 +51,7 @@ Audit of `python/` against the Java POS (`../git/src/org/weltladen_bonn/pos/`). 
 - ✅ Receipt-level discount ("Rabatt auf Rechnung", one RABATT line per VAT rate) is available as `rechnung_rabatt_relativ` on `POST /verkauf/` (done).
 - ✅ Special articles are detected by their master-data `artikel_nr` (`RABATT1`, `RABATT2`, `ANPASSUNG`, `ANZAHLUNG`, `ANZAHLAUFLOES`, `GUTSCHEINEINLOES`, `GUTSCHEIN`), which matches the Java `WindowContent` IDs 1, 2, 3, 4, 5, 6, 7 in production.
 - ✅ Kassenstand reset suggestion: `POST /kassenstand/zuruecksetzen/vorschau` (`business/cash_register.kassenstand_reset_suggestion`) mirrors `KassenstandZuruecksetzenDialog.showHeader` with the targets from `SOLL_MUENZ_KASSENSTAND`/`SOLL_SCHEIN_KASSENSTAND`. It derives both buckets as signed changes plus a signed notes↔coins `tausch` instead of Java's two sign branches, so under-filled drawers are covered; the client guide is `docs/KASSENSTAND_UND_ABRECHNUNG.md`.
-- Price-tag export (`PreisschilderExport`, ODT templates) is client-side output like the deferred ODS exports.
+- Price-tag export (`PreisschilderExport`, ODT templates) is client-side output. The ODT text exports are postponed until their Java templates use placeholder markers instead of jOpenDocument fields; `utils/odt.render_odt_template` implements the replacement. The ODS spreadsheet exports are implemented (see Phase 7).
 
 All functional audit gaps and the edge-case validation pass are done; the only remaining functional item is the untested TSE adapter (5.1). Tracking: `concepts/TODO.md` → "Business-logic gaps".
 
@@ -519,8 +519,12 @@ Details and sources: `docs/VAT_ROUNDING.md`.
 - GET /export/bestellung - Export orders (VK list, mirrors Java `writeBestellung`)
 - GET /export/inventur - Export inventory counts (`typ = IVT`, EK valuation, mirrors Java `writeInventur`)
 
-**Deferred to a later phase (ODS):**
-- ODS/spreadsheet export using the Java templates (`Bestellvorlage_LM.ods`, `Bestellvorlage_KHW.ods`, `Inventur.ods`, `Tagesabrechnung.ods`, `Monatsabrechnung.ods`, `Jahresabrechnung.ods` from `../git/vorlagen/`); requires an ODS library. Most valuable for `abrechnung_tag`, but needed for orders/inventory too.
+**ODS/spreadsheet exports (implemented 2026-11-17):**
+- `GET /export/bestellung/{bestell_nr}/ods?typ=LM|KHW` fills `Bestellvorlage_<typ>.ods` (date, KW, positions)
+- `GET /export/inventur/{bestell_nr}/ods` fills `Inventur.ods` (headline, EK/VAT valuation)
+- `GET /export/abrechnung/{tag|monat|jahr}/{id}/ods` fills `Tages-/Monats-/Jahresabrechnung.ods` (totals, VAT per rate; daily adds stornos/retouren, Entnahmen and the Zählprotokoll block)
+- Templates come from `VORLAGEN_DIR` (default `../git/vorlagen`); `business/template_export.py` writes cells with `odfpy`, keeping the LibreOffice styles
+- **Postponed:** ODT text exports (price tags, receipt) - their templates still contain jOpenDocument fields and must be reworked to placeholder markers; `utils/odt.render_odt_template` is ready for that
 
 **Business logic from Java:**
 - `../git/src/org/weltladen_bonn/pos/ArtikelImport.java` - Article import functionality
@@ -680,7 +684,7 @@ Steps 1-3 are what "proper separation of concerns" means for the success criteri
 | 🟡 MEDIUM | Accounting follow-ups | Month/year invalidation on daily settlement, zaehlprotokoll lifecycle, DSFinV-K export | 2-4 days | ✅ Done (audit #1, #4, #5) |
 | 🟡 MEDIUM | TSE | TSE transaction support + export endpoints | 2-3 days | ⏳ Adapter untested without hardware |
 | 🟡 MEDIUM | Supporting | Zaehlprotokoll (CRU), Bestellung (CRUD incl. positions) | 2-3 days | ✅ Done |
-| 🟢 LOW | Utilities | Import/Export, Search | 1-2 days | ✅ Done (CSV done, filters done, ODS deferred) |
+| 🟢 LOW | Utilities | Import/Export, Search | 1-2 days | ✅ Done (CSV, ODS templates and filters done; ODT text exports postponed) |
 
 ---
 
@@ -783,7 +787,7 @@ All six are met (2026-11-17):
 
 - [x] All database tables have corresponding models and endpoints (training tables have core sale endpoints)
 - [x] Bookkeeping integrity: no update/delete endpoints for immutable tables (verkauf, kassenstand, gutschein, anzahlung, abrechnung_tag)
-- [ ] All business logic from Java POS is ported to API (2026-10-28 audit gaps #1-#7 and edge-case validation done; open: ODS exports, client-side Preisschilder export, untested TSE hardware adapter)
+- [ ] All business logic from Java POS is ported to API (2026-10-28 audit gaps #1-#7, edge-case validation and ODS exports done; open: ODT text exports after the template rework, client-side Preisschilder export, untested TSE hardware adapter)
 - [x] Per-user accounts with login auditing and transaction attribution
 - [x] Comprehensive validation and error handling
 - [x] 80%+ test coverage (83%)
@@ -900,5 +904,5 @@ Note: There are deliberately **no** `routers/verkauf_mwst.py` and `routers/verka
 5. **Validation**: done (model constraints + `ensure_*` helpers wired, see TODO "Validation Framework")
 6. **Remaining business logic** (2026-10-28 audit, see above): none; #1-#7 done
 7. **Training mode**: run the second instance via `deployment/wlkserver-training.service` (`TRAINING_MODE=1`, port 8001, `TRAINING_DB_URL` from `.env`); `POST /training/reset` reseeds the sandbox
-8. **Import/Export**: CSV exports for Bestellung and Inventur exist; ODS export is deferred to a later phase (needs an ODS library and the Java templates)
+8. **Import/Export**: CSV exports for Bestellung and Inventur exist; ODS exports for orders, inventory and settlements are implemented (templates from `VORLAGEN_DIR`). ODT text exports wait for the placeholder rework
 9. **Documentation**: done (2026-11-17): `docs/API.md`, `docs/API_REFERENCE.md`, `docs/DATABASE.md`, `docs/MIGRATION_JAVA_TO_API.md`, docstrings across `python/`; deployment in `deployment/` (nginx/TLS/backups/training unit)

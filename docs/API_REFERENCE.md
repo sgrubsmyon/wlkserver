@@ -72,10 +72,13 @@ role is `403`.
 | `GET` | `/gutschein/{gutschein_id}` | logged-in user | Read one voucher row by id; 404 when it does not exist. |
 | `POST` | `/gutschein/{gutschein_id}/einloesen` | logged-in user | Redeem (part of) a voucher and return the new balance row. |
 | `GET` | `/export/abrechnung` | logged-in user | Download the settlements as a CSV file. |
+| `GET` | `/export/abrechnung/{kind}/{settlement_id}/ods` | logged-in user | Fill Tages-/Monats-/Jahresabrechnung.ods for one settlement. |
 | `GET` | `/export/artikel` | logged-in user | Download all articles as a CSV file. |
 | `GET` | `/export/bestellung` | logged-in user | Download the orders as a CSV file. |
+| `GET` | `/export/bestellung/{bestell_nr}/ods` | logged-in user | Fill the ODS order template (`Bestellvorlage_<typ>.ods`) for one order. |
 | `GET` | `/export/dsfinvk/{abrechnung_tag_id}` | logged-in user | DSFinV-K export of one Tagesabschluss as a ZIP archive. |
 | `GET` | `/export/inventur` | logged-in user | Download the stock-taking (Inventur) list as a CSV file. |
+| `GET` | `/export/inventur/{bestell_nr}/ods` | logged-in user | Fill `Inventur.ods` with the counted stock of one inventory order. |
 | `POST` | `/import/artikel` | logged-in user | Import articles from an uploaded CSV and report how many were created. |
 | `POST` | `/import/bestellung` | logged-in user | Import orders from an uploaded CSV and report how many were created. |
 | `GET` | `/kassenstand/` | logged-in user | List cash drawer bookings, newest first. |
@@ -1260,6 +1263,26 @@ Download the settlements as a CSV file.
 |---|---|
 | 200 | object |
 
+### `GET /export/abrechnung/{kind}/{settlement_id}/ods`
+
+Fill Tages-/Monats-/Jahresabrechnung.ods for one settlement.
+
+**Access:** logged-in user
+
+**Parameters**
+
+| Name | In | Type | Required | Constraints |
+|---|---|---|---|---|
+| kind | path | one of `tag`, `monat`, `jahr` | yes |  |
+| settlement_id | path | integer | yes |  |
+
+**Responses**
+
+| Status | Body |
+|---|---|
+| 200 | object |
+| 422 | HTTPValidationError |
+
 ### `GET /export/artikel`
 
 Download all articles as a CSV file.
@@ -1283,6 +1306,26 @@ Download the orders as a CSV file.
 | Status | Body |
 |---|---|
 | 200 | object |
+
+### `GET /export/bestellung/{bestell_nr}/ods`
+
+Fill the ODS order template (`Bestellvorlage_<typ>.ods`) for one order.
+
+**Access:** logged-in user
+
+**Parameters**
+
+| Name | In | Type | Required | Constraints |
+|---|---|---|---|---|
+| bestell_nr | path | integer | yes |  |
+| typ | query | string | no | pattern ^(LM\|KHW)$, default LM |
+
+**Responses**
+
+| Status | Body |
+|---|---|
+| 200 | object |
+| 422 | HTTPValidationError |
 
 ### `GET /export/dsfinvk/{abrechnung_tag_id}`
 
@@ -1314,6 +1357,25 @@ Download the stock-taking (Inventur) list as a CSV file.
 | Status | Body |
 |---|---|
 | 200 | object |
+
+### `GET /export/inventur/{bestell_nr}/ods`
+
+Fill `Inventur.ods` with the counted stock of one inventory order.
+
+**Access:** logged-in user
+
+**Parameters**
+
+| Name | In | Type | Required | Constraints |
+|---|---|---|---|---|
+| bestell_nr | path | integer | yes |  |
+
+**Responses**
+
+| Status | Body |
+|---|---|
+| 200 | object |
+| 422 | HTTPValidationError |
 
 ### `POST /import/artikel`
 

@@ -98,7 +98,7 @@ to every caller.
 | `/zaehlprotokoll` | Cash count protocols (attached to a settlement) |
 | `/bestellung` | Orders and inventory counts with positions |
 | `/tse` | TSE status, commissioning/preflight/unblock, transaction lifecycle, exports |
-| `/import`, `/export` | CSV import (articles, orders) and exports (articles, orders, inventory, settlement, DSFinV-K zip) |
+| `/import`, `/export` | CSV import (articles, orders) and exports (articles, orders, inventory, settlement, DSFinV-K zip, filled ODS templates for orders, inventory and settlements) |
 | `/users` | Admin user management, deactivation, password reset |
 | `/training` | Training-mode status and reset (sandbox database) |
 

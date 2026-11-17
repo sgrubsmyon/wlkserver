@@ -89,6 +89,7 @@ once). `.env` is git-ignored — never commit secrets.
 | `VAT_ROUNDING_METHOD` | `horizontal` | Receipt VAT rounding: `horizontal` (per position, Java POS) or `vertical` (per VAT rate, e-invoice compatible). Invalid values abort startup |
 | `DSFINVK_EXPORT_DIR` | unset | Directory for the DSFinV-K ZIP written after every Tagesabschluss; unset means on-demand only |
 | `IMAGES_DIR` | unset | Directory with the article pictures (`<artikel_id>.jpg|png|webp`); unset disables the picture endpoints (503) |
+| `VORLAGEN_DIR` | `../git/vorlagen` | ODS templates for the exports (`Bestellvorlage_*.ods`, `Inventur.ods`, `Tages-/Monats-/Jahresabrechnung.ods`); a missing template fails that export |
 
 Article pictures are files, not DB rows: `PUT /artikel/{id}/bild` (multipart
 field `bild`, max. 5 MB, JPEG/PNG/WebP detected by magic bytes) stores

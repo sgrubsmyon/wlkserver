@@ -47,6 +47,8 @@ class Sheet:
         self._model = copy.deepcopy(
             table.getElementsByType(TableRow)[model_row]
         )
+        if self._model.getAttribute("numberrowsrepeated") is not None:
+            self._model.setAttribute("numberrowsrepeated", 1)
 
     def set(self, row: int, column: int, value) -> None:
         """Set one cell (0-based), growing the table by cloning the model row."""
@@ -56,6 +58,13 @@ class Sheet:
 
     def _row(self, index: int) -> TableRow:
         rows = self.table.getElementsByType(TableRow)
+        if index < len(rows):
+            # A template may mark the data row as repeated (e.g. 57 empty rows
+            # of the same style). Writing into it must not duplicate the value.
+            row = rows[index]
+            if row.getAttribute("numberrowsrepeated") is not None:
+                row.setAttribute("numberrowsrepeated", 1)
+            return row
         while len(rows) <= index:
             clone = copy.deepcopy(self._model)
             for cell in clone.getElementsByType(TableCell):

@@ -6,3 +6,4 @@ pytest
 pytest-cov
 bcrypt
 PyJWT
+odfpy # ODS/ODT template export (no LibreOffice needed)

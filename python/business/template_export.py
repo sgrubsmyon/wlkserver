@@ -217,13 +217,16 @@ def export_settlement(session, kind: str, settlement_id: int) -> bytes:
         line += 4
 
     if kind == "tag":
-        for stornos in _storno_sums(session, row):
-            sheet.set(line, 0, f"Storno ({_vat_label(stornos[0])})")
-            sheet.set(line, 1, stornos[1])
+        rates = [_decimal(vat.mwst_satz) for vat in vat_rows]
+        stornos = dict(_storno_sums(session, row))
+        retouren = dict(_retoure_sums(session, row))
+        for rate in rates:
+            sheet.set(line, 0, f"Storno ({_vat_label(rate)})")
+            sheet.set(line, 1, stornos.get(rate, Decimal("0")))
             line += 1
-        for retouren in _retoure_sums(session, row):
-            sheet.set(line, 0, f"Retouren ({_vat_label(retouren[0])})")
-            sheet.set(line, 1, retouren[1])
+        for rate in rates:
+            sheet.set(line, 0, f"Retouren ({_vat_label(rate)})")
+            sheet.set(line, 1, retouren.get(rate, Decimal("0")))
             line += 1
         sheet.set(line, 0, "Entnahmen")
         sheet.set(line, 1, _withdrawals(session, row))

@@ -97,8 +97,13 @@ AUTH_SECRET=…          # long random value, not the dev placeholder
 Generate `AUTH_SECRET` with
 `python3 -c "import secrets; print(secrets.token_hex(32))"`.
 Add the TSE and DSFinV-K variables from the table in `python/README.md` when
-they apply. The file is read by `config.py` itself, so no `EnvironmentFile` is
-needed in the unit. Make it readable for the service user only:
+they apply. The ODS exports need the Java POS templates: copy
+`../git/vorlagen/` to `/opt/wlkserver/vorlagen/` and set
+`VORLAGEN_DIR=/opt/wlkserver/vorlagen` (the default `../git/vorlagen` only
+matches a development checkout). A missing template makes that one export fail
+with a 500 and a `VORLAGEN_DIR` hint; everything else keeps working. The file is
+read by `config.py` itself, so no `EnvironmentFile` is needed in the unit. Make
+it readable for the service user only:
 
 ```
 sudo chown wlkserver:wlkserver /opt/wlkserver/python/.env

@@ -4,7 +4,7 @@ Imports decode the uploaded file as UTF-8 and delegate the row handling to
 `utils.csv_import`; exports stream generated CSV as a download. The DSFinV-K
 export bundles one Tagesabschluss as a ZIP archive.
 """
-from typing import Annotated, Optional
+from typing import Annotated, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
 from fastapi.responses import Response
@@ -82,4 +82,51 @@ def export_dsfinvk_zip(abrechnung_tag_id: int, session: SessionDep):
         content=data,
         media_type="application/zip",
         headers={"Content-Disposition": f"attachment; filename=dsfinvk_{abrechnung_tag_id}.zip"},
+    )
+
+
+ODS_MEDIA_TYPE = "application/vnd.oasis.opendocument.spreadsheet"
+
+
+@router.get("/export/bestellung/{bestell_nr}/ods")
+def export_bestellung_ods(
+    bestell_nr: int,
+    session: SessionDep,
+    typ: Annotated[str, Query(pattern="^(LM|KHW)$")] = "LM",
+):
+    """Fill the ODS order template (`Bestellvorlage_<typ>.ods`) for one order."""
+    from ..business.template_export import export_bestellung
+
+    data = export_bestellung(session, bestell_nr, typ)
+    return Response(
+        content=data,
+        media_type=ODS_MEDIA_TYPE,
+        headers={"Content-Disposition": f"attachment; filename=Bestellvorlage_{typ}_{bestell_nr}.ods"},
+    )
+
+
+@router.get("/export/inventur/{bestell_nr}/ods")
+def export_inventur_ods(bestell_nr: int, session: SessionDep):
+    """Fill `Inventur.ods` with the counted stock of one inventory order."""
+    from ..business.template_export import export_inventur
+
+    data = export_inventur(session, bestell_nr, "IVT")
+    return Response(
+        content=data,
+        media_type=ODS_MEDIA_TYPE,
+        headers={"Content-Disposition": f"attachment; filename=Inventur_{bestell_nr}.ods"},
+    )
+
+
+@router.get("/export/abrechnung/{kind}/{settlement_id}/ods")
+def export_abrechnung_ods(kind: Literal["tag", "monat", "jahr"], settlement_id: int, session: SessionDep):
+    """Fill Tages-/Monats-/Jahresabrechnung.ods for one settlement."""
+    from ..business.template_export import export_settlement
+
+    data = export_settlement(session, kind, settlement_id)
+    names = {"tag": "Tagesabrechnung", "monat": "Monatsabrechnung", "jahr": "Jahresabrechnung"}
+    return Response(
+        content=data,
+        media_type=ODS_MEDIA_TYPE,
+        headers={"Content-Disposition": f"attachment; filename={names[kind]}_{settlement_id}.ods"},
     )
