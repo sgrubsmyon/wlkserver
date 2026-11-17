@@ -2,8 +2,8 @@
 
 > **Sync note**: This document and `concepts/IMPLEMENTATION_PLAN.md` must be kept in sync. When implementation progress changes, update both files so new sessions without prior memory see a consistent status.
 
-> **Last Updated**: 2026-10-31  
-> **Status**: Phases 1-5 implemented at router level (TSE export adapter untested without hardware); main Phase 6/7 flows wired (see "Business Logic Wiring Gaps" for what remains); **all 2026-10-28 audit gaps #1-#7 are done (DSFinV-K export, sale auxiliary lines, Anzahlung split, month/year invalidation, Zählprotokoll lifecycle, `abrechnung_tag_tse`/signature counter, training sandbox database), see "Business-logic gaps"; edge-case validation pass done (2026-10-31), sale-side TSE signing wired (2026-11-01); only the client-side price-tag export remains as a minor divergence**; TSE commissioning safety checklist open before the one-shot live run (`concepts/TSE_FAILURE_PATHWAYS.md`), the client GUI for login/TSE status/TSE init exists since 2026-11-14; auth enforced on all endpoints (admin role for admin operations); parity audit of the remaining low-priority endpoints done and resolved (see "Parity Audit"), Bestellung positions + date filter implemented; bar_brutto aggregation matches Java; sale workflow (validation, automatic discounts, all four modes, Pfand/RABATT/Aufschlag/Gutschein-Einlösung positions, Anzahlung creation/resolution), storno (payment-mode parity, cash payout, settlement lock, rollback, attribution), cash register (payment, balance validation, end-of-day preview) complete; validation framework finished (model constraints + `ensure_*` helpers in use); voucher redemption uses the Java balance calculation; search/filter/pagination/sorting finished for all list endpoints; Bestellung CSV import supports positions; Bestellung/Inventur CSV export added (ODS deferred); CORS configured; core `/training` endpoints; integration tests incl. concurrency; same-origin nginx deployment and script automation documented as planned; VAT module Java-parity checked, 100% tested, rounding method configurable; test coverage 90%
+> **Last Updated**: 2026-11-17  
+> **Status**: Phases 1-5 implemented at router level (TSE export adapter untested without hardware); main Phase 6/7 flows wired (see "Business Logic Wiring Gaps" for what remains); **all 2026-10-28 audit gaps #1-#7 are done (DSFinV-K export, sale auxiliary lines, Anzahlung split, month/year invalidation, Zählprotokoll lifecycle, `abrechnung_tag_tse`/signature counter, training sandbox database), see "Business-logic gaps"; edge-case validation pass done (2026-10-31), sale-side TSE signing wired (2026-11-01); only the client-side price-tag export remains as a minor divergence**; TSE commissioning safety checklist open before the one-shot live run (`concepts/TSE_FAILURE_PATHWAYS.md`), the client GUI for login/TSE status/TSE init exists since 2026-11-14; auth enforced on all endpoints (admin role for admin operations); parity audit of the remaining low-priority endpoints done and resolved (see "Parity Audit"), Bestellung positions + date filter implemented; bar_brutto aggregation matches Java; sale workflow (validation, automatic discounts, all four modes, Pfand/RABATT/Aufschlag/Gutschein-Einlösung positions, Anzahlung creation/resolution), storno (payment-mode parity, cash payout, settlement lock, rollback, attribution), cash register (payment, balance validation, end-of-day preview) complete; validation framework finished (model constraints + `ensure_*` helpers in use); voucher redemption uses the Java balance calculation; search/filter/pagination/sorting finished for all list endpoints; Bestellung CSV import supports positions; Bestellung/Inventur CSV export added (ODS deferred); CORS configured; core `/training` endpoints; integration tests incl. concurrency; same-origin nginx deployment and script automation documented as planned; VAT module Java-parity checked, 100% tested, rounding method configurable; test coverage 90%; MariaDB test run green; deployment artifacts (nginx/TLS/systemd/backup) and the full documentation set (`docs/`) are in place
 
 ---
 
@@ -431,11 +431,11 @@ Steps 1-3 are what the "Proper separation of concerns" criterion below means; 4-
 
 ## 📚 Documentation Tasks
 
-- [ ] API Documentation Enhancement - `docs/API.md` and auto-generated `/docs` exist; the Kassenstand and Abrechnung flow (incl. JSON examples) is documented in `docs/KASSENSTAND_UND_ABRECHNUNG.md`, the remaining endpoint reference is still incomplete
-- [ ] Code Documentation - docstrings are inconsistent across routers/business modules
-- [ ] Migration Documentation - guide for switching from the Java POS to the API is missing
-- [ ] Setup and Deployment - dev/prod start, auth and HTTPS are in `python/README.md`; the fresh-install guide (Ubuntu packages, MariaDB users, `deployment/create_db.sql`, venv/.env, bootstrap admin password) and the systemd unit (`deployment/wlkserver.service`, see `deployment/README.md`) are written. Still missing: TLS setup, backup procedure and the nginx site config. The planned same-origin nginx topology and the script-automation rules are documented in `concepts/IMPLEMENTATION_PLAN.md` (Phase 7.4) and in the Production Readiness section here.
-- [ ] Database Schema Documentation - schema reference is missing (`../git/mysql/generateDB.sql` is the only source)
+- [x] API Documentation Enhancement (2026-11-17) - `docs/API.md` is the hand-written overview (base URL incl. the `/api` nginx prefix, authentication, error format, pagination/filter conventions, endpoint groups); `docs/API_REFERENCE.md` documents all 125 operations with parameters, request bodies, responses and access level, generated from the OpenAPI schema by `docs/generate_api_reference.py`. `/docs` and `/redoc` remain available
+- [x] Code Documentation (2026-11-17) - every module and every function in `python/routers`, `python/business`, `python/models`, `python/schemas`, `python/utils` and `python/repositories` has a docstring; endpoint docstrings double as OpenAPI descriptions
+- [x] Migration Documentation (2026-11-17) - `docs/MIGRATION_JAVA_TO_API.md`: what changes, prerequisites, freeze/backup, schema migrations 01-05, accounts, configuration, sandbox dry run, cutover, TSE, behavioural differences, script automation, rollback, verification checklist
+- [x] Setup and Deployment - dev/prod start and auth in `python/README.md`; `deployment/README.md` has the fresh-install guide (Ubuntu packages, MariaDB users, `deployment/create_db.sql`, venv/.env, bootstrap admin password), the systemd units (`wlkserver.service`, `wlkserver-training.service` + `wlkserver-backup.timer`), TLS via the internal CA (`make_tls_cert.sh`), the same-origin nginx site (`nginx-wlkserver.conf`) and the backup/restore procedure (`backup_db.sh`). Script-automation rules are documented in `concepts/IMPLEMENTATION_PLAN.md` (Phase 7.4)
+- [x] Database Schema Documentation (2026-11-17) - `docs/DATABASE.md`: conventions (append-only bookkeeping, article versioning, money/VAT/timestamp rules, special articles, training), all 28 tables with columns, types, defaults, primary keys and foreign keys, generated from `deployment/create_db.sql` by `docs/generate_db_reference.py`
 
 ---
 
@@ -501,7 +501,7 @@ The remaining imported items are quality/production tasks, tracked below.
 - [ ] Not yet covered on MariaDB: `test_concurrent_sales_are_consistent` still builds its own SQLite engine, so `SELECT ... FOR UPDATE` needs a MariaDB variant.
 - [x] **Frontend readiness** - CORS is configured in `python/main.py` (`CORS_ORIGINS` env var, defaults to the SvelteKit dev server on port 5173); `GET /bestellung` has a date filter. Keep the OpenAPI schema stable for the generated client.
 - [x] **Training mode** - `TRAINING_MODE` + `TRAINING_DB_URL` run the whole API instance against a separate persistent sandbox database (schema created from `models/tables.py`, production users mirrored, short catalog seeded only when the sandbox is empty, `POST /training/reset` clears and reseeds); a restart never wipes training data. In-memory SQLite is rejected: training receipts are signed on the TSE, so their rows must survive restarts. Every table is sandboxed, including master-data edits, which the Java POS `training_*` tables did not cover. TSE exports and automatic DSFinV-K writes are skipped (audit #7).
-- [ ] **Deployment** - setup, HTTPS and auth are documented in `python/README.md` and `deployment/README.md` (nginx/TLS/backups included); a migration guide and a DB schema reference are still missing.
+- [x] **Deployment** (2026-11-17) - setup, HTTPS and auth are documented in `python/README.md` and `deployment/README.md` (nginx/TLS/backups included); the Java-POS migration guide is `docs/MIGRATION_JAVA_TO_API.md` and the schema reference is `docs/DATABASE.md`.
 - [x] **Same-origin deployment behind nginx** (2026-11-17) - `deployment/nginx-wlkserver.conf` serves the SvelteKit build at `/`, proxies `/api/` to `127.0.0.1:8000` and terminates TLS with the internal CA. `deployment/wlkserver.service` now binds localhost with `--root-path /api`; `deployment/make_tls_cert.sh` creates the internal CA and server certificate (SAN for hostname/IP); `deployment/backup_db.sh` plus `wlkserver-backup.service`/`.timer` dump the DB daily with retention. `deployment/README.md` documents steps 6 (nginx/TLS/client build/firewall) and 7 (backups, including the separately backed-up `.env`/TSE secrets). CORS now only matters for the Vite dev server.
 - [ ] **Script automation (planned)** - future cron/scripts (price changes, supplier article imports, settlement creation) call the API over the same-origin nginx URL; CORS is irrelevant for them. They authenticate via `POST /auth/login` with a dedicated service account (visible in the `anmeldung` audit), verify the internal CA, re-login on `401`, and check state (`GET /abrechnung/monat/offen`, `GET /abrechnung/jahr/offen`) before creating because `POST`s are not idempotent. Kassenstand writes require a single API worker (process lock) or rely on `SELECT ... FOR UPDATE` in MariaDB.
 
@@ -522,14 +522,14 @@ The remaining imported items are quality/production tasks, tracked below.
 ### Quality Assurance
 
 - [x] 80%+ test coverage (90% achieved)
-- [ ] All endpoints documented
-- [ ] All code documented
+- [x] All endpoints documented (`docs/API_REFERENCE.md`, generated from the OpenAPI schema)
+- [x] All code documented (module and function docstrings across routers, business, models, schemas, utils)
 
 ### Documentation
 
-- [ ] Complete API documentation
-- [ ] Migration guide
-- [ ] Setup instructions
+- [x] Complete API documentation (`docs/API.md` + `docs/API_REFERENCE.md`)
+- [x] Migration guide (`docs/MIGRATION_JAVA_TO_API.md`)
+- [x] Setup instructions (`deployment/README.md`, `python/README.md`)
 
 ### Production Readiness
 

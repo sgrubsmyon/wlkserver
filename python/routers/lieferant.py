@@ -1,3 +1,8 @@
+"""Supplier endpoints: search, create, update and deactivate suppliers.
+
+Updates deactivate the old row and create a new version, so article references
+stay valid; rows are never deleted from the database.
+"""
 from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Query
@@ -32,6 +37,7 @@ def read_lieferanten(
     lieferant_name: str = "",
     offset: int = 0, limit: Annotated[int, Query(le=100)] = 100
     ) -> list[Lieferant]:
+    """List suppliers with filters and pagination."""
     selection = select(Lieferant)
     if aktiv_only:
         selection = selection.where(Lieferant.aktiv == True)
@@ -51,6 +57,7 @@ def read_lieferanten(
 
 @router.get("/{lieferant_id}")
 def read_single_lieferant(lieferant_id: int, session: SessionDep) -> Lieferant:
+    """Read one supplier by id; 404 if unknown."""
     lieferant = session.get(Lieferant, lieferant_id)
     if not lieferant:
         raise HTTPException(status_code=404, detail="Lieferant not found")
@@ -59,6 +66,7 @@ def read_single_lieferant(lieferant_id: int, session: SessionDep) -> Lieferant:
 
 @router.post("/", response_model=LieferantPublic)
 def create_lieferant(lieferant: LieferantBase, session: SessionDep):
+    """Create a supplier; 400 if the name already exists."""
     new_lieferant = Lieferant.model_validate(lieferant)
 
     # Check if this product group already exists
@@ -81,6 +89,7 @@ def create_lieferant(lieferant: LieferantBase, session: SessionDep):
 
 
 def delete_lieferant_intern(lieferant_id: int, session: SessionDep):
+    """Deactivate a supplier and return the updated row."""
     lieferant = session.get(Lieferant, lieferant_id)
     if not lieferant:
         raise HTTPException(status_code=404, detail="Lieferant not found")
@@ -93,12 +102,14 @@ def delete_lieferant_intern(lieferant_id: int, session: SessionDep):
 
 @router.delete("/{lieferant_id}")
 def delete_lieferant(lieferant_id: int, session: SessionDep):
+    """Deactivate a supplier instead of deleting it."""
     delete_lieferant_intern(lieferant_id, session)
     return {"message": "Lieferant deactivated"}
 
 
 @router.patch("/{lieferant_id}", response_model=LieferantPublic)
 def update_lieferant(lieferant_id: int, lieferant: LieferantUpdate, session: SessionDep):
+    """Update a supplier by deactivating it and creating a new version."""
     # This would be the code if we would want to really update a product group
     #
     # old_lieferant = session.get(Lieferant, lieferant_id)

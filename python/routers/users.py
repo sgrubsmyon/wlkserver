@@ -1,3 +1,9 @@
+"""Admin user management endpoints.
+
+Writes require an admin. Accounts can be deactivated instead of deleted; a
+delete is refused for the own account, for the last active admin and for users
+that bookkeeping rows still reference.
+"""
 from typing import Annotated, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -27,6 +33,7 @@ def read_users(
     offset: int = 0,
     limit: Annotated[int, Query(le=100)] = 100,
 ) -> list[UserPublic]:
+    """List users with role, active and name filters."""
     selection = select(User)
     if role:
         selection = selection.where(User.role == role)
@@ -40,6 +47,7 @@ def read_users(
 
 @router.get("/{user_id}")
 def read_user(user_id: int, session: SessionDep) -> UserPublic:
+    """Read one user by id; 404 if unknown."""
     u = session.get(User, user_id)
     if not u:
         raise HTTPException(status_code=404, detail="User not found")
@@ -48,6 +56,7 @@ def read_user(user_id: int, session: SessionDep) -> UserPublic:
 
 @router.post("/", response_model=UserPublic)
 def create_user(user: UserCreate, session: SessionDep, _admin=Depends(require_admin)):
+    """Create a user with a hashed password (admin only); 400 if the name is taken."""
     existing = session.exec(select(User).where(User.username == user.username)).first()
     if existing:
         raise HTTPException(status_code=400, detail="Username already exists")
@@ -68,6 +77,7 @@ def create_user(user: UserCreate, session: SessionDep, _admin=Depends(require_ad
 
 @router.patch("/{user_id}", response_model=UserPublic)
 def update_user(user_id: int, user: UserUpdate, session: SessionDep, _admin=Depends(require_admin)):
+    """Update user fields, hashing a new password if one is given (admin only)."""
     u = session.get(User, user_id)
     if not u:
         raise HTTPException(status_code=404, detail="User not found")
@@ -91,6 +101,7 @@ def update_user(user_id: int, user: UserUpdate, session: SessionDep, _admin=Depe
 
 @router.post("/{user_id}/deactivate", response_model=UserPublic)
 def deactivate_user(user_id: int, session: SessionDep, _admin=Depends(require_admin)):
+    """Deactivate a user account (admin only)."""
     u = session.get(User, user_id)
     if not u:
         raise HTTPException(status_code=404, detail="User not found")
@@ -131,6 +142,7 @@ def delete_user(user_id: int, session: SessionDep, admin: User = Depends(require
 
 @router.post("/{user_id}/reset-password", response_model=UserPublic)
 def reset_password(user_id: int, session: SessionDep, new_password: str = Query(...), _admin=Depends(require_admin)):
+    """Set a new password for a user without the old one (admin only)."""
     u = session.get(User, user_id)
     if not u:
         raise HTTPException(status_code=404, detail="User not found")

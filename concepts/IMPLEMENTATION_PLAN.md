@@ -24,7 +24,7 @@ This document outlines the comprehensive implementation plan to complete the Fas
 - CORS configured in `python/main.py` via `CORS_ORIGINS` (defaults to the SvelteKit dev server); keep the OpenAPI schema stable
 - Add integration tests for complete sales/storno/settlement workflows (coverage target 80% reached)
 - All 2026-10-28 audit gaps and the edge-case validation pass are closed; the remaining work is the untested TSE hardware adapter and the documentation/production items - see "Business-logic gaps (2026-10-28 audit)" below
-- Complete documentation (migration guide, DB schema reference, docstrings)
+- Documentation done (2026-11-17): `docs/API.md` + generated `docs/API_REFERENCE.md`, generated `docs/DATABASE.md`, `docs/MIGRATION_JAVA_TO_API.md`, docstrings across `python/`
 
 > **Note**: The Phase sections below contain the original plan text (some "Current" states are outdated). The authoritative per-endpoint status is in `concepts/TODO.md`; the priority matrix and success criteria below are kept up to date.
 
@@ -761,12 +761,21 @@ Still missing: none for the planned workflows; new endpoints should keep adding 
 
 ## Documentation Requirements
 
-1. **API Documentation**: Auto-generated from FastAPI (already working via `/docs` and `/redoc`)
-2. **Code Documentation**: Docstrings for all functions and classes
-3. **Business Logic Documentation**: Explain complex calculations and workflows
-4. **Migration Guide**: For transitioning from Java POS to new API
-5. **Setup Instructions**: Clear instructions for deployment and configuration (incl. TLS setup on the LAN)
-6. **Database Schema Documentation**: Complete schema reference
+All six are met (2026-11-17):
+
+1. **API Documentation**: `docs/API.md` (overview) and `docs/API_REFERENCE.md`
+   (all 125 operations, generated from the OpenAPI schema); `/docs` and
+   `/redoc` remain available at runtime
+2. **Code Documentation**: module and function docstrings across routers,
+   business services, models, schemas and utils
+3. **Business Logic Documentation**: `concepts/IMPLEMENTATION_PLAN.md`
+   (Java-to-API mapping, settlement and TSE flow), `docs/VAT_ROUNDING.md`,
+   `docs/KASSENSTAND_UND_ABRECHNUNG.md`
+4. **Migration Guide**: `docs/MIGRATION_JAVA_TO_API.md`
+5. **Setup Instructions**: `deployment/README.md` (systemd, TLS, nginx,
+   backups, training instance) and `python/README.md` (development)
+6. **Database Schema Documentation**: `docs/DATABASE.md` (generated from
+   `deployment/create_db.sql`)
 
 ---
 
@@ -778,8 +787,8 @@ Still missing: none for the planned workflows; new endpoints should keep adding 
 - [x] Per-user accounts with login auditing and transaction attribution
 - [x] Comprehensive validation and error handling
 - [x] 80%+ test coverage (83%)
-- [ ] Complete API documentation
-- [ ] Working integration with existing database (SQLite-only tests so far)
+- [x] Complete API documentation (`docs/API.md` + generated `docs/API_REFERENCE.md`)
+- [ ] Working integration with existing database (suite runs green on MariaDB `kasse_test`; production data is exercised at cutover, see `docs/MIGRATION_JAVA_TO_API.md`)
 - [ ] Ready for frontend client development (CORS/proxy configured, OpenAPI schema stability to keep)
 - [ ] All existing functionality preserved and enhanced
 
@@ -892,4 +901,4 @@ Note: There are deliberately **no** `routers/verkauf_mwst.py` and `routers/verka
 6. **Remaining business logic** (2026-10-28 audit, see above): none; #1-#7 done
 7. **Training mode**: run the second instance via `deployment/wlkserver-training.service` (`TRAINING_MODE=1`, port 8001, `TRAINING_DB_URL` from `.env`); `POST /training/reset` reseeds the sandbox
 8. **Import/Export**: CSV exports for Bestellung and Inventur exist; ODS export is deferred to a later phase (needs an ODS library and the Java templates)
-9. **Documentation**: migration guide (Java POS → API), database schema reference, consistent docstrings. Deployment is documented: same-origin nginx topology and script automation in Phase 7.4, fresh-install guide + `create_db.sql` + systemd units + nginx site config/TLS script/backup timer in `deployment/`
+9. **Documentation**: done (2026-11-17): `docs/API.md`, `docs/API_REFERENCE.md`, `docs/DATABASE.md`, `docs/MIGRATION_JAVA_TO_API.md`, docstrings across `python/`; deployment in `deployment/` (nginx/TLS/backups/training unit)

@@ -17,11 +17,13 @@ ALGO = "HS256"
 
 
 def hash_password(password: str, salt: Optional[str] = None) -> str:
+    """bcrypt hash of a password; `salt` is accepted but ignored."""
     # salt is ignored (bcrypt manages its own salt); kept for API compatibility
     return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
 
 
 def verify_password(password: str, password_hash: str) -> bool:
+    """Check a password against a bcrypt hash or a legacy `pbkdf2_sha256` hash."""
     try:
         return bcrypt.checkpw(password.encode("utf-8"), password_hash.encode("utf-8"))
     except Exception:
@@ -38,6 +40,7 @@ def verify_password(password: str, password_hash: str) -> bool:
 
 
 def create_token(payload: dict[str, Any], ttl: int = TOKEN_TTL) -> str:
+    """Sign a JWT, adding `iat` and `exp` (seconds) when the payload lacks them."""
     body = dict(payload)
     now = int(time.time())
     body.setdefault("iat", now)
@@ -46,6 +49,7 @@ def create_token(payload: dict[str, Any], ttl: int = TOKEN_TTL) -> str:
 
 
 def decode_token(token: str) -> Optional[dict[str, Any]]:
+    """Verified token payload, or None for an invalid or expired token."""
     try:
         return jwt.decode(token, TOKEN_SECRET, algorithms=[ALGO])
     except Exception:
@@ -53,5 +57,6 @@ def decode_token(token: str) -> Optional[dict[str, Any]]:
 
 
 def generate_token(*args, **kwargs):
+    """Alias of `create_token` kept for older callers."""
     # compatibility: allow create_token alias
     return create_token(*args, **kwargs)

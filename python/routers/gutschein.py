@@ -1,3 +1,9 @@
+"""Vouchers (Gutschein): list, read, issue and redeem.
+
+The `gutschein` table is append-only: issuance writes the start value, each
+redemption appends a row with the reduced balance, so the current balance is the
+minimum `restbetrag` of a voucher's rows (see `business.voucher_logic`).
+"""
 from datetime import datetime, timezone
 from typing import Annotated, Optional
 
@@ -26,6 +32,7 @@ router = APIRouter(
 
 
 def _latest_ids_per_nr(session: SessionDep):
+    """Map `gutschein_nr` to its newest row's `gutschein_id`."""
     # latest gutschein_id per gutschein_nr
     sub = (
         select(Gutschein.gutschein_nr, func.max(Gutschein.gutschein_id).label("max_id"))
@@ -41,6 +48,7 @@ def read_gutscheine(
     offset: int = 0,
     limit: Annotated[int, Query(le=100)] = 100,
 ) -> list[GutscheinPublic]:
+    """List voucher rows with pagination, optionally filtered by voucher number."""
     selection = select(Gutschein)
     if gutschein_nr is not None:
         selection = selection.where(Gutschein.gutschein_nr == gutschein_nr)
@@ -50,6 +58,7 @@ def read_gutscheine(
 
 @router.get("/ausstehend")
 def read_ausstehende_gutscheine(session: SessionDep) -> list[GutscheinPublic]:
+    """Vouchers that still carry a balance, with their original start value."""
     from ..business.voucher_logic import voucher_start_value
 
     latest = _latest_ids_per_nr(session)
@@ -69,6 +78,7 @@ def read_ausstehende_gutscheine(session: SessionDep) -> list[GutscheinPublic]:
 
 @router.get("/eingeloest")
 def read_eingeloeste_gutscheine(session: SessionDep) -> list[GutscheinPublic]:
+    """Vouchers whose remaining balance is zero (fully redeemed)."""
     latest = _latest_ids_per_nr(session)
     if not latest:
         return []
@@ -81,6 +91,7 @@ def read_eingeloeste_gutscheine(session: SessionDep) -> list[GutscheinPublic]:
 
 @router.get("/{gutschein_id}")
 def read_single_gutschein(gutschein_id: int, session: SessionDep) -> GutscheinPublic:
+    """Read one voucher row by id; 404 when it does not exist."""
     g = session.get(Gutschein, gutschein_id)
     if not g:
         raise HTTPException(status_code=404, detail="Gutschein not found")
@@ -89,6 +100,12 @@ def read_single_gutschein(gutschein_id: int, session: SessionDep) -> GutscheinPu
 
 @router.post("/", response_model=GutscheinPublic)
 def create_gutschein(gutschein: GutscheinCreate, session: SessionDep, _user=Depends(require_user)):
+    """Issue a voucher: allocate the next voucher number and append the start row.
+
+    The number is drawn under `VOUCHER_LOCK` so parallel issuances cannot collide.
+    Referenced sale positions (`gutschein_in_vd_id`, `einloesung_in_vd_id`) must
+    exist, otherwise the request fails with 400.
+    """
     from ..business.voucher_logic import VOUCHER_LOCK, next_gutschein_nr
 
     user_id = getattr(gutschein, "user_id", None) or getattr(_user, "user_id", None)
@@ -127,6 +144,13 @@ def einloesen_gutschein(
     gutschein_in_vd_id: Optional[int] = Query(default=None),
     _user=Depends(require_user),
 ):
+    """Redeem (part of) a voucher and return the new balance row.
+
+    The amount comes from the linked sale position `einloesung_in_vd_id`, the
+    explicit `betrag` or the requested new `restbetrag`, which may be sent either
+    in the body or as query parameters. `redeem_voucher` rejects non-positive
+    amounts, amounts above the balance and a sale position used twice.
+    """
     from ..business.voucher_logic import redeem_voucher
 
     p = payload

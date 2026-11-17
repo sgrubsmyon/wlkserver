@@ -1,3 +1,8 @@
+"""Product group endpoints: search, create, update and deactivate groups.
+
+Groups form a three-level hierarchy (`toplevel_id`, `sub_id`, `subsub_id`).
+Updates deactivate the old row and create a new version instead of editing it.
+"""
 from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Query
@@ -31,6 +36,7 @@ def read_produktgruppen(
     produktgruppen_name: str = "",
     offset: int = 0, limit: Annotated[int, Query(le=100)] = 100
     ) -> list[Produktgruppe]:
+    """List product groups with filters and pagination."""
     selection = select(Produktgruppe)
     if aktiv_only:
         selection = selection.where(Produktgruppe.aktiv == True)
@@ -56,6 +62,7 @@ def read_produktgruppen(
 
 @router.get("/{produktgruppen_id}")
 def read_single_produktgruppe(produktgruppen_id: int, session: SessionDep) -> Produktgruppe:
+    """Read one product group by id; 404 if unknown."""
     produktgruppe = session.get(Produktgruppe, produktgruppen_id)
     if not produktgruppe:
         raise HTTPException(status_code=404, detail="Produktgruppe not found")
@@ -64,6 +71,7 @@ def read_single_produktgruppe(produktgruppen_id: int, session: SessionDep) -> Pr
 
 @router.post("/", response_model=ProduktgruppePublic)
 def create_produktgruppe(produktgruppe: ProduktgruppeCreate, session: SessionDep):
+    """Create a product group; 400 if the name already exists."""
     new_produktgruppe = Produktgruppe.model_validate(produktgruppe)
 
     # Check if this product group already exists
@@ -87,6 +95,7 @@ def create_produktgruppe(produktgruppe: ProduktgruppeCreate, session: SessionDep
 
 
 def delete_produktgruppe_intern(produktgruppen_id: int, session: SessionDep):
+    """Deactivate a product group and return the updated row."""
     produktgruppe = session.get(Produktgruppe, produktgruppen_id)
     if not produktgruppe:
         raise HTTPException(status_code=404, detail="Produktgruppe not found")
@@ -99,12 +108,14 @@ def delete_produktgruppe_intern(produktgruppen_id: int, session: SessionDep):
 
 @router.delete("/{produktgruppen_id}")
 def delete_produktgruppe(produktgruppen_id: int, session: SessionDep):
+    """Deactivate a product group instead of deleting it."""
     delete_produktgruppe_intern(produktgruppen_id, session)
     return {"message": "Produktgruppe deactivated"}
 
 
 @router.patch("/{produktgruppen_id}", response_model=ProduktgruppePublic)
 def update_produktgruppe(produktgruppen_id: int, produktgruppe: ProduktgruppeUpdate, session: SessionDep):
+    """Update a product group by deactivating it and creating a new version."""
     # This would be the code if we would want to really update a product group
     #
     # old_produktgruppe = session.get(Produktgruppe, produktgruppen_id)

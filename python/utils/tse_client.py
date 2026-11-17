@@ -28,6 +28,7 @@ def _locked(method):
     lock of its own, so interleaved commissioning/writes corrupt the state."""
     @wraps(method)
     def wrapper(self, *args, **kwargs):
+        """Run the wrapped call while holding the client lock."""
         with self._lock:
             return method(self, *args, **kwargs)
     return wrapper
@@ -169,6 +170,12 @@ class SeFinishTransactionResult(ctypes.Structure):
 
 
 def _load_library():
+    """Load the SE-API shared library and declare its ctypes prototypes.
+
+    Tries the configured path, the bundled vendor library and the system
+    library in that order. Returns None when no library can be loaded, which
+    puts the client into stub mode.
+    """
     for path in _LIB_PATHS:
         if not path:
             continue
@@ -313,6 +320,7 @@ def _load_library():
 
 class TSEClient:
     def __init__(self):
+        """Create the client; the device is opened on first use."""
         self._lock = threading.RLock()
         self.lib = _load_library()
         self.initialized = False
@@ -343,6 +351,7 @@ class TSEClient:
             return False
 
     def _authenticate(self, user, pin) -> bool:
+        """Authenticate a TSE user; records its PIN retries and blocked flag."""
         result = ctypes.c_int(0)
         remaining = ctypes.c_int16(0)
         rc = self.lib.se_authenticateUser(
@@ -355,6 +364,7 @@ class TSEClient:
         return rc == 0 and result.value == 0
 
     def _log_out(self, user):
+        """Log the TSE user out, ignoring errors."""
         try:
             self.lib.se_logOut(user.encode(), len(user))
         except Exception:
@@ -401,6 +411,12 @@ class TSEClient:
         return True
 
     def _ensure_time(self, pin=None, force=False):
+        """Refresh the TSE clock when the sync interval has elapsed.
+
+        Never authenticates TimeAdmin on an uncommissioned TSE, so a failed
+        attempt cannot burn PIN retries. Returns True on success and stores the
+        reason in `self.time_error` otherwise.
+        """
         now = int(datetime.now().timestamp())
         if not force and now < self._next_sync:
             return True
@@ -417,6 +433,7 @@ class TSEClient:
         return self._update_time(pin or config.tse_time_admin_pin())
 
     def _ensure_open(self):
+        """Open the device and keep its time set; False if either fails."""
         if not self._open():
             return False
         self._ensure_time()
@@ -424,6 +441,7 @@ class TSEClient:
 
     @_locked
     def pin_state(self):
+        """Raw `se_pin_state_flags_t` bitmask, or None on a read failure."""
         state = ctypes.c_uint32(0)
         if self.lib.se_getPinStatus(ctypes.byref(state)) != 0:
             return None
@@ -431,6 +449,7 @@ class TSEClient:
 
     @_locked
     def life_cycle_state(self):
+        """Raw `se_lcs_t` life cycle state, or None on a read failure."""
         state = ctypes.c_int(0)
         if self.lib.se_getLifeCycleState(ctypes.byref(state)) != 0:
             return None
@@ -502,6 +521,7 @@ class TSEClient:
 
     @_locked
     def status(self):
+        """Mode, device state and TSE identification values for the status API."""
         result = {
             "mode": "hardware" if self.lib is not None else "stub",
             "initialized": self.initialized,
@@ -903,6 +923,7 @@ class TSEClient:
 
     @_locked
     def close(self):
+        """Close the device and forget the scheduled time sync."""
         if self.lib is not None and self.opened:
             try:
                 self.lib.se_close()
@@ -1009,6 +1030,12 @@ class TSEClient:
     def _export_bytes(self, client_id_bytes, transaction_number=None, start_tx=None, end_tx=None,
                       start_date=0, end_date=0, max_records=0, previous_sig_counter=0, max_records2=0,
                       use_more=False):
+        """Raw TSE export bytes, empty when the export fails.
+
+        `use_more` continues an export by signature counter
+        (`se_exportMoreData`); otherwise `se_exportData` filters by transaction
+        number, TX range or date range.
+        """
         if not self._ensure_open():
             return b""
         if not use_more:
@@ -1048,11 +1075,13 @@ class TSEClient:
 
     @_locked
     def export_full(self):
+        """Complete TSE log export as raw bytes (empty on failure)."""
         data = self._export_bytes(CLIENT_ID, max_records=0)
         return data
 
     @_locked
     def export_certificates(self):
+        """Certificate export tar as raw bytes (empty on failure)."""
         if not self._ensure_open():
             return b""
         exported = ctypes.POINTER(ctypes.c_ubyte)()
@@ -1069,6 +1098,12 @@ class TSEClient:
 
     @_locked
     def export_partial(self, **kwargs):
+        """Incremental TSE export as raw bytes, filtered by the given kwargs.
+
+        Prefers a TX range (`start_tx_number`/`end_tx_number`), then a date
+        range (`start_date`/`end_date`, ISO strings), else continues after
+        `last_excluded_signature_counter`. `max_records` caps the result.
+        """
         # Prefer exportMoreData by signature counter if provided
         prev = kwargs.get("last_excluded_signature_counter", 0) or 0
         maxr = kwargs.get("max_records", 0) or 0
@@ -1081,6 +1116,7 @@ class TSEClient:
             )
         if kwargs.get("start_date") or kwargs.get("end_date"):
             def _to_epoch(s):
+                """Unix seconds of an ISO timestamp, 0 when absent or invalid."""
                 if not s:
                     return 0
                 try:
@@ -1098,6 +1134,7 @@ class TSEClient:
 
     @_locked
     def get_signature_counter(self):
+        """Current TSE signature counter, or None when it cannot be read."""
         if not self._ensure_open():
             return None
         counter = ctypes.c_uint32(0)
@@ -1111,6 +1148,11 @@ class TSEClient:
 
     @_locked
     def export_and_delete(self, **kwargs):
+        """Export incrementally, then delete the exported data up to the counter.
+
+        Deletion is best-effort: the export is returned even when deleting the
+        stored data fails.
+        """
         prev = kwargs.get("last_excluded_signature_counter", 0) or 0
         data = self.export_partial(last_excluded_signature_counter=prev, max_records=kwargs.get("max_records", 0))
         if not data:

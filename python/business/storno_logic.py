@@ -20,6 +20,12 @@ from .vat_calculator import _to_decimal
 
 
 def can_storno(verkauf: Verkauf, session: Optional[Session] = None) -> tuple[bool, str]:
+    """Whether a receipt may be storniert, with the reason when it may not.
+
+    Rejects missing receipts, stornos of stornos, receipts that already have a
+    storno and receipts inside a completed Tagesabschluss. The last two checks
+    need `session`.
+    """
     if verkauf is None:
         return False, "Verkauf not found"
     if getattr(verkauf, "storno_von", None) is not None:
@@ -43,6 +49,11 @@ def can_storno(verkauf: Verkauf, session: Optional[Session] = None) -> tuple[boo
 
 
 def validate_storno(*args, **kwargs):
+    """Load the original receipt and check `can_storno`.
+
+    Raises `NotFoundError` when it does not exist and `DomainError` when it may
+    not be storniert. Accepts session and receipt number in either order.
+    """
     session = kwargs.get('session')
     rechnungs_nr = kwargs.get('rechnungs_nr')
     if session is None or rechnungs_nr is None:
@@ -62,6 +73,7 @@ def validate_storno(*args, **kwargs):
     return original
 
 def invert_detail(detail: VerkaufDetails, storno_rechnungs_nr: int) -> VerkaufDetails:
+    """Mirror one sale position: negative quantity and negative price."""
     inv = VerkaufDetails(
         position=detail.position,
         stueckzahl=-detail.stueckzahl,
@@ -75,6 +87,7 @@ def invert_detail(detail: VerkaufDetails, storno_rechnungs_nr: int) -> VerkaufDe
 
 
 def invert_mwst(mwst: VerkaufMwst, storno_rechnungs_nr: int) -> VerkaufMwst:
+    """Mirror one VAT row: negative net and tax amounts."""
     inv = VerkaufMwst(
         rechnungs_nr=storno_rechnungs_nr,
         mwst_satz=mwst.mwst_satz,
@@ -85,6 +98,13 @@ def invert_mwst(mwst: VerkaufMwst, storno_rechnungs_nr: int) -> VerkaufMwst:
 
 
 def create_storno(*args, **kwargs):
+    """Insert the reversing receipt (details and VAT rows inverted).
+
+    The new receipt copies the original payment mode and points back via
+    `storno_von`. `commit=False` keeps it in the caller's transaction; the
+    caller then books the cash payout in the same transaction. Rolls back on
+    any error so no half-written storno remains.
+    """
     session = kwargs.get("session")
     rechnungs_nr = kwargs.get("rechnungs_nr")
     if session is None or rechnungs_nr is None:

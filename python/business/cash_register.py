@@ -36,6 +36,7 @@ SMALLEST_NOTE = NOTE_DENOMINATIONS[0]
 KASSENSTAND_LOCK = threading.Lock()
 
 def _resolve(a, b):
+    """Return arguments as `(session, value)` regardless of their order."""
     from sqlmodel import Session as S
     if isinstance(a, S) and not isinstance(b, S):
         return a, b
@@ -45,10 +46,12 @@ def _resolve(a, b):
 
 
 def get_current_kassenstand(session: Session) -> Optional[Kassenstand]:
+    """Latest `kassenstand` row, or None while no cash entry exists."""
     return latest_kassenstand(session)
 
 
 def get_current_balance(session: Session) -> Decimal:
+    """Current drawer balance (`neuer_kassenstand`), 0 when there is no entry."""
     ks = get_current_kassenstand(session)
     if ks is None:
         return Decimal("0")
@@ -56,12 +59,14 @@ def get_current_balance(session: Session) -> Decimal:
 
 
 def calculate_change(total: Any, kunde_gibt: Any) -> Decimal:
+    """Change to hand back: `kunde_gibt - total`, rounded to cents."""
     t = _to_decimal(total) or Decimal("0")
     k = _to_decimal(kunde_gibt) or Decimal("0")
     return (k - t).quantize(Decimal("0.01"))
 
 
 def ec_payment_threshold_check(total: Any, ec_zahlung: bool) -> Optional[str]:
+    """Warning text when an EC payment is below `EC_THRESHOLD`, else None."""
     t = _to_decimal(total) or Decimal("0")
     if ec_zahlung and t < EC_THRESHOLD:
         return "Gesamtbetrag liegt unter 10,00 EUR bei EC-Zahlung"
@@ -92,6 +97,7 @@ def drawer_targets() -> tuple[Decimal, Decimal]:
     config (`SOLL_MUENZ_KASSENSTAND`, `SOLL_SCHEIN_KASSENSTAND`, 50/100 by default).
     """
     def read(name: str, default: str) -> Decimal:
+        """Read one configured amount; raise ValueError if it is not cent-exact."""
         raw = config.env(name, default)
         try:
             value = Decimal(str(raw).strip())
@@ -105,6 +111,7 @@ def drawer_targets() -> tuple[Decimal, Decimal]:
 
 
 def _whole_notes(amount: Decimal, rounding: str) -> Decimal:
+    """Largest whole-note amount within `amount`, rounded up or down as given."""
     return (amount / SMALLEST_NOTE).to_integral_value(rounding=rounding) * SMALLEST_NOTE
 
 
@@ -163,6 +170,17 @@ def kassenstand_reset_suggestion(counts: Mapping[Decimal, int]) -> dict:
 
 
 def update_kassenstand_for_sale(*args, **kwargs) -> Kassenstand:
+    """Append a cash entry for a receipt: previous balance plus the receipt total.
+
+    The balance is read-modify-write, so the call holds `KASSENSTAND_LOCK` and
+    locks the latest row `FOR UPDATE` where the database supports it. Raises
+    `NotFoundError` when the receipt does not exist, and `DomainError` from
+    `validate_balance_change` for an invalid Entnahme.
+
+    `commit=False` keeps the row in the caller's transaction; the caller must
+    then hold `KASSENSTAND_LOCK` until its commit (pass `lock=False` only inside
+    that lock).
+    """
     session = kwargs.get('session')
     rechnungs_nr = kwargs.get('rechnungs_nr')
     if session is None or rechnungs_nr is None:
@@ -220,6 +238,7 @@ def process_payment(total, ec_zahlung=False, kunde_gibt=None):
 
 
 def last_settlement(session: Session):
+    """Most recent Tagesabschluss row, or None when the day is still open."""
     from ..models import AbrechnungTag
     return session.exec(select(AbrechnungTag).order_by(AbrechnungTag.id.desc())).first()
 

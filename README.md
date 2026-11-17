@@ -8,6 +8,23 @@ The API is written with Python's [FastAPI](https://fastapi.tiangolo.com/), so yo
 minimal amount of code to get an API running. It also provides automatic
 documentation/testing via Swagger at `/docs`. The database is MariaDB.
 
+## Documentation
+
+- [`docs/API.md`](docs/API.md) - overview: base URL, authentication, errors,
+  conventions, endpoint groups
+- [`docs/API_REFERENCE.md`](docs/API_REFERENCE.md) - every endpoint with
+  parameters, request bodies and responses (generated from the OpenAPI schema)
+- [`docs/DATABASE.md`](docs/DATABASE.md) - tables, keys and bookkeeping rules
+- [`docs/KASSENSTAND_UND_ABRECHNUNG.md`](docs/KASSENSTAND_UND_ABRECHNUNG.md) -
+  cash register and settlement flow with examples
+- [`docs/MIGRATION_JAVA_TO_API.md`](docs/MIGRATION_JAVA_TO_API.md) - cutover
+  from the Java POS
+- [`docs/VAT_ROUNDING.md`](docs/VAT_ROUNDING.md) - VAT rounding and its legal
+  background
+- `python/README.md` - development setup and environment variables;
+  `deployment/README.md` - production: systemd, TLS, nginx, backups, training
+  instance
+
 ## Install from scratch on Ubuntu
 
 The following instructions assume a fresh Ubuntu Linux (24.04 or newer) with
@@ -101,14 +118,16 @@ python/venv/bin/fastapi dev
 ```
 
 For production, run it from the repository root (one worker only, the TSE
-client needs a per-process lock):
+client needs a per-process lock). It listens on localhost and is published
+under `/api` by nginx:
 
 ```
-python/venv/bin/uvicorn python.main:app --host 0.0.0.0 --port 8000 --workers 1
+python/venv/bin/uvicorn python.main:app --host 127.0.0.1 --port 8000 --workers 1 --root-path /api
 ```
 
-To run it as a systemd service, follow `deployment/README.md` (service user,
-`/opt/wlkserver` layout, `wlkserver.service`).
+To run it as a systemd service with TLS, nginx and backups, follow
+`deployment/README.md` (service user, `/opt/wlkserver` layout,
+`wlkserver.service`, `nginx-wlkserver.conf`, `wlkserver-backup.timer`).
 
 ### 6. Change the bootstrap admin password
 
@@ -134,16 +153,19 @@ Additional cashier accounts can then be created via `POST /users/`
 ### Optional: training database
 
 `deployment/create_db.sql` already creates the empty `kasse_training` database
-and grants `kassenadmin` access to it. The training tables and test catalog are
-created automatically on API startup. Use a **second** API instance for it, do
-not switch the production instance to training mode.
+and grants `kassenadmin` access to it. The training schema and test catalog are
+created automatically on API startup of the training instance.
 
-Add to that instance's `python/.env`:
+Use a **second** API instance for it, never the production instance:
+`deployment/wlkserver-training.service` sets `TRAINING_MODE=1` itself. Add only
+the sandbox URL to `python/.env` (ignored while training mode is off):
 
 ```
-TRAINING_MODE=1
 TRAINING_DB_URL=mariadb+mariadbconnector://kassenadmin:your-admin-password@localhost/kasse_training
 ```
+
+Do not put `TRAINING_MODE` into `.env`: the production unit reads the same file.
+See `deployment/README.md`, step 8.
 
 ### Run the tests
 

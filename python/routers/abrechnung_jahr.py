@@ -1,3 +1,9 @@
+"""Yearly settlement (Jahresabschluss).
+
+Aggregates the VAT rows of the year's monthly settlements. A year can only be
+settled once monthly settlements exist for it; re-settling replaces the existing
+yearly settlement and its VAT rows.
+"""
 from datetime import datetime, timezone, date
 from typing import Annotated, Optional
 import calendar
@@ -35,6 +41,7 @@ def read_abrechnung_jahre(
     offset: int = 0,
     limit: Annotated[int, Query(le=100)] = 100,
 ) -> list[AbrechnungJahrPublic]:
+    """List yearly settlements with pagination, ascending or descending by id."""
     order = AbrechnungJahr.id.desc() if desc else AbrechnungJahr.id
     rows = paginate(session, select(AbrechnungJahr), offset, limit, order)
     return [AbrechnungJahrPublic.model_validate(r) for r in rows]
@@ -42,6 +49,7 @@ def read_abrechnung_jahre(
 
 @router.get("/offen")
 def read_offene_abrechnung_jahre(session: SessionDep) -> list[int]:
+    """Years with monthly settlements that are not settled yet."""
     monate = session.exec(select(AbrechnungMonat)).all()
     years_present = set(m.monat.year for m in monate)
     settled = session.exec(select(AbrechnungJahr)).all()
@@ -60,6 +68,7 @@ def read_offene_abrechnung_jahre(session: SessionDep) -> list[int]:
 
 @router.get("/{jahr_id}")
 def read_single_abrechnung_jahr(jahr_id: int, session: SessionDep) -> dict:
+    """Read one yearly settlement including its VAT rows; 404 when unknown."""
     j = session.get(AbrechnungJahr, jahr_id)
     if not j:
         raise HTTPException(status_code=404, detail="AbrechnungJahr not found")
@@ -73,6 +82,14 @@ def read_single_abrechnung_jahr(jahr_id: int, session: SessionDep) -> dict:
 
 @router.post("/", response_model=AbrechnungJahrPublic)
 def create_abrechnung_jahr(payload: Optional[AbrechnungJahrCreate], session: SessionDep, credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme), _user=Depends(require_user)):
+    """Settle a year from its monthly settlements (logged-in only).
+
+    Without `jahr` the earliest unsettled year is chosen, falling back to the
+    current one. The receipt id range may be overridden by
+    `abrechnung_tag_id_von` / `_bis`. Fails with 400 when the year has no monthly
+    settlements. An existing settlement for the year and its VAT rows are deleted
+    and rebuilt.
+    """
     p = payload or AbrechnungJahrCreate()
 
     if p.jahr is not None:

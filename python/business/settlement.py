@@ -33,6 +33,7 @@ logger = logging.getLogger(__name__)
 
 
 def last_settlement(session: Session) -> AbrechnungTag | None:
+    """Most recent Tagesabschluss row, or None when nothing was settled yet."""
     return session.exec(select(AbrechnungTag).order_by(AbrechnungTag.id.desc())).first()
 
 

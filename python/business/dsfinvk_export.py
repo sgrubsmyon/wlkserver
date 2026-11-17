@@ -104,6 +104,7 @@ class _Table:
 
 
 def _int_or_none(value: str | None) -> int | None:
+    """Parse an optional integer from the schema XML."""
     return int(value) if value else None
 
 
@@ -135,10 +136,12 @@ def _schema() -> dict[str, _Table]:
 
 
 def _config() -> dict[str, str]:
+    """Stammdaten from the `DSFINVK_*` environment variables (with defaults)."""
     return {key: config.env("DSFINVK_" + key, _DEFAULTS.get(key, "")) for key in _CONFIG_KEYS}
 
 
 def _format_number(value, accuracy: int, table: _Table) -> str:
+    """Format a numeric cell with the table's decimal and grouping symbols."""
     number = _to_decimal(value)
     if number is None:
         return ""
@@ -173,6 +176,7 @@ def _render(table: _Table, rows: list[dict]) -> bytes:
 
 
 def _round2(value: Decimal) -> Decimal:
+    """Round to cents with ROUND_HALF_UP."""
     return value.quantize(CENT, rounding=ROUND_HALF_UP)
 
 
@@ -200,6 +204,7 @@ def _classify(detail, pfand_artikel_ids: set) -> str | None:
 
 
 def _case(zvalues: dict, gv_typ: str, brutto, netto, ust, ust_schluessel) -> dict:
+    """One `businesscases.csv` row for a GV_Typ bucket."""
     return {
         **zvalues,
         "GV_TYP": gv_typ,
@@ -213,12 +218,15 @@ def _case(zvalues: dict, gv_typ: str, brutto, netto, ust, ust_schluessel) -> dic
 
 
 def _ust_key(rate, mwst_by_rate: dict):
+    """DSFinV-K VAT key of a rate, or None when the rate is not in `mwst`."""
     mwst = mwst_by_rate.get(rate)
     return mwst.dsfinvk_ust_schluessel if mwst is not None else None
 
 
 def _sorted_totals(totals: dict, mwst_by_rate: dict):
+    """Totals sorted by VAT key, with rates lacking a key last."""
     def key(rate):
+        """Sort key: known VAT keys first, then by key, then by rate."""
         ust_key = _ust_key(rate, mwst_by_rate)
         return (ust_key is None, ust_key if ust_key is not None else 0, rate)
 
@@ -241,6 +249,7 @@ def _opening_balance(session: Session, previous: AbrechnungTag | None) -> Decima
 
 
 def _parse_tse_time(value: str | None) -> datetime | None:
+    """Parse a stored TSE timestamp; naive values are assumed to be UTC."""
     if not value:
         return None
     try:
@@ -256,6 +265,7 @@ def _parse_tse_time(value: str | None) -> datetime | None:
 
 
 def _tse_row(zvalues: dict, tse: AbrechnungTagTse | None) -> dict:
+    """`tse.csv` row of the settlement's TSE status (empty when there is none)."""
     if tse is None:
         return {}
     row = dict(zvalues)

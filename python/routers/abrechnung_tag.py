@@ -1,3 +1,9 @@
+"""Daily settlement (Tagesabschluss).
+
+`POST /abrechnung/tag` settles the open period after the last settlement, writes
+the VAT rows, an incremental TSE export, the count protocol and the DSFinV-K file
+(Java `insertTagesAbrechnung`). The preview runs the same calculation read-only.
+"""
 from typing import Annotated, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -33,6 +39,7 @@ def read_abrechnung_tags(
     offset: int = 0,
     limit: Annotated[int, Query(le=100)] = 100,
 ) -> list[AbrechnungTagPublic]:
+    """List daily settlements with pagination, ascending or descending by id."""
     order = AbrechnungTag.id.desc() if desc else AbrechnungTag.id
     rows = paginate(session, select(AbrechnungTag), offset, limit, order)
     return [AbrechnungTagPublic.model_validate(r) for r in rows]
@@ -40,6 +47,7 @@ def read_abrechnung_tags(
 
 @router.get("/offen")
 def read_offene_abrechnung_tags(session: SessionDep) -> list[str]:
+    """Distinct sale dates (ISO) that are not covered by a settlement yet."""
     last = last_settlement(session)
     last_bis = last.rechnungs_nr_bis if last else 0
     sales = session.exec(
@@ -63,6 +71,7 @@ def read_abrechnung_tag_preview(session: SessionDep) -> dict:
 
 @router.get("/{tag_id}")
 def read_single_abrechnung_tag(tag_id: int, session: SessionDep) -> dict:
+    """Read one daily settlement including its VAT rows; 404 when unknown."""
     t = session.get(AbrechnungTag, tag_id)
     if not t:
         raise HTTPException(status_code=404, detail="AbrechnungTag not found")
@@ -80,6 +89,12 @@ def create_abrechnung_tag(
     session: SessionDep,
     _user=Depends(require_user),
 ):
+    """Close the open period and return the new Tagesabschluss (logged-in only).
+
+    The payload carries the counted drawer and comment; the whole settlement runs
+    in one transaction including the incremental TSE export, the invalidation of
+    the affected month/year, the count protocol and the DSFinV-K file write.
+    """
     return create_daily_settlement(
         session, payload, user_id=getattr(_user, "user_id", None)
     )

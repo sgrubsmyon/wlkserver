@@ -1,3 +1,8 @@
+"""VAT rate endpoints.
+
+Reads are open to every user; create, update and delete require admin. A rate
+that product groups still use cannot be deleted.
+"""
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -34,6 +39,7 @@ def read_mwsts(
     search_string: str = "",
     offset: int = 0, limit: Annotated[int, Query(le=100)] = 100
     ) -> list[Mwst]:
+    """List VAT rates with search and pagination."""
     selection = select(Mwst)
     if search_string:
         # Split the search string into space separated terms
@@ -51,6 +57,7 @@ def read_mwsts(
 
 @router.get("/{mwst_id}")
 def read_single_mwst(mwst_id: int, session: SessionDep) -> Mwst:
+    """Read one VAT rate by id; 404 if unknown."""
     mwst = session.get(Mwst, mwst_id)
     if not mwst:
         raise HTTPException(status_code=404, detail="Mwst not found")
@@ -59,6 +66,7 @@ def read_single_mwst(mwst_id: int, session: SessionDep) -> Mwst:
 
 @router.post("/", response_model=MwstPublic, dependencies=[Depends(require_admin)])
 def create_mwst(mwst: MwstCreate, session: SessionDep):
+    """Create a VAT rate (admin only); 400 if the rate already exists."""
     # Check if a rate with this mwst_satz already exists
     existing = session.exec(
         select(Mwst).where(Mwst.mwst_satz == mwst.mwst_satz)).first()
@@ -75,11 +83,13 @@ def create_mwst(mwst: MwstCreate, session: SessionDep):
 
 @router.put("/{mwst_id}", response_model=MwstPublic, dependencies=[Depends(require_admin)])
 def replace_mwst(mwst_id: int, mwst: MwstUpdate, session: SessionDep):
+    """Replace a VAT rate (admin only); same behaviour as PATCH."""
     return update_mwst(mwst_id, mwst, session)
 
 
 @router.patch("/{mwst_id}", response_model=MwstPublic, dependencies=[Depends(require_admin)])
 def update_mwst(mwst_id: int, mwst: MwstUpdate, session: SessionDep):
+    """Update a VAT rate (admin only); 400 if the new rate already exists."""
     old_mwst = session.get(Mwst, mwst_id)
     if not old_mwst:
         raise HTTPException(status_code=404, detail="Mwst not found")
@@ -101,6 +111,11 @@ def update_mwst(mwst_id: int, mwst: MwstUpdate, session: SessionDep):
 
 @router.delete("/{mwst_id}", dependencies=[Depends(require_admin)])
 def delete_mwst(mwst_id: int, session: SessionDep):
+    """Delete a VAT rate (admin only).
+
+    Raises 409 if product groups still use the rate and 503 if the database
+    user lacks DELETE permission.
+    """
     mwst = session.get(Mwst, mwst_id)
     if not mwst:
         raise HTTPException(status_code=404, detail="Mwst not found")

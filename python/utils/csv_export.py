@@ -19,6 +19,7 @@ from ..business.vat_calculator import calculate_vat, _to_decimal
 
 
 def export_artikel_to_csv(session: Session) -> str:
+    """Export all articles as CSV (id, number, name, price)."""
     rows = session.exec(select(Artikel)).all()
     buf = io.StringIO()
     writer = csv.writer(buf)
@@ -57,6 +58,7 @@ def _order_details(session: Session, typen):
 
 
 def _mwst_satz(artikel: Artikel | None):
+    """VAT rate of an article via its product group, or None if unset."""
     if artikel is None or artikel.produktgruppe is None or artikel.produktgruppe.mwst is None:
         return None
     return artikel.produktgruppe.mwst.mwst_satz
@@ -142,6 +144,7 @@ def export_inventur_to_csv(session: Session, typ: str = "IVT") -> str:
 
 
 def export_abrechnung_to_csv(session: Session) -> str:
+    """One row per settlement and VAT rate, like the Java Abrechnung export."""
     rows = session.exec(select(AbrechnungTag)).all()
     buf = io.StringIO()
     writer = csv.writer(buf)

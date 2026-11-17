@@ -1,3 +1,9 @@
+"""Orders (Bestellung) and their positions.
+
+Orders are grouped by `typ` (LM, KHW, IVT) and their positions use
+`(bestell_nr, typ, position)` as key, so a typ change rewrites the child rows.
+Positions must be unique and reference existing articles.
+"""
 from datetime import datetime, timezone
 from typing import Annotated, Literal, Optional
 
@@ -40,6 +46,7 @@ def _validated_details(session: SessionDep, details: list[BestellungDetailsCreat
 
 
 def _add_details(session: SessionDep, bestell_nr: int, typ: str, details: list[BestellungDetailsCreate]):
+    """Stage the order's child rows; the caller commits."""
     for d in details:
         row = BestellungDetails(
             bestell_nr=bestell_nr,
@@ -52,6 +59,7 @@ def _add_details(session: SessionDep, bestell_nr: int, typ: str, details: list[B
 
 
 def _delete_details(session: SessionDep, bestell_nr: int, typ: str):
+    """Delete the order's child rows of one typ via a bulk statement."""
     # Bulk delete: the parent row cannot be removed while child rows exist, and
     # relying on the ORM's flush order fails on MariaDB (FKs enforced).
     session.exec(delete(BestellungDetails).where(
@@ -68,6 +76,7 @@ def read_bestellungen(
     offset: int = 0,
     limit: Annotated[int, Query(le=100)] = 100,
 ) -> list[BestellungPublic]:
+    """List orders, optionally filtered by typ and order date range."""
     selection = select(Bestellung)
     if typ is not None:
         selection = selection.where(Bestellung.typ == typ)
@@ -81,6 +90,7 @@ def read_bestellungen(
 
 @router.get("/{bestell_nr}")
 def read_single_bestellung(bestell_nr: int, session: SessionDep) -> dict:
+    """Read one order including its positions; 404 when it does not exist."""
     b = session.get(Bestellung, bestell_nr)
     if not b:
         raise HTTPException(status_code=404, detail="Bestellung not found")
@@ -96,6 +106,12 @@ def read_single_bestellung(bestell_nr: int, session: SessionDep) -> dict:
 
 @router.post("/", response_model=BestellungPublic)
 def create_bestellung(bestellung: BestellungCreate, session: SessionDep, credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme), _user=Depends(require_user)):
+    """Create an order with optional positions and return it.
+
+    Missing `typ`, `bestell_datum`, `jahr` and `kw` default to LM, now, the
+    current year and KW 1. Positions must have unique `position` values and
+    existing articles (400 otherwise).
+    """
     user_id = None
     if credentials is not None and credentials.credentials:
         from ..utils.auth import decode_token
@@ -124,6 +140,11 @@ def create_bestellung(bestellung: BestellungCreate, session: SessionDep, credent
 
 @router.patch("/{bestell_nr}", response_model=BestellungPublic)
 def update_bestellung(bestell_nr: int, bestellung: BestellungUpdate, session: SessionDep, _user=Depends(require_user)):
+    """Patch an order and, when details are sent, replace its positions.
+
+    Details are validated like on creation; replacing them deletes the rows of the
+    old typ first. A typ change without details re-keys the existing child rows.
+    """
     old = session.get(Bestellung, bestell_nr)
     if not old:
         raise HTTPException(status_code=404, detail="Bestellung not found")
@@ -154,6 +175,7 @@ def update_bestellung(bestell_nr: int, bestellung: BestellungUpdate, session: Se
 
 @router.delete("/{bestell_nr}")
 def delete_bestellung(bestell_nr: int, session: SessionDep, _user=Depends(require_user)):
+    """Delete an order and its positions; 404 when it does not exist."""
     b = session.get(Bestellung, bestell_nr)
     if not b:
         raise HTTPException(status_code=404, detail="Bestellung not found")

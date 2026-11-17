@@ -1,3 +1,9 @@
+"""Artikel catalogue: search, CRUD, versioning and article pictures.
+
+Updates never overwrite a row: changes to versioned fields deactivate the old
+article and create a new version, keeping sales history intact. Pictures are
+files next to the DB, keyed by article id and validated by magic bytes.
+"""
 from datetime import datetime, timezone
 
 import os
@@ -42,6 +48,7 @@ BILD_TYPES = {".jpg": "image/jpeg", ".png": "image/png", ".webp": "image/webp"}
 
 
 def _bild_dir() -> Path:
+    """Return the configured picture folder, creating it if needed."""
     folder = config.images_dir()
     if not folder:
         raise HTTPException(status_code=503, detail="IMAGES_DIR is not configured")
@@ -53,6 +60,7 @@ def _bild_dir() -> Path:
 
 
 def _bild_path(artikel_id: int) -> Path | None:
+    """Return the picture file of an article, or None if it has none."""
     folder = _bild_dir()
     for ext in BILD_TYPES:
         path = folder / f"{artikel_id}{ext}"
@@ -62,6 +70,7 @@ def _bild_path(artikel_id: int) -> Path | None:
 
 
 def _bild_extension(data: bytes) -> str | None:
+    """Detect the picture type from magic bytes; None if unsupported."""
     if data.startswith(b"\xff\xd8\xff"):
         return ".jpg"
     if data.startswith(b"\x89PNG\r\n\x1a\n"):
@@ -86,6 +95,7 @@ def _link_bild(old_id: int, new_id: int) -> None:
 
 @router.get("/{artikel_id}/bild")
 def read_artikel_bild(artikel_id: int):
+    """Serve the article picture; 404 if the article has none."""
     path = _bild_path(artikel_id)
     if path is None:
         raise HTTPException(status_code=404, detail="No picture for this artikel")
@@ -95,6 +105,11 @@ def read_artikel_bild(artikel_id: int):
 
 @router.put("/{artikel_id}/bild")
 def upload_artikel_bild(artikel_id: int, bild: UploadFile, session: SessionDep):
+    """Replace the picture of an article (JPEG, PNG or WebP, max. 5 MB).
+
+    Raises 404 for an unknown article, 413 for oversized uploads and 415 for
+    other formats. The type comes from the content; the old file is removed.
+    """
     if not session.get(Artikel, artikel_id):
         raise HTTPException(status_code=404, detail="Artikel not found")
     folder = _bild_dir()
@@ -116,6 +131,7 @@ def upload_artikel_bild(artikel_id: int, bild: UploadFile, session: SessionDep):
 
 @router.delete("/{artikel_id}/bild")
 def delete_artikel_bild(artikel_id: int, session: SessionDep):
+    """Delete the picture of an article; 404 if there is none."""
     if not session.get(Artikel, artikel_id):
         raise HTTPException(status_code=404, detail="Artikel not found")
     path = _bild_path(artikel_id)
@@ -133,6 +149,13 @@ def read_artikel(
     lieferant_id: int = 0, produktgruppen_id: int = 0,
     offset: int = 0, limit: Annotated[int, Query(le=100)] = 100
     ) -> list[ArtikelPublic]:
+    """List articles with filters and pagination.
+
+    `aktiv_only` (default) hides deactivated versions. Filters are applied in
+    this precedence: `search_string` (all space separated terms must match),
+    `barcode`, `artikel_nr` (plus `lieferant_id`), `lieferant_id`,
+    `produktgruppen_id`, `artikel_name`.
+    """
     selection = select(Artikel).join(Produktgruppe).join(Lieferant)
     if aktiv_only:
         selection = selection.where(Artikel.aktiv == True)
@@ -181,6 +204,7 @@ def read_artikel(
 
 @router.get("/{artikel_id}")
 def read_single_artikel(artikel_id: int, session: SessionDep) -> ArtikelPublic:
+    """Read one article incl. product group, supplier and Pfand details."""
     artikel = session.get(Artikel, artikel_id)
     if not artikel:
         raise HTTPException(status_code=404, detail="Artikel not found")
@@ -197,6 +221,7 @@ def read_single_artikel(artikel_id: int, session: SessionDep) -> ArtikelPublic:
 
 @router.post("/", response_model=ArtikelPublic)
 def create_artikel(artikel: ArtikelCreate, session: SessionDep):
+    """Create an article; 400 if supplier and artikel_nr already exist."""
     new_artikel = Artikel.model_validate(artikel)
 
     # Check if this article already exists (combination of lieferant_id and artikel_nr)
@@ -231,6 +256,11 @@ def create_artikel(artikel: ArtikelCreate, session: SessionDep):
 
 
 def delete_artikel_intern(artikel_id: int, session: SessionDep):
+    """Deactivate an article and set its `bis` date (used by versioning).
+
+    Raises 404 if missing and 400 if already deactivated. Articles are never
+    deleted, so old sales keep their reference.
+    """
     artikel = session.get(Artikel, artikel_id)
     if not artikel:
         raise HTTPException(status_code=404, detail="Artikel not found")
@@ -246,12 +276,19 @@ def delete_artikel_intern(artikel_id: int, session: SessionDep):
 
 @router.delete("/{artikel_id}")
 def delete_artikel(artikel_id: int, session: SessionDep):
+    """Deactivate an article instead of deleting the row."""
     delete_artikel_intern(artikel_id, session)
     return {"message": "Artikel deactivated"}
 
 
 @router.patch("/{artikel_id}", response_model=ArtikelPublic)
 def update_artikel(artikel_id: int, artikel: ArtikelUpdate, session: SessionDep):
+    """Update an article, creating a new version when needed.
+
+    Changes to `bestand`, `beliebtheit`, `lieferbar` and `sortiment` are applied
+    in place. Any other change deactivates the row and creates a new version
+    that shares the picture. Raises 400 for deactivated articles or no changes.
+    """
     print("Update artikel:", artikel_id, artikel)
 
     old_artikel = session.get(Artikel, artikel_id)

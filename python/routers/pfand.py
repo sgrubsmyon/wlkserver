@@ -1,3 +1,9 @@
+"""Deposit (Pfand) endpoints.
+
+A Pfand belongs to exactly one article and at most one product group may use
+it. Reads are open, writes require admin. Deletion is refused while a product
+group still references the Pfand.
+"""
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -35,6 +41,7 @@ def read_pfands(
     wert: float | None = None,
     offset: int = 0, limit: Annotated[int, Query(le=100)] = 100
     ) -> list[PfandPublic]:
+    """List Pfand entries, optionally filtered by deposit value."""
     selection = select(Pfand).join(Artikel)
 
     # Add a where clause if wert is provided
@@ -55,6 +62,7 @@ def read_pfands(
 
 @router.get("/{pfand_id}")
 def read_single_pfand(pfand_id: int, session: SessionDep) -> PfandPublic:
+    """Read one Pfand including its value; 404 if unknown."""
     pfand = session.get(Pfand, pfand_id)
     if not pfand:
         raise HTTPException(status_code=404, detail="Pfand not found")
@@ -64,6 +72,10 @@ def read_single_pfand(pfand_id: int, session: SessionDep) -> PfandPublic:
 
 @router.post("/", response_model=PfandPublic, dependencies=[Depends(require_admin)])
 def create_pfand(pfand: PfandCreate, session: SessionDep):
+    """Create a Pfand for an article (admin only).
+
+    Raises 400 if the article does not exist or already has a Pfand.
+    """
     artikel = session.get(Artikel, pfand.artikel_id)
     if not artikel:
         raise HTTPException(status_code=400, detail="Artikel not found")
@@ -82,11 +94,16 @@ def create_pfand(pfand: PfandCreate, session: SessionDep):
 
 @router.put("/{pfand_id}", response_model=PfandPublic, dependencies=[Depends(require_admin)])
 def replace_pfand(pfand_id: int, pfand: PfandUpdate, session: SessionDep):
+    """Replace a Pfand (admin only); same behaviour as PATCH."""
     return update_pfand(pfand_id, pfand, session)
 
 
 @router.patch("/{pfand_id}", response_model=PfandPublic, dependencies=[Depends(require_admin)])
 def update_pfand(pfand_id: int, pfand: PfandUpdate, session: SessionDep):
+    """Update a Pfand (admin only).
+
+    Raises 400 if a new `artikel_id` does not exist or already has a Pfand.
+    """
     old_pfand = session.get(Pfand, pfand_id)
     if not old_pfand:
         raise HTTPException(status_code=404, detail="Pfand not found")
@@ -111,6 +128,11 @@ def update_pfand(pfand_id: int, pfand: PfandUpdate, session: SessionDep):
 
 @router.delete("/{pfand_id}", dependencies=[Depends(require_admin)])
 def delete_pfand(pfand_id: int, session: SessionDep):
+    """Delete a Pfand (admin only).
+
+    Raises 409 if a product group still uses it and 503 if the database user
+    lacks DELETE permission.
+    """
     pfand = session.get(Pfand, pfand_id)
     if not pfand:
         raise HTTPException(status_code=404, detail="Pfand not found")

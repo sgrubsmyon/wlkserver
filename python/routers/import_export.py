@@ -1,3 +1,9 @@
+"""CSV and DSFinV-K import/export endpoints.
+
+Imports decode the uploaded file as UTF-8 and delegate the row handling to
+`utils.csv_import`; exports stream generated CSV as a download. The DSFinV-K
+export bundles one Tagesabschluss as a ZIP archive.
+"""
 from typing import Annotated, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
@@ -24,6 +30,7 @@ router = APIRouter(tags=["import_export"])
 
 @router.post("/import/artikel")
 def import_artikel(session: SessionDep, file: UploadFile = File(...)):
+    """Import articles from an uploaded CSV and report how many were created."""
     content = file.file.read().decode("utf-8", errors="replace")
     created = import_artikel_from_csv(content, session)
     return {"imported": len(created)}
@@ -31,12 +38,14 @@ def import_artikel(session: SessionDep, file: UploadFile = File(...)):
 
 @router.get("/export/artikel")
 def export_artikel(session: SessionDep):
+    """Download all articles as a CSV file."""
     csv = export_artikel_to_csv(session)
     return Response(content=csv, media_type="text/csv", headers={"Content-Disposition": "attachment; filename=artikel.csv"})
 
 
 @router.post("/import/bestellung")
 def import_bestellung(session: SessionDep, file: UploadFile = File(...)):
+    """Import orders from an uploaded CSV and report how many were created."""
     content = file.file.read().decode("utf-8", errors="replace")
     created = import_bestellung_from_csv(content, session)
     return {"imported": len(created)}
@@ -44,18 +53,21 @@ def import_bestellung(session: SessionDep, file: UploadFile = File(...)):
 
 @router.get("/export/abrechnung")
 def export_abrechnung(session: SessionDep):
+    """Download the settlements as a CSV file."""
     csv = export_abrechnung_to_csv(session)
     return Response(content=csv, media_type="text/csv", headers={"Content-Disposition": "attachment; filename=abrechnung.csv"})
 
 
 @router.get("/export/bestellung")
 def export_bestellung(session: SessionDep):
+    """Download the orders as a CSV file."""
     csv = export_bestellung_to_csv(session)
     return Response(content=csv, media_type="text/csv", headers={"Content-Disposition": "attachment; filename=bestellung.csv"})
 
 
 @router.get("/export/inventur")
 def export_inventur(session: SessionDep):
+    """Download the stock-taking (Inventur) list as a CSV file."""
     csv = export_inventur_to_csv(session)
     return Response(content=csv, media_type="text/csv", headers={"Content-Disposition": "attachment; filename=inventur.csv"})
 

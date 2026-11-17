@@ -459,6 +459,7 @@ BESTELLUNG_TYPEN = ("LM", "KHW", "IVT")
 # MariaDB's Python connector (and SQLite) return naive datetimes even for
 # TIMESTAMP columns, so we attach UTC tzinfo on load/refresh.
 def _make_datetimes_aware(target):
+    """Attach UTC tzinfo to the naive datetimes of a just-loaded instance."""
     for key, value in list(getattr(target, "__dict__", {}).items()):
         if isinstance(value, datetime) and value.tzinfo is None:
             setattr(target, key, value.replace(tzinfo=timezone.utc))
@@ -466,9 +467,11 @@ def _make_datetimes_aware(target):
 
 @event.listens_for(SQLModel, "load", propagate=True)
 def _on_load(target, context):
+    """Normalize datetimes after a row is loaded from the database."""
     _make_datetimes_aware(target)
 
 
 @event.listens_for(SQLModel, "refresh", propagate=True)
 def _on_refresh(target, context, attrs):
+    """Normalize datetimes after a row is refreshed from the database."""
     _make_datetimes_aware(target)

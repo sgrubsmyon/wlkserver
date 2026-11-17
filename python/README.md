@@ -24,14 +24,18 @@ Run from the `python/` directory, where the venv lives. `--app-dir ..` puts the
 repository root on the import path, so the `python.main` package resolves:
 
 ```
-venv/bin/uvicorn --app-dir .. python.main:app --host 0.0.0.0 --port 8000
+venv/bin/uvicorn --app-dir .. python.main:app --host 127.0.0.1 --port 8000 --root-path /api
 ```
 
 Or from the repository root:
 
 ```
-python/venv/bin/uvicorn --app-dir . python.main:app --host 0.0.0.0 --port 8000
+python/venv/bin/uvicorn --app-dir . python.main:app --host 127.0.0.1 --port 8000 --root-path /api
 ```
+
+`--root-path /api` makes generated URLs (`/docs`, `/openapi.json`) match the
+nginx prefix; see `../deployment/nginx-wlkserver.conf`. Without nginx, use
+`--host 0.0.0.0` and drop `--root-path` for direct access on the LAN.
 
 Without `--app-dir`, or when started from any other directory, uvicorn cannot
 find the package and fails with `ModuleNotFoundError: No module named 'python'`.
@@ -258,6 +262,21 @@ MariaDB, create the disposable `kasse_test` database once
 `./run_tests_mariadb.sh` (asks for the `kassenadmin` password).
 
 Coverage (optional): `pip install pytest-cov && pytest --cov=python --cov-report=term-missing`
+
+## Documentation
+
+The docs live in `../docs/`: `API.md` (overview, auth, errors, conventions),
+`API_REFERENCE.md` (all endpoints, generated from the OpenAPI schema),
+`DATABASE.md` (schema and bookkeeping rules), `KASSENSTAND_UND_ABRECHNUNG.md`,
+`MIGRATION_JAVA_TO_API.md` and `VAT_ROUNDING.md`. Deployment is covered by
+`../deployment/README.md`.
+
+Regenerate the generated files after changing endpoints or the schema:
+
+```
+python/venv/bin/python ../docs/generate_api_reference.py
+python/venv/bin/python ../docs/generate_db_reference.py
+```
 
 * https://fastapi.tiangolo.com/tutorial/bigger-applications/#another-module-with-apirouter
 * https://fastapi.tiangolo.com/tutorial/sql-databases/

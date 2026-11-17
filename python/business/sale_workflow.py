@@ -49,6 +49,7 @@ SPECIAL_ARTIKEL = {
 
 
 def _resolve(a, b):
+    """Return arguments as `(session, value)` regardless of their order."""
     if isinstance(a, Session) and not isinstance(b, Session):
         return a, b
     if isinstance(b, Session) and not isinstance(a, Session):
@@ -65,6 +66,12 @@ def _field(detail, name, default=None):
 
 
 def validate_detail(*args, **kwargs):
+    """Reject a position with zero quantity or unknown article/discount ids.
+
+    Accepts the detail as first argument or as `detail=` keyword, with the
+    session in either order. Raises `DomainError`; without a session only the
+    quantity is checked.
+    """
     detail = kwargs.get("detail")
     session = kwargs.get("session")
     if detail is None and len(args) >= 1:
@@ -88,6 +95,10 @@ def validate_detail(*args, **kwargs):
 
 
 def determine_mwst_satz(*args, **kwargs):
+    """VAT rate of a position: the article's product group, else the given rate.
+
+    Returns None when neither the article nor the detail yields a rate.
+    """
     session = kwargs.get("session")
     detail = kwargs.get("detail")
     if session is None or detail is None:
@@ -179,6 +190,7 @@ def _apply_rabattaktionen(base_unit, stueckzahl, aktionen):
     per_action = {}
 
     def add(r, amount):
+        """Accumulate the reduction of one action (one RABATT line per action)."""
         if amount:
             per_action.setdefault(r.rabatt_id, [r, Decimal("0")])[1] += amount
 
@@ -210,6 +222,12 @@ def _apply_rabattaktionen(base_unit, stueckzahl, aktionen):
 
 
 def determine_ges_preis(*args, **kwargs):
+    """Total line price of a position.
+
+    An explicit `ges_preis` wins; otherwise the article's fixed `vk_preis` is
+    multiplied by the quantity, with active discount actions applied. Returns
+    None for variable-price articles or an unknown article.
+    """
     session = kwargs.get("session")
     detail = kwargs.get("detail")
     if session is None or detail is None:
@@ -237,6 +255,12 @@ def determine_ges_preis(*args, **kwargs):
 
 
 def prepare_detail(*args, **kwargs):
+    """Normalize one input position into a `VerkaufDetails` row.
+
+    Fills a missing VAT rate from the article, derives the price when none is
+    given, and attaches the automatically matching discount action (only when
+    exactly one applies). Missing values default to 0 / 1.
+    """
     session = kwargs.get("session")
     detail = kwargs.get("detail")
     if session is None or detail is None:
@@ -287,6 +311,7 @@ def prepare_detail(*args, **kwargs):
 
 
 def _special_artikel(session, key) -> Artikel:
+    """Look up one of the fixed `SPECIAL_ARTIKEL` rows by its key."""
     nr = SPECIAL_ARTIKEL[key]
     artikel = session.exec(select(Artikel).where(Artikel.artikel_nr == nr)).first()
     if artikel is None:
@@ -295,6 +320,7 @@ def _special_artikel(session, key) -> Artikel:
 
 
 def _mwst_of(artikel: Artikel) -> float:
+    """VAT rate of an article's product group, 0.0 when it has none."""
     pg = artikel.produktgruppe
     if pg is not None and pg.mwst is not None and pg.mwst.mwst_satz is not None:
         return float(pg.mwst.mwst_satz)
@@ -302,6 +328,7 @@ def _mwst_of(artikel: Artikel) -> float:
 
 
 def _aux_line(artikel: Artikel, stueckzahl, ges_preis, mwst_satz, rabatt_id=None):
+    """Auxiliary position (discount, adjustment, deposit) without position number."""
     return VerkaufDetails(
         position=None,
         stueckzahl=stueckzahl,
@@ -362,6 +389,7 @@ def build_sale_details(session, verkauf) -> list[VerkaufDetails]:
 
 
 def next_position(rows) -> int:
+    """Next free position number of the receipt (highest used + 1)."""
     return max((r.position or 0 for r in rows), default=0) + 1
 
 

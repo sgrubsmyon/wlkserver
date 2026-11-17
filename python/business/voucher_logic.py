@@ -78,6 +78,7 @@ def next_gutschein_nr(session, lock: bool = True) -> int:
 
 
 def _creation_row(session, gutschein_nr: int) -> Gutschein | None:
+    """First row of the voucher that was created by its purchase position."""
     return session.exec(
         select(Gutschein)
         .where(

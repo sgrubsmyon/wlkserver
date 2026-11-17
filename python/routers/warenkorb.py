@@ -47,6 +47,7 @@ SPECIAL_KINDS = {
 
 def _position(session: SessionDep, detail, ref, parent_ref=None, kind="artikel",
               rabatt_absolut=None, hat_rabatt=False) -> WarenkorbPosition:
+    """Build the response row for one cart detail row."""
     artikel = session.get(Artikel, detail.artikel_id) if detail.artikel_id else None
     stueckzahl = detail.stueckzahl or 1
     row_kind = SPECIAL_KINDS.get(artikel.artikel_nr, kind) if artikel else kind
@@ -74,6 +75,7 @@ def _position(session: SessionDep, detail, ref, parent_ref=None, kind="artikel",
 
 
 def _expand_one(session, artikel_id, stueckzahl, preis, ref):
+    """Expand one article into its cart rows, including Pfand and Rabatt."""
     detail = VerkaufDetailsCreate(
         artikel_id=artikel_id, stueckzahl=stueckzahl, ges_preis=preis)
     rows, _ = expand_details(session, [detail])
@@ -139,6 +141,7 @@ def leergut(payload: WarenkorbLeergut, session: SessionDep):
 
 
 def _line_total(session, item) -> Decimal:
+    """Line total from `ges_preis`, else article price times quantity."""
     if item.ges_preis is not None:
         return Decimal(str(item.ges_preis))
     artikel = session.get(Artikel, item.artikel_id)
@@ -224,6 +227,7 @@ def rabatt(payload: WarenkorbRabatt, session: SessionDep):
 
 
 def _details_from(payload_rows: list[WarenkorbRabattEingabe]):
+    """Convert preview rows into the sale details used for the expansion."""
     return [
         VerkaufDetailsCreate(
             artikel_id=item.artikel_id,

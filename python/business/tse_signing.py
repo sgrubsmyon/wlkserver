@@ -26,6 +26,7 @@ VAT_RATES = (Decimal("0.19"), Decimal("0.07"), Decimal("0.107"), Decimal("0.055"
 
 
 def _cents(value) -> Decimal:
+    """Coerce to Decimal and round to cents with ROUND_HALF_UP."""
     return (value if isinstance(value, Decimal) else _to_decimal(value) or Decimal("0")).quantize(
         Decimal("0.01"), rounding=ROUND_HALF_UP
     )
@@ -66,6 +67,11 @@ def open_transactions(session: Session) -> list[TSETransaction]:
 
 
 def get_open_transaction(session: Session, transaction_id: int) -> TSETransaction:
+    """Load a TSE transaction that is still open.
+
+    Raises `NotFoundError` when it does not exist and `DomainError` when it was
+    already finished, so a basket cannot be signed twice.
+    """
     row = session.get(TSETransaction, transaction_id)
     if row is None:
         raise NotFoundError(detail="TSETransaction not found")

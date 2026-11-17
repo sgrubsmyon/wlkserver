@@ -29,6 +29,11 @@ def vat_rounding_method() -> str:
 
 
 def _to_decimal(value):
+    """Convert a value to Decimal, accepting German and percent-formatted strings.
+
+    Returns None for None, empty strings and unparseable input. Floats go
+    through `repr` so 0.1 stays 0.1 and not its binary expansion.
+    """
     if value is None:
         return None
     if isinstance(value, Decimal):
@@ -61,6 +66,7 @@ def _to_decimal(value):
 
 
 def _attr(obj, *names):
+    """First non-None attribute or mapping key among `names`."""
     if isinstance(obj, Mapping):
         for name in names:
             if name in obj:
@@ -78,6 +84,7 @@ def _attr(obj, *names):
 
 
 def _normalize_item(item):
+    """`(gross, VAT rate)` of a tuple/list or of a detail/model object."""
     if isinstance(item, (tuple, list)):
         if len(item) >= 2:
             return _to_decimal(item[0]), _to_decimal(item[1])
@@ -115,11 +122,13 @@ calculateVAT = calculate_vat
 
 
 def calculate_netto(brutto, steuersatz):
+    """Net amount of a gross amount, rounded to cents."""
     b = _to_decimal(brutto) or Decimal("0")
     return (b - calculate_vat(b, steuersatz)).quantize(CENT, rounding=ROUND_HALF_UP)
 
 
 def calculate_total(items):
+    """Sum of the gross amounts of all positions, rounded to cents."""
     total = Decimal("0")
     for item in (items or []):
         b, _ = _normalize_item(item)
@@ -208,16 +217,19 @@ getAllCurrentMwstValuesByID = get_all_current_mwst_values_by_id
 class VATCalculator:
     @staticmethod
     def calculate_vat(brutto, steuersatz):
+        """VAT contained in a gross amount (see module `calculate_vat`)."""
         return calculate_vat(brutto, steuersatz)
     calculateVAT = calculate_vat
 
     @staticmethod
     def calculate_mwst_values_in_rechnung(items=None, method=None):
+        """Net/VAT/gross per rate for a receipt (see the module function)."""
         return calculate_mwst_values_in_rechnung(items, method=method)
     calculateMwStValuesInRechnung = calculate_mwst_values_in_rechnung
 
     @staticmethod
     def get_all_current_mwst_values_by_id(mwst_rates, mwst_values=None, items=None, method=None):
+        """Map VAT ids to `[rate, netto, betrag, brutto]` (see module function)."""
         return get_all_current_mwst_values_by_id(
             mwst_rates, mwst_values=mwst_values, items=items, method=method
         )

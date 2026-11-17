@@ -1,3 +1,10 @@
+"""Cash drawer ledger (Kassenstand).
+
+The table is an append-only ledger: every row is the balance after a booking, the
+current balance is the latest row. A manual entry must not increase the balance
+for an Entnahme and must not exceed the drawer's cash (see
+`business.cash_register.validate_balance_change`).
+"""
 from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Annotated, Optional
@@ -37,6 +44,11 @@ def read_kassenstaende(
     offset: int = 0,
     limit: Annotated[int, Query(le=100)] = 100,
 ) -> list[KassenstandPublic]:
+    """List cash drawer bookings, newest first.
+
+    By default only manual bookings are returned; `rechnungen=true` also includes
+    the automatic entries written by sales and stornos.
+    """
     selection = select(Kassenstand)
     if not rechnungen:
         selection = selection.where(Kassenstand.manuell == True)
@@ -50,6 +62,7 @@ def read_kassenstaende(
 
 @router.get("/aktuell")
 def read_kassenstand_aktuell(session: SessionDep) -> KassenstandPublic | None:
+    """The current (latest) cash balance, or null while no booking exists."""
     ks = latest_kassenstand(session)
     if not ks:
         return None
@@ -58,6 +71,7 @@ def read_kassenstand_aktuell(session: SessionDep) -> KassenstandPublic | None:
 
 @router.get("/{kassenstand_id}")
 def read_single_kassenstand(kassenstand_id: int, session: SessionDep) -> KassenstandPublic:
+    """Read one ledger entry by id; 404 when it does not exist."""
     ks = session.get(Kassenstand, kassenstand_id)
     if not ks:
         raise HTTPException(status_code=404, detail="Kassenstand not found")
@@ -85,6 +99,13 @@ def read_kassenstand_reset_suggestion(details: list[ZaehlprotokollDetailsCreate]
 
 @router.post("/", response_model=KassenstandPublic)
 def create_kassenstand(kassenstand: KassenstandCreate, session: SessionDep, credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme), _user=Depends(require_user)):
+    """Append a manual cash drawer booking and return it.
+
+    Validates the new balance against the current one (Entnahme must not
+    increase it, a withdrawal must not exceed the cash in the drawer) and inserts
+    the row under `KASSENSTAND_LOCK`. A referenced `rechnungs_nr` must exist, and
+    the booking user is taken from the body or the bearer token.
+    """
     user_id = kassenstand.user_id if hasattr(kassenstand, "user_id") else None
     if user_id is None and credentials is not None and credentials.credentials:
         from ..utils.auth import decode_token

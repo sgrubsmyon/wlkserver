@@ -8,6 +8,7 @@ from fastapi import HTTPException
 
 
 def ensure_non_negative(value: Any, field: str = "value"):
+    """Raise HTTP 400 unless `value` is a number >= 0 (None passes)."""
     if value is None:
         return
     try:
@@ -19,6 +20,7 @@ def ensure_non_negative(value: Any, field: str = "value"):
 
 
 def ensure_positive(value: Any, field: str = "value"):
+    """Raise HTTP 400 unless `value` is a number > 0 (None passes)."""
     if value is None:
         return
     try:
@@ -30,6 +32,7 @@ def ensure_positive(value: Any, field: str = "value"):
 
 
 def ensure_range(value: Any, lo: Any, hi: Any, field: str = "value"):
+    """Raise HTTP 400 unless `lo <= value <= hi` (None passes)."""
     if value is None:
         return
     try:

@@ -1,3 +1,10 @@
+"""Sales receipts (Verkauf): list, read, create and storno.
+
+`POST /verkauf` delegates to `business.sale_workflow.create_sale`, which books the
+whole sale (positions, VAT, voucher, Anzahlung, Kassenstand) in one transaction.
+A storno exists only via `/{rechnungs_nr}/storno`, never by posting a receipt
+with `storno_von` set.
+"""
 from datetime import datetime
 from typing import Annotated, List, Optional
 
@@ -38,6 +45,10 @@ def read_verkaeufe(
     limit: Annotated[int, Query(le=100)] = 100,
     desc: bool = False,
 ) -> List[dict]:
+    """List receipts, optionally filtered by date range or storno flag.
+
+    `include_details` adds the receipt positions and `include_mwst` the VAT rows.
+    """
     selection = select(Verkauf)
     if von is not None:
         selection = selection.where(Verkauf.verkaufsdatum >= von)
@@ -59,6 +70,7 @@ def read_single_verkauf(
     include_details: bool = True,
     include_mwst: bool = True,
 ) -> dict:
+    """Read one receipt by number; 404 when it does not exist."""
     v = session.get(Verkauf, rechnungs_nr)
     if not v:
         raise HTTPException(status_code=404, detail="Verkauf not found")
@@ -67,6 +79,14 @@ def read_single_verkauf(
 
 @router.post("/", response_model=VerkaufPublic)
 def create_verkauf(verkauf: VerkaufCreate, session: SessionDep, _user: User = Depends(require_user)):
+    """Book a sale and return the stored receipt (requires a logged-in user).
+
+    `create_sale` expands Pfand/discount/voucher lines, writes positions, VAT,
+    voucher and Kassenstand rows in one transaction and signs the receipt on the
+    TSE. The response additionally carries `change` (cash change) and
+    `ec_warning` (card terminal warning); validation failures surface as domain
+    errors from `create_sale`.
+    """
     new_v, change, ec_warning = create_sale(
         session, verkauf, user_id=getattr(_user, "user_id", None)
     )

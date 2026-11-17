@@ -110,6 +110,7 @@ def seed_catalog(session: Session) -> None:
         groups[key] = row
 
     def artikel(nr: str, name: str, group: Produktgruppe, price=None, variable=False) -> Artikel:
+        """Insert one catalog article and return it."""
         row = Artikel(
             artikel_nr=nr,
             artikel_name=name,

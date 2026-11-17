@@ -1,3 +1,9 @@
+"""TSE (German fiscal device) integration.
+
+Covers the transaction log used for receipt signing, device commissioning and
+PIN/PUK unblocking, status checks and the DSFinV-K export endpoints. Commissioning
+and repair are admin-only and validate PIN/PUK bytes before the device is opened.
+"""
 import io
 import tarfile
 from typing import Annotated, Literal, Optional
@@ -70,6 +76,7 @@ class TSEExportDeleteRequest(BaseModel):
 
 
 def _make_tar_bytes(name: str) -> bytes:
+    """Placeholder tar archive used when the device returns no export data."""
     buf = io.BytesIO()
     with tarfile.open(fileobj=buf, mode="w") as tf:
         data = b"TSE export placeholder"
@@ -81,6 +88,7 @@ def _make_tar_bytes(name: str) -> bytes:
 
 @router.get("/transaction/verkauf/{rechnungs_nr}")
 def read_tse_transactions_for_verkauf(rechnungs_nr: int, session: SessionDep) -> list[TSETransactionPublic]:
+    """All TSE transactions signed for one receipt."""
     rows = session.exec(
         select(TSETransaction).where(TSETransaction.rechnungs_nr == rechnungs_nr)
     ).all()
@@ -94,6 +102,7 @@ def read_tse_transactions(
     offset: int = 0,
     limit: Annotated[int, Query(le=100)] = 100,
 ) -> list[TSETransactionPublic]:
+    """List TSE transactions with pagination, optionally for one receipt."""
     selection = select(TSETransaction)
     if rechnungs_nr is not None:
         selection = selection.where(TSETransaction.rechnungs_nr == rechnungs_nr)
@@ -103,6 +112,7 @@ def read_tse_transactions(
 
 @router.get("/transaction/{transaction_id}")
 def read_single_tse_transaction(transaction_id: int, session: SessionDep) -> TSETransactionPublic:
+    """Read one TSE transaction by id; 404 when it does not exist."""
     t = session.get(TSETransaction, transaction_id)
     if not t:
         raise HTTPException(status_code=404, detail="TSETransaction not found")
@@ -111,6 +121,12 @@ def read_single_tse_transaction(transaction_id: int, session: SessionDep) -> TSE
 
 @router.post("/transaction", response_model=TSETransactionPublic)
 def create_tse_transaction(payload: TSETransactionCreate, session: SessionDep, credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme), _user=Depends(require_user)):
+    """Sign a transaction on the TSE and store it.
+
+    Values missing from the payload are taken from the signing client (numbers,
+    timestamps, signature counter, signature and error). A referenced
+    `rechnungs_nr` must exist, otherwise the request fails with 400.
+    """
     if payload.rechnungs_nr is not None:
         v = session.get(Verkauf, payload.rechnungs_nr)
         if not v:
@@ -163,6 +179,7 @@ def abort_tse_transaction(transaction_id: int, session: SessionDep, _user: User 
 
 @router.get("/status")
 def get_tse_status():
+    """Current device status from the TSE client (read-only)."""
     return tse_client.status()
 
 
@@ -267,6 +284,11 @@ def unblock_tse(payload: TSEUnblockRequest, _user: User = Depends(require_admin)
 
 @router.post("/certificates")
 def export_certificates():
+    """Download the TSE certificates as a tar archive.
+
+    Falls back to a placeholder archive when the device returns nothing, so the
+    client always receives a file.
+    """
     try:
         data = tse_client.export_certificates()
     except Exception:
@@ -282,6 +304,7 @@ def export_certificates():
 
 @router.post("/export/full")
 def export_full():
+    """Download the full TSE export as a tar archive (placeholder on empty result)."""
     try:
         data = tse_client.export_full()
     except Exception:
@@ -297,6 +320,12 @@ def export_full():
 
 @router.post("/export/partial")
 def export_partial(payload: Optional[TSEExportPartialRequest] = None):
+    """Download a partial TSE export as a tar archive.
+
+    The selection is by `criterion` (tx number, date or signature counter) with
+    the matching start/end values, an optional
+    `last_excluded_signature_counter` and `max_records` limit.
+    """
     p = payload or TSEExportPartialRequest()
     kwargs = {
         "criterion": p.criterion,
@@ -322,6 +351,7 @@ def export_partial(payload: Optional[TSEExportPartialRequest] = None):
 
 @router.post("/export/delete")
 def export_delete(payload: Optional[TSEExportDeleteRequest] = None, _user: User = Depends(require_admin)):
+    """Export TSE data and delete it from the device (admin-only, destructive)."""
     p = payload or TSEExportDeleteRequest()
     kwargs = {
         "last_excluded_signature_counter": p.last_excluded_signature_counter,

@@ -1,3 +1,10 @@
+"""Down payments (Anzahlung) and their resolution into a later sale.
+
+The table is append-only: an installment is open while it has no resolution entry
+(a second row with the same `anzahlung_in_rech_nr` and an
+`aufloesung_in_rech_nr`), mirroring the Java POS
+`GROUP BY anzahlung_in_rech_nr HAVING COUNT(*) = 1`.
+"""
 from datetime import datetime, timezone
 from typing import Annotated, Optional
 
@@ -38,6 +45,7 @@ def read_anzahlungen(
     offset: int = 0,
     limit: Annotated[int, Query(le=100)] = 100,
 ) -> list[AnzahlungPublic]:
+    """List installment rows, optionally filtered by the two receipt references."""
     selection = select(Anzahlung)
     if anzahlung_in_rech_nr is not None:
         selection = selection.where(Anzahlung.anzahlung_in_rech_nr == anzahlung_in_rech_nr)
@@ -49,6 +57,7 @@ def read_anzahlungen(
 
 @router.get("/offen")
 def read_offene_anzahlungen(session: SessionDep) -> list[AnzahlungPublic]:
+    """Installments that are not yet resolved by a later sale."""
     # Append-only table: a resolution adds a second row for the same
     # anzahlung_in_rech_nr, so an installment is open while it has no
     # resolution entry (Java: GROUP BY anzahlung_in_rech_nr HAVING COUNT(*) = 1).
@@ -66,6 +75,7 @@ def read_offene_anzahlungen(session: SessionDep) -> list[AnzahlungPublic]:
 
 @router.get("/aufgeloest")
 def read_aufgeloeste_anzahlungen(session: SessionDep) -> list[AnzahlungPublic]:
+    """Resolution rows, i.e. installments that were applied to a sale."""
     rows = session.exec(
         select(Anzahlung).where(Anzahlung.aufloesung_in_rech_nr.is_not(None))
     ).all()
@@ -74,6 +84,7 @@ def read_aufgeloeste_anzahlungen(session: SessionDep) -> list[AnzahlungPublic]:
 
 @router.get("/{anzahlung_id}")
 def read_single_anzahlung(anzahlung_id: int, session: SessionDep) -> AnzahlungPublic:
+    """Read one installment row by id; 404 when it does not exist."""
     a = session.get(Anzahlung, anzahlung_id)
     if not a:
         raise HTTPException(status_code=404, detail="Anzahlung not found")
@@ -82,6 +93,12 @@ def read_single_anzahlung(anzahlung_id: int, session: SessionDep) -> AnzahlungPu
 
 @router.post("/", response_model=AnzahlungPublic)
 def create_anzahlung(anzahlung: AnzahlungCreate, session: SessionDep, credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme), _user=Depends(require_user)):
+    """Record a down payment for a receipt, optionally with its detail rows.
+
+    Both referenced sales (`anzahlung_in_rech_nr` and, if given,
+    `aufloesung_in_rech_nr`) must exist, otherwise the request fails with 400.
+    Detail rows default their `rechnungs_nr` to the installment receipt.
+    """
     user_id = getattr(anzahlung, "user_id", None)
     if user_id is None and credentials is not None and credentials.credentials:
         from ..utils.auth import decode_token
@@ -131,6 +148,11 @@ def aufloesen_anzahlung(
     datum: Optional[datetime] = Query(default=None),
     _user=Depends(require_user),
 ):
+    """Resolve an open installment by appending the resolution row.
+
+    `aufloesung_in_rech_nr` (body or query) is required and must reference an
+    existing sale; 400 otherwise. The original row is left untouched.
+    """
     original = session.get(Anzahlung, anzahlung_id)
     if not original:
         raise HTTPException(status_code=404, detail="Anzahlung not found")
@@ -164,6 +186,7 @@ def aufloesen_anzahlung(
 # Details endpoints (optional convenience)
 @router.get("/{anzahlung_id}/details", response_model=list[AnzahlungDetailsPublic])
 def read_anzahlung_details(anzahlung_id: int, session: SessionDep):
+    """Detail rows booked for the installment receipt; 404 for unknown installments."""
     a = session.get(Anzahlung, anzahlung_id)
     if not a:
         raise HTTPException(status_code=404, detail="Anzahlung not found")
@@ -175,6 +198,7 @@ def read_anzahlung_details(anzahlung_id: int, session: SessionDep):
 
 @router.post("/details", response_model=AnzahlungDetailsPublic)
 def create_anzahlung_detail(detail: AnzahlungDetailsCreate, session: SessionDep):
+    """Append one installment detail row; sale and sale position must exist."""
     v = session.get(Verkauf, detail.rechnungs_nr)
     if not v:
         raise HTTPException(status_code=400, detail="Verkauf not found")

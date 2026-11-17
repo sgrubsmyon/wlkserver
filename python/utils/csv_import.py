@@ -19,6 +19,7 @@ from .validation import ensure_non_negative, ensure_range
 
 
 def _float(v):
+    """Parse a CSV value as float; None for empty or malformed input."""
     try:
         return float(v) if v not in (None, "") else None
     except Exception:
@@ -26,6 +27,7 @@ def _float(v):
 
 
 def _int(v):
+    """Parse a CSV value as int; None for empty or malformed input."""
     try:
         return int(v) if v not in (None, "") else None
     except Exception:
@@ -33,12 +35,14 @@ def _int(v):
 
 
 def _bool(v):
+    """Accept the truthy spellings used in exported/edited CSVs."""
     if v is None or v == "":
         return False
     return str(v).strip().lower() in ("1", "true", "yes", "ja", "x")
 
 
 def import_artikel_from_csv(content: str, session: Session) -> List[Artikel]:
+    """Create articles from a CSV file, returning the stored rows."""
     reader = csv.DictReader(io.StringIO(content))
     created = []
     for row in reader:

@@ -1,3 +1,9 @@
+"""Monthly settlement (Monatsabschluss).
+
+Aggregates the VAT rows of the month's daily settlements. A month can only be
+settled once daily settlements exist for it; re-settling replaces the existing
+monthly settlement and its VAT rows.
+"""
 from datetime import datetime, timezone, date
 from typing import Annotated, Optional
 import calendar
@@ -29,6 +35,7 @@ router = APIRouter(
 
 
 def _month_bounds(monat: date):
+    """First and last day of the month containing `monat`."""
     first = monat.replace(day=1)
     last_day = calendar.monthrange(first.year, first.month)[1]
     last = first.replace(day=last_day)
@@ -36,6 +43,7 @@ def _month_bounds(monat: date):
 
 
 def _parse_month(value) -> date:
+    """Normalize a date or `YYYY-MM` / `YYYY-MM-DD` string to the month's first day."""
     if isinstance(value, date):
         return value.replace(day=1)
     if isinstance(value, str):
@@ -54,6 +62,7 @@ def read_abrechnung_monate(
     offset: int = 0,
     limit: Annotated[int, Query(le=100)] = 100,
 ) -> list[AbrechnungMonatPublic]:
+    """List monthly settlements with pagination, ascending or descending by id."""
     order = AbrechnungMonat.id.desc() if desc else AbrechnungMonat.id
     rows = paginate(session, select(AbrechnungMonat), offset, limit, order)
     return [AbrechnungMonatPublic.model_validate(r) for r in rows]
@@ -61,6 +70,7 @@ def read_abrechnung_monate(
 
 @router.get("/offen")
 def read_offene_abrechnung_monate(session: SessionDep) -> list[str]:
+    """Months (`YYYY-MM`) with daily settlements that are not settled yet."""
     # months present in abrechnung_tag
     tags = session.exec(select(AbrechnungTag)).all()
     months_present = set()
@@ -84,6 +94,7 @@ def read_offene_abrechnung_monate(session: SessionDep) -> list[str]:
 
 @router.get("/{monat_id}")
 def read_single_abrechnung_monat(monat_id: int, session: SessionDep) -> dict:
+    """Read one monthly settlement including its VAT rows; 404 when unknown."""
     m = session.get(AbrechnungMonat, monat_id)
     if not m:
         raise HTTPException(status_code=404, detail="AbrechnungMonat not found")
@@ -97,6 +108,14 @@ def read_single_abrechnung_monat(monat_id: int, session: SessionDep) -> dict:
 
 @router.post("/", response_model=AbrechnungMonatPublic)
 def create_abrechnung_monat(payload: Optional[AbrechnungMonatCreate], session: SessionDep, credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme), _user=Depends(require_user)):
+    """Settle a month from its daily settlements (logged-in only).
+
+    Without `monat` the earliest unsettled month is chosen, falling back to the
+    current one. The daily settlement id range may be overridden by
+    `abrechnung_tag_id_von` / `_bis`. Fails with 400 when the month has no daily
+    settlements. An existing settlement for the month and its VAT rows are
+    deleted and rebuilt.
+    """
     p = payload or AbrechnungMonatCreate()
 
     # Determine target month

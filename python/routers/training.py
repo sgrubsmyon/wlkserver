@@ -22,6 +22,7 @@ router = APIRouter(
 
 @router.get("/status")
 def training_status(_user=Depends(require_user)) -> dict:
+    """Report whether this API instance runs in training mode."""
     return {"training_mode": training_mode()}
 
 

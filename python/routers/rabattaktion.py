@@ -1,3 +1,9 @@
+"""Discount campaign (Rabattaktion) endpoints.
+
+Campaigns carry relative, absolute or quantity discounts; `_validate_discounts`
+enforces the cross-field rules on create and patch. Ended campaigns cannot be
+changed. Deletes only move the `bis` date, because the DB user may not DELETE.
+"""
 from datetime import datetime, timezone
 from typing import Annotated, Optional
 
@@ -74,6 +80,12 @@ def read_rabattaktionen(
     exclude_deleted: bool = True,
     offset: int = 0, limit: Annotated[int, Query(le=100)] = 100
     ) -> list[RabattaktionPublic]:
+    """List discount campaigns with date, article and group filters.
+
+    Open-ended campaigns (`bis IS NULL`) match every `von` filter. `current_only`
+    returns only campaigns running now. `exclude_deleted` hides rows where
+    `bis == von`, the state used to mark a campaign deleted.
+    """
     selection = select(Rabattaktion).outerjoin(Artikel).outerjoin(Produktgruppe)
 
     # Add a where clause if parameters are provided
@@ -120,6 +132,7 @@ def read_rabattaktionen(
 
 @router.get("/{rabattaktion_id}")
 def read_single_rabattaktion(rabattaktion_id: int, session: SessionDep) -> RabattaktionPublic:
+    """Read one discount campaign; 404 if unknown."""
     rabattaktion = session.get(Rabattaktion, rabattaktion_id)
     if not rabattaktion:
         raise HTTPException(status_code=404, detail="Rabattaktion not found")
@@ -132,6 +145,7 @@ def read_single_rabattaktion(rabattaktion_id: int, session: SessionDep) -> Rabat
 
 @router.post("/", response_model=RabattaktionPublic)
 def create_rabattaktion(rabattaktion: RabattaktionCreate, session: SessionDep):
+    """Create a discount campaign and validate its discount rules."""
     values = rabattaktion.model_dump()
     _validate_discounts(values)
     new_rabattaktion = Rabattaktion.model_validate(rabattaktion)
@@ -153,6 +167,11 @@ def create_rabattaktion(rabattaktion: RabattaktionCreate, session: SessionDep):
 
 @router.delete("/{rabattaktion_id}")
 def delete_rabattaktion(rabattaktion_id: int, session: SessionDep):
+    """End a campaign by moving its `bis` date instead of deleting the row.
+
+    A running campaign gets `bis = now`, a future one gets `bis = von`. Raises
+    400 if the campaign already ended.
+    """
     rabattaktion = session.get(Rabattaktion, rabattaktion_id)
     if not rabattaktion:
         raise HTTPException(status_code=404, detail="Rabattaktion not found")
@@ -174,6 +193,11 @@ def delete_rabattaktion(rabattaktion_id: int, session: SessionDep):
 
 @router.patch("/{rabattaktion_id}", response_model=RabattaktionPublic)
 def update_rabattaktion(rabattaktion_id: int, rabattaktion: RabattaktionUpdate, session: SessionDep):
+    """Update a campaign; started campaigns allow only name and `bis`.
+
+    The merged state is validated, not just the supplied fields. Raises 400 for
+    ended campaigns or fields that are locked after the start.
+    """
     old_rabattaktion = session.get(Rabattaktion, rabattaktion_id)
     
     if not old_rabattaktion:

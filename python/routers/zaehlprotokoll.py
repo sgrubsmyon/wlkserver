@@ -1,3 +1,9 @@
+"""Cash count protocols (Zaehlprotokoll) for a Tagesabschluss.
+
+A settlement keeps one active protocol; saving a new count deactivates the
+previous rows so re-counting before closing the day stays append-only (see
+`business.count_protocol.insert_count_protocol`).
+"""
 from datetime import datetime, timezone
 from typing import Annotated, Optional
 
@@ -36,6 +42,7 @@ def read_zaehlprotokolle(
     offset: int = 0,
     limit: Annotated[int, Query(le=100)] = 100,
 ) -> list[ZaehlprotokollPublic]:
+    """List count protocols, optionally filtered by Tagesabschluss id."""
     selection = select(Zaehlprotokoll)
     if abrechnung_tag_id is not None:
         selection = selection.where(Zaehlprotokoll.abrechnung_tag_id == abrechnung_tag_id)
@@ -45,6 +52,7 @@ def read_zaehlprotokolle(
 
 @router.get("/abrechnung/{abrechnung_tag_id}")
 def read_zaehlprotokolle_fuer_abrechnung(abrechnung_tag_id: int, session: SessionDep) -> list[ZaehlprotokollPublic]:
+    """All count protocols of one Tagesabschluss, including inactive ones."""
     rows = session.exec(
         select(Zaehlprotokoll).where(Zaehlprotokoll.abrechnung_tag_id == abrechnung_tag_id)
     ).all()
@@ -53,6 +61,7 @@ def read_zaehlprotokolle_fuer_abrechnung(abrechnung_tag_id: int, session: Sessio
 
 @router.get("/{zp_id}")
 def read_single_zaehlprotokoll(zp_id: int, session: SessionDep) -> ZaehlprotokollPublic:
+    """Read one count protocol by id; 404 when it does not exist."""
     zp = session.get(Zaehlprotokoll, zp_id)
     if not zp:
         raise HTTPException(status_code=404, detail="Zaehlprotokoll not found")
@@ -61,6 +70,11 @@ def read_single_zaehlprotokoll(zp_id: int, session: SessionDep) -> Zaehlprotokol
 
 @router.post("/", response_model=ZaehlprotokollPublic)
 def create_zaehlprotokoll(zp: ZaehlprotokollCreate, session: SessionDep, credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme), _user=Depends(require_user)):
+    """Insert a count protocol for a Tagesabschluss and deactivate its predecessor.
+
+    `abrechnung_tag_id` is required and must reference an existing settlement
+    (400 otherwise). The counting user comes from the bearer token.
+    """
     user_id = None
     if credentials is not None and credentials.credentials:
         from ..utils.auth import decode_token
@@ -79,6 +93,7 @@ def create_zaehlprotokoll(zp: ZaehlprotokollCreate, session: SessionDep, credent
 
 @router.patch("/{zp_id}", response_model=ZaehlprotokollPublic)
 def update_zaehlprotokoll(zp_id: int, zp: ZaehlprotokollUpdate, session: SessionDep, _user=Depends(require_user)):
+    """Patch an existing count protocol with the supplied fields only."""
     old = session.get(Zaehlprotokoll, zp_id)
     if not old:
         raise HTTPException(status_code=404, detail="Zaehlprotokoll not found")
