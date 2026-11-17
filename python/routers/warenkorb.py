@@ -6,6 +6,7 @@ the client must display (or send back for the sale). This shares the expansion
 with `POST /verkauf`, so a preview cannot diverge from the final receipt.
 """
 from decimal import Decimal, ROUND_HALF_UP, InvalidOperation
+from uuid import uuid4
 
 from fastapi import APIRouter
 
@@ -106,7 +107,7 @@ def hinzufuegen(payload: WarenkorbHinzufuegen, session: SessionDep):
     artikel = session.get(Artikel, payload.artikel_id)
     if artikel is None:
         raise DomainError(detail="Artikel not found")
-    ref = payload.ref or f"artikel-{payload.artikel_id}"
+    ref = payload.ref or f"artikel-{uuid4().hex}"
     return _expand_one(session, payload.artikel_id, payload.stueckzahl, payload.preis, ref)
 
 
@@ -136,7 +137,7 @@ def leergut(payload: WarenkorbLeergut, session: SessionDep):
         mwst_satz=mwst_satz,
         rabatt_id=None,
     )
-    row_ref = payload.ref or f"leergut-{pfand_artikel.artikel_id}"
+    row_ref = payload.ref or f"leergut-{uuid4().hex}"
     return [_position(session, detail, row_ref, kind="leergut")]
 
 

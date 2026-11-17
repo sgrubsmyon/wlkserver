@@ -81,6 +81,15 @@ def test_hinzufuegen_adds_pfand_child(client, session):
     assert rows[1]["lieferant_kurzname"] == "L1"
 
 
+def test_hinzufuegen_without_ref_returns_unique_refs(client, session):
+    _, without_pfand, _ = _seed(session)
+    first = client.post("/warenkorb/hinzufuegen", json={
+        "artikel_id": without_pfand.artikel_id}).json()[0]
+    second = client.post("/warenkorb/hinzufuegen", json={
+        "artikel_id": without_pfand.artikel_id}).json()[0]
+    assert first["ref"] != second["ref"]
+
+
 def test_hinzufuegen_without_pfand(client, session):
     _, without_pfand, _ = _seed(session)
     rows = client.post("/warenkorb/hinzufuegen", json={
