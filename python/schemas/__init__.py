@@ -529,3 +529,91 @@ class AnmeldungPublic(SQLModel):
     user_id: int
     login_time: datetime
     logout_time: datetime | None
+
+
+# --- Cart (warenkorb) schemas ---
+# The cart lives in the client, but every price, VAT and expansion rule stays in
+# the API: the endpoints return ready-to-render rows and the sale uses the same
+# expansion (`build_sale_details`).
+
+WarenkorbKind = Literal[
+    "artikel", "pfand", "rabatt", "preisanpassung", "leergut", "rueckgabe",
+    "rechnung_rabatt", "gutschein", "anzahlung", "anzahlungsaufloesung",
+]
+
+
+class WarenkorbPosition(SQLModel):
+    """One cart row as the API wants it back for totals and sale payloads."""
+    ref: str
+    parent_ref: str | None = None
+    kind: WarenkorbKind = "artikel"
+    artikel_id: int
+    artikel_name: str = ""
+    kurzname: str | None = None
+    lieferant_kurzname: str | None = None
+    artikel_nr: str = ""
+    stueckzahl: int = 1
+    einzelpreis: float = 0.0
+    ges_preis: float = 0.0
+    mwst_satz: float = 0.0
+    variabler_preis: bool = False
+    rabatt_id: int | None = None
+    # Per-unit discount for the sale payload (`VerkaufDetailsCreate.rabatt_absolut`).
+    rabatt_absolut: float | None = None
+    # True if this row already carries a discount (receipt discounts skip it).
+    hat_rabatt: bool = False
+
+
+class WarenkorbHinzufuegen(SQLModel):
+    artikel_id: int
+    stueckzahl: int = Field(default=1, gt=0)
+    preis: float | None = Field(default=None, ge=0)
+    ref: str | None = None
+
+
+class WarenkorbLeergut(SQLModel):
+    artikel_id: int
+    stueckzahl: int = Field(default=1, gt=0)
+    ref: str | None = None
+
+
+class WarenkorbRabattEingabe(SQLModel):
+    ref: str
+    artikel_id: int
+    stueckzahl: int = Field(default=1, gt=0)
+    ges_preis: float | None = None
+    variabler_preis: bool = False
+    rabatt_id: int | None = None
+
+
+class WarenkorbRabattSpec(SQLModel):
+    art: Literal["relativ", "absolut"]
+    wert: float = Field(gt=0)
+
+
+class WarenkorbRabatt(SQLModel):
+    positionen: list[WarenkorbRabattEingabe]
+    rabatt: WarenkorbRabattSpec
+    # True: "Rabatt auf Rechnung" across all positions (one row per VAT rate).
+    rechnung: bool = False
+
+
+class WarenkorbMwst(SQLModel):
+    mwst_satz: float
+    mwst_netto: float
+    mwst_betrag: float
+    brutto: float
+
+
+class WarenkorbSummenAnfrage(SQLModel):
+    positionen: list[WarenkorbPosition]
+    kunde_gibt: float | None = None
+
+
+class WarenkorbSummen(SQLModel):
+    zwischensumme: float
+    rabatte: float
+    zu_zahlen: float
+    mwst: list[WarenkorbMwst]
+    rueckgeld: float | None = None
+    ec_warnung: str | None = None

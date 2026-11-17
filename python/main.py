@@ -21,7 +21,7 @@ from .routers import (
   abrechnung_tag, abrechnung_monat, abrechnung_jahr,
   zaehlprotokoll, bestellung,
   tse,
-  auth, users, import_export, training,
+  auth, users, import_export, training, warenkorb,
 )
 
 
@@ -71,6 +71,7 @@ protected_routers = [
     abrechnung_tag.router, abrechnung_monat.router, abrechnung_jahr.router,
     zaehlprotokoll.router, bestellung.router,
     tse.router, users.router, import_export.router, training.router,
+    warenkorb.router,
 ]
 for router in protected_routers:
     app.include_router(router, dependencies=[Depends(require_user)])

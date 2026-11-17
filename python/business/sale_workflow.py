@@ -322,16 +322,61 @@ def build_sale_details(session, verkauf) -> list[VerkaufDetails]:
     redemption adds a negative GUTSCHEINEINLOES position. Discount lines have no
     position number, like Java `hinzufuegenRaw(addPosition=false)`.
     """
+    rows, article_rows = expand_details(
+        session, getattr(verkauf, "verkauf_details", None) or []
+    )
+
+    rechnung_rabatt = getattr(verkauf, "rechnung_rabatt_relativ", None)
+    if rechnung_rabatt:
+        rows.extend(receipt_discount_rows(
+            session, article_rows, Decimal(str(rechnung_rabatt))))
+
+    gutschein_nr = getattr(verkauf, "gutschein_einloesung_nr", None)
+    if gutschein_nr is None and getattr(verkauf, "gutschein_einloesung_betrag", None) is not None:
+        raise DomainError(
+            detail="gutschein_einloesung_betrag requires gutschein_einloesung_nr",
+        )
+    if gutschein_nr is not None:
+        from .voucher_logic import voucher_balance
+        balance = voucher_balance(session, gutschein_nr)
+        betrag = getattr(verkauf, "gutschein_einloesung_betrag", None)
+        amount = Decimal(str(betrag)) if betrag is not None else balance
+        amount = amount.quantize(CENT, rounding=ROUND_HALF_UP)
+        if amount <= 0:
+            raise DomainError(detail="Gutschein has no remaining balance")
+        if amount > balance:
+            raise DomainError(
+                detail=f"Gutschein-Einlösung exceeds the remaining balance of {balance}",
+            )
+        artikel = _special_artikel(session, "gutschein_einloesung")
+        rows.append(VerkaufDetails(
+            position=next_position(rows),
+            stueckzahl=1,
+            ges_preis=float(-amount),
+            mwst_satz=_mwst_of(artikel),
+            artikel_id=artikel.artikel_id,
+            rabatt_id=None,
+        ))
+
+    return rows
+
+
+def next_position(rows) -> int:
+    return max((r.position or 0 for r in rows), default=0) + 1
+
+
+def expand_details(session, details):
+    """Expand input details into article rows plus their Pfand/Rabatt lines.
+
+    Returns `(rows, article_rows)` where `article_rows` is a list of
+    `(line, mwst_satz, has_discount)` used by the receipt-level discount.
+    Shared by `build_sale_details` and the cart preview endpoints, so a preview
+    can never diverge from the receipt.
+    """
     rows: list[VerkaufDetails] = []
     article_rows = []
-    position = 0
 
-    def next_position():
-        nonlocal position
-        position += 1
-        return position
-
-    for detail in getattr(verkauf, "verkauf_details", None) or []:
+    for detail in details:
         validate_detail(session, detail)
         data = detail.model_dump() if hasattr(detail, "model_dump") else dict(detail)
         artikel_id = data.get("artikel_id")
@@ -351,7 +396,7 @@ def build_sale_details(session, verkauf) -> list[VerkaufDetails]:
                 unit = Decimal(str(artikel.vk_preis))
             total = (unit * qty).quantize(CENT, rounding=ROUND_HALF_UP)
         line = VerkaufDetails(
-            position=next_position(),
+            position=next_position(rows),
             stueckzahl=stueckzahl,
             ges_preis=float(total),
             mwst_satz=mwst_satz,
@@ -386,7 +431,7 @@ def build_sale_details(session, verkauf) -> list[VerkaufDetails]:
         pfand_artikel = pfand.artikel if pfand is not None else None
         if stueckzahl and pfand_artikel is not None and pfand_artikel.vk_preis is not None:
             rows.append(VerkaufDetails(
-                position=next_position(),
+                position=next_position(rows),
                 stueckzahl=stueckzahl,
                 ges_preis=float((Decimal(str(pfand_artikel.vk_preis)) * qty).quantize(
                     CENT, rounding=ROUND_HALF_UP)),
@@ -395,46 +440,25 @@ def build_sale_details(session, verkauf) -> list[VerkaufDetails]:
                 rabatt_id=None,
             ))
 
-    rechnung_rabatt = getattr(verkauf, "rechnung_rabatt_relativ", None)
-    if rechnung_rabatt:
-        factor = Decimal(str(rechnung_rabatt))
-        sums: dict[float, Decimal] = {}
-        for line, mwst_satz, has_discount in article_rows:
-            if not has_discount:
-                sums[mwst_satz] = sums.get(mwst_satz, Decimal("0")) + Decimal(str(line.ges_preis))
-        rabatt_artikel = _special_artikel(session, "rechnung_rabatt")
-        for mwst_satz, summe in sums.items():
-            reduction = (factor * summe).quantize(CENT, rounding=ROUND_HALF_UP)
-            if reduction > 0:
-                rows.append(_aux_line(rabatt_artikel, 1, -reduction, mwst_satz))
+    return rows, article_rows
 
-    gutschein_nr = getattr(verkauf, "gutschein_einloesung_nr", None)
-    if gutschein_nr is None and getattr(verkauf, "gutschein_einloesung_betrag", None) is not None:
-        raise DomainError(
-            detail="gutschein_einloesung_betrag requires gutschein_einloesung_nr",
-        )
-    if gutschein_nr is not None:
-        from .voucher_logic import voucher_balance
-        balance = voucher_balance(session, gutschein_nr)
-        betrag = getattr(verkauf, "gutschein_einloesung_betrag", None)
-        amount = Decimal(str(betrag)) if betrag is not None else balance
-        amount = amount.quantize(CENT, rounding=ROUND_HALF_UP)
-        if amount <= 0:
-            raise DomainError(detail="Gutschein has no remaining balance")
-        if amount > balance:
-            raise DomainError(
-                detail=f"Gutschein-Einlösung exceeds the remaining balance of {balance}",
-            )
-        artikel = _special_artikel(session, "gutschein_einloesung")
-        rows.append(VerkaufDetails(
-            position=next_position(),
-            stueckzahl=1,
-            ges_preis=float(-amount),
-            mwst_satz=_mwst_of(artikel),
-            artikel_id=artikel.artikel_id,
-            rabatt_id=None,
-        ))
 
+def receipt_discount_rows(session, article_rows, factor: Decimal) -> list[VerkaufDetails]:
+    """One negative RABATT line per VAT rate for "Rabatt auf Rechnung".
+
+    Articles that already carry a discount are skipped (they are not discounted
+    twice).
+    """
+    rows: list[VerkaufDetails] = []
+    sums: dict[float, Decimal] = {}
+    for line, mwst_satz, has_discount in article_rows:
+        if not has_discount:
+            sums[mwst_satz] = sums.get(mwst_satz, Decimal("0")) + Decimal(str(line.ges_preis))
+    rabatt_artikel = _special_artikel(session, "rechnung_rabatt")
+    for mwst_satz, summe in sums.items():
+        reduction = (factor * summe).quantize(CENT, rounding=ROUND_HALF_UP)
+        if reduction > 0:
+            rows.append(_aux_line(rabatt_artikel, 1, -reduction, mwst_satz))
     return rows
 
 
