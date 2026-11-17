@@ -14,6 +14,8 @@ from python.models import (
     VerkaufMwst,
 )
 
+pytestmark = pytest.mark.usefixtures("master_data")
+
 
 def _sale_with_detail(session, ec_zahlung):
     v = Verkauf(verkaufsdatum=datetime.now(timezone.utc), ec_zahlung=ec_zahlung)
@@ -161,12 +163,16 @@ def test_storno_rolls_back_receipt_voucher_and_cash_on_failure(session, monkeypa
     session.add(original)
     session.commit()
     session.refresh(original)
-    session.add(VerkaufDetails(position=1, stueckzahl=1, ges_preis=10.0, mwst_satz=0.0,
-                               artikel_id=a.artikel_id, rechnungs_nr=original.rechnungs_nr))
+    vd = VerkaufDetails(position=1, stueckzahl=1, ges_preis=10.0, mwst_satz=0.0,
+                        artikel_id=a.artikel_id, rechnungs_nr=original.rechnungs_nr)
+    session.add(vd)
     session.add(VerkaufMwst(rechnungs_nr=original.rechnungs_nr, mwst_satz=0.0,
                             mwst_netto=10.0, mwst_betrag=0.0))
+    session.commit()
+    # separate commit: without a relationship MariaDB rejects the voucher row
+    # when it is inserted before its sale detail in the same flush
     session.add(Gutschein(gutschein_nr=1, datum=datetime.now(timezone.utc),
-                          gutschein_in_vd_id=1, einloesung_in_vd_id=None, restbetrag=10.0))
+                          gutschein_in_vd_id=vd.vd_id, einloesung_in_vd_id=None, restbetrag=10.0))
     session.commit()
 
     def boom(*args, **kwargs):

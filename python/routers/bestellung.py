@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 from typing import Annotated, Literal, Optional
 
 from fastapi import APIRouter, HTTPException, Query
-from sqlmodel import select
+from sqlmodel import delete, select
 
 from ..models import (
     Bestellung,
@@ -52,11 +52,11 @@ def _add_details(session: SessionDep, bestell_nr: int, typ: str, details: list[B
 
 
 def _delete_details(session: SessionDep, bestell_nr: int, typ: str):
-    rows = session.exec(
-        select(BestellungDetails).where(BestellungDetails.bestell_nr == bestell_nr, BestellungDetails.typ == typ)
-    ).all()
-    for row in rows:
-        session.delete(row)
+    # Bulk delete: the parent row cannot be removed while child rows exist, and
+    # relying on the ORM's flush order fails on MariaDB (FKs enforced).
+    session.exec(delete(BestellungDetails).where(
+        BestellungDetails.bestell_nr == bestell_nr, BestellungDetails.typ == typ
+    ))
 
 
 @router.get("/")

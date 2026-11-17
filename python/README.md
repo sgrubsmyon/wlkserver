@@ -250,6 +250,11 @@ source venv/bin/activate
 pytest -q
 ```
 
+The suite defaults to a fresh in-memory SQLite database. To run it against
+MariaDB, create the disposable `kasse_test` database once
+(`../deployment/create_test_db.sh`, asks for sudo) and then run
+`./run_tests_mariadb.sh` (asks for the `kassenadmin` password).
+
 Coverage (optional): `pip install pytest-cov && pytest --cov=python --cov-report=term-missing`
 
 * https://fastapi.tiangolo.com/tutorial/bigger-applications/#another-module-with-apirouter

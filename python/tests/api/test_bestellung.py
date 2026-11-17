@@ -9,6 +9,8 @@ from python.models import (
 )
 from python.session import get_session
 
+pytestmark = pytest.mark.usefixtures("master_data")
+
 
 @pytest.fixture
 def client(session):

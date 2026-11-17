@@ -497,7 +497,8 @@ The remaining imported items are quality/production tasks, tracked below.
 
 ## 🏭 Production Readiness Findings (2026-10-22)
 
-- [ ] **Integration against a real MariaDB** - tests use in-memory SQLite only, which does not enforce foreign keys and ignores `UNSIGNED`/`YEAR`/`TIMESTAMP` semantics. Needs a smoke run against `../git/mysql/generateDB.sql` with both the `mitarbeiter` and `kassenadmin` grants (especially: `bestellung` composite PK/`AUTO_INCREMENT`, delete order of parent/child rows, timezone round-trips, DECIMAL rounding).
+- [x] **Integration against a real MariaDB** (2026-11-17) - `python/tests/conftest.py` switches to MariaDB when `TEST_DATABASE_URL` is set (refuses a database name without `test`, `create_all(checkfirst=True)` keeps an existing schema's real DDL) and truncates all tables before each test; `deployment/create_test_db.sh` creates `kasse_test` as root from the canonical schema (NOT `../git/mysql/generateDB.sql`, which lacks migrations 01-05) with the test/training database section stripped, and `python/run_tests_mariadb.sh` runs the suite (asks for the `kassenadmin` password). Full suite green on both backends (333 passed each). Findings: `DELETE /bestellung/{nr}` deleted the parent before its detail rows (SQLite hid the FK violation) - `_delete_details` now bulk-deletes; a storno unit test inserted a `Gutschein` before its sale detail in one flush; 18 tests relied on SQLite's disabled FKs via the model defaults `lieferant_id=1`/`produktgruppen_id=8` - the new `master_data` fixture seeds those rows.
+- [ ] Not yet covered on MariaDB: `test_concurrent_sales_are_consistent` still builds its own SQLite engine, so `SELECT ... FOR UPDATE` needs a MariaDB variant.
 - [x] **Frontend readiness** - CORS is configured in `python/main.py` (`CORS_ORIGINS` env var, defaults to the SvelteKit dev server on port 5173); `GET /bestellung` has a date filter. Keep the OpenAPI schema stable for the generated client.
 - [x] **Training mode** - `TRAINING_MODE` + `TRAINING_DB_URL` run the whole API instance against a separate persistent sandbox database (schema created from `models/tables.py`, production users mirrored, short catalog seeded only when the sandbox is empty, `POST /training/reset` clears and reseeds); a restart never wipes training data. In-memory SQLite is rejected: training receipts are signed on the TSE, so their rows must survive restarts. Every table is sandboxed, including master-data edits, which the Java POS `training_*` tables did not cover. TSE exports and automatic DSFinV-K writes are skipped (audit #7).
 - [ ] **Deployment** - setup, HTTPS and auth are documented in `python/README.md`; a migration guide and a DB schema reference are still missing.
@@ -562,7 +563,7 @@ The remaining imported items are quality/production tasks, tracked below.
 
 ## 🚀 Recommended Next Steps
 
-1. **Real database validation**: run a smoke test against MariaDB with `../git/mysql/generateDB.sql` and the real grants; fix anything SQLite hides (FK enforcement, `AUTO_INCREMENT`/composite PK, `YEAR`/`UNSIGNED`, timezone, DECIMAL)
+1. **Real database validation**: done (2026-11-17, full suite green on `kasse_test`); only the concurrency test still runs on SQLite
 2. **Frontend readiness**: CORS is configured via `CORS_ORIGINS` (defaults to the SvelteKit dev server); keep the OpenAPI schema stable
 3. **Integration tests**: done in `test_integration.py` (workflows, cross-entity effects, concurrent sales)
 4. **Coverage**: target 80%+ reached; remaining gaps: tse_client.py 44%, users 33%, rabattaktion 33%

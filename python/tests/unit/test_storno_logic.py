@@ -106,7 +106,7 @@ def test_invert_mwst(session):
 
 def test_create_storno_flow(session):
     v = _create_sale(session)
-    _add_details(session, v.rechnungs_nr, [(1, 2, 20.0, 0.19)])
+    _add_details(session, v.rechnungs_nr, [(None, 2, 20.0, 0.19)])
     _add_mwst(session, v.rechnungs_nr, 0.19, 16.81, 3.19)
 
     storno = create_storno(session, v.rechnungs_nr)
@@ -122,7 +122,7 @@ def test_storno_rolls_back_on_error(session, monkeypatch):
     import python.business.storno_logic as storno_logic
 
     v = _create_sale(session)
-    _add_details(session, v.rechnungs_nr, [(1, 1, 10.0, 0.19)])
+    _add_details(session, v.rechnungs_nr, [(None, 1, 10.0, 0.19)])
     _add_mwst(session, v.rechnungs_nr, 0.19, 8.40, 1.60)
 
     def boom(*args, **kwargs):
@@ -145,7 +145,7 @@ def test_storno_rolls_back_on_error(session, monkeypatch):
 
 def test_create_storno_double_storno_fails(session):
     v = _create_sale(session)
-    _add_details(session, v.rechnungs_nr, [(1, 1, 10.0, 0.19)])
+    _add_details(session, v.rechnungs_nr, [(None, 1, 10.0, 0.19)])
     _add_mwst(session, v.rechnungs_nr, 0.19, 8.40, 1.60)
 
     create_storno(session, v.rechnungs_nr)
@@ -156,7 +156,7 @@ def test_create_storno_double_storno_fails(session):
 
 def test_handle_storno_voucher(session):
     v = _create_sale(session)
-    _add_details(session, v.rechnungs_nr, [(1, 1, 10.0, 0.19)])
+    _add_details(session, v.rechnungs_nr, [(None, 1, 10.0, 0.19)])
     vd = session.exec(select(VerkaufDetails).where(VerkaufDetails.rechnungs_nr == v.rechnungs_nr)).first()
 
     g = Gutschein(
@@ -179,7 +179,7 @@ def test_handle_storno_voucher(session):
 
 def test_handle_storno_installment(session):
     v = _create_sale(session)
-    _add_details(session, v.rechnungs_nr, [(1, 1, 10.0, 0.19)])
+    _add_details(session, v.rechnungs_nr, [(None, 1, 10.0, 0.19)])
     _add_mwst(session, v.rechnungs_nr, 0.19, 8.40, 1.60)
 
     a = Anzahlung(

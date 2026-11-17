@@ -20,7 +20,7 @@ This document outlines the comprehensive implementation plan to complete the Fas
 - **Auth**: Per-user accounts (bcrypt + JWT), login auditing (readable via admin-only `GET /auth/anmeldungen`), `user_id` attribution on transaction endpoints, SQL migration in `migrations/02_user_auth/`; all data endpoints (reads included) require `require_user`, admin endpoints require role `admin`, login has rate limiting, refresh/logout supported
 
 ### 🎯 What Needs to be Done
-- Validate against a real MariaDB instance (tests are SQLite-only)
+- Validate against a real MariaDB instance: done (2026-11-17, `TEST_DATABASE_URL` + `deployment/create_test_db.sh`; the full suite is green on both backends)
 - CORS configured in `python/main.py` via `CORS_ORIGINS` (defaults to the SvelteKit dev server); keep the OpenAPI schema stable
 - Add integration tests for complete sales/storno/settlement workflows (coverage target 80% reached)
 - All 2026-10-28 audit gaps and the edge-case validation pass are closed; the remaining work is the untested TSE hardware adapter and the documentation/production items - see "Business-logic gaps (2026-10-28 audit)" below
@@ -748,8 +748,10 @@ Steps 1-3 are what "proper separation of concerns" means for the success criteri
 - Current: 90% (238 tests passing, measured 2026-10-27)
 
 ### Real Database Tests
-- Tests run on in-memory SQLite, which does not enforce foreign keys and ignores `UNSIGNED`/`YEAR`/`TIMESTAMP` semantics
-- A smoke run against the real MariaDB schema (`../git/mysql/generateDB.sql`) with the real `mitarbeiter`/`kassenadmin` grants is still missing; it must cover `bestellung` composite PK/`AUTO_INCREMENT`, delete order of parent/child rows, timezone round-trips and DECIMAL rounding
+- Tests default to in-memory SQLite, which does not enforce foreign keys and ignores `UNSIGNED`/`YEAR`/`TIMESTAMP` semantics
+- `TEST_DATABASE_URL` switches the `session` fixture to MariaDB and truncates all tables before each test. `deployment/create_test_db.sh` creates `kasse_test` from `deployment/create_db.sql` (generateDB.sql + migrations 01-05), `python/run_tests_mariadb.sh` runs the suite
+- Done 2026-11-17: 333 passed on both backends. Findings fixed: `DELETE /bestellung/{nr}` deleted the parent before its detail rows (`_delete_details` now bulk-deletes), a storno test's voucher row was inserted before its sale detail, and 18 tests relied on SQLite's disabled FKs (new `master_data` fixture)
+- Still open: `test_concurrent_sales_are_consistent` builds its own SQLite engine, so `SELECT ... FOR UPDATE` is not exercised on MariaDB
 
 ### Test Files
 Existing: `test_mwst.py`, `test_pfand.py`, `test_kassenstand.py`, `test_gutschein.py`, `test_anzahlung.py`, `test_abrechnung_tag.py`, `test_abrechnung_monat.py`, `test_abrechnung_jahr.py`, `test_zaehlprotokoll.py`, `test_bestellung.py` (incl. positions), `test_auth.py`, `test_vat_calculator.py`, `test_verkauf_storno.py`, `test_tse.py`, `test_sale_workflow.py`, `test_storno_logic.py`, `test_import_export.py`, smoke tests for Phases 2-5, `test_timestamps.py`.
@@ -883,7 +885,7 @@ Note: There are deliberately **no** `routers/verkauf_mwst.py` and `routers/verka
 
 ## Next Steps
 
-1. **Real database validation**: smoke test the API against MariaDB with `../git/mysql/generateDB.sql` and the real grants; fix anything SQLite hides (FK enforcement, `AUTO_INCREMENT`/composite PK, `YEAR`/`UNSIGNED`, timezone, DECIMAL)
+1. **Real database validation**: done (2026-11-17); next is a MariaDB variant of the concurrency test so `SELECT ... FOR UPDATE` is exercised
 2. **Frontend readiness**: CORS is configured via `CORS_ORIGINS`; keep the OpenAPI schema stable
 3. **Integration tests**: done in `test_integration.py` (workflows, cross-entity effects, concurrent sales)
 4. **Coverage**: target reached; remaining gaps: tse_client.py 44%, users 33%, rabattaktion 33%

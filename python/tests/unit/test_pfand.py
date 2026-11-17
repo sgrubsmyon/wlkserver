@@ -15,6 +15,8 @@ from python.schemas import (
 
 from python.routers.pfand import create_pfand, update_pfand, delete_pfand, read_pfands
 
+pytestmark = pytest.mark.usefixtures("master_data")
+
 
 def make_artikel(session, artikel_nr, artikel_name, vk_preis):
     artikel = Artikel(artikel_nr=artikel_nr, artikel_name=artikel_name, vk_preis=vk_preis)
