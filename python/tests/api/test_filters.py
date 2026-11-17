@@ -36,7 +36,7 @@ def _seed_artikel(session, nr="F1", name="Filter Artikel"):
     session.add(pg)
     session.commit()
     session.refresh(pg)
-    l = Lieferant(lieferant_name=f"L {nr}")
+    l = Lieferant(lieferant_name=f"L {nr}", lieferant_kurzname=f"K{nr}")
     session.add(l)
     session.commit()
     session.refresh(l)
@@ -66,6 +66,7 @@ def test_artikel_name_search_matches_all_terms_in_any_order(client, session):
 
     body = client.get("/artikel/", params={"artikel_name": "apfel bio"}).json()
     assert [a["artikel_nr"] for a in body] == ["T1"]
+    assert body[0]["lieferant_kurzname"] == "KT1"
 
     body = client.get("/artikel/", params={"artikel_name": "bio"}).json()
     assert sorted(a["artikel_nr"] for a in body) == ["T1", "T3"]

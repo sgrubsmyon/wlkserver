@@ -104,6 +104,7 @@ class ArtikelPublic(ArtikelBase):
     lieferant_id: int
     produktgruppen_name: str
     lieferant_name: str
+    lieferant_kurzname: str | None = None
     pfand_artikel_id: int | None
     pfand_wert: float | None
 
