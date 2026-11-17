@@ -232,9 +232,11 @@ the only password rule currently is non-empty.
 ## Transport security (HTTPS on the LAN)
 
 The API and web app are intended for a local network. For production use an
-internal CA certificate (e.g. via `mkcert`) and terminate TLS in a reverse
-proxy (Caddy/nginx) in front of uvicorn, or pass `--ssl-keyfile`/`--ssl-certfile`
-to uvicorn. Plain HTTP is only acceptable on a managed, isolated POS VLAN.
+internal CA certificate and terminate TLS in nginx, which also serves the
+SvelteKit client and proxies the API under `/api/` (same origin, so CORS is not
+involved). The files and step-by-step guide are in `deployment/`:
+`nginx-wlkserver.conf`, `make_tls_cert.sh`, `README.md`. Plain HTTP is only
+acceptable on a managed, isolated POS VLAN.
 
 ## Database migration
 

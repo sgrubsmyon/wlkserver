@@ -12,7 +12,9 @@ User=wlkserver
 Group=wlkserver
 #SupplementaryGroups=dialout
 # One worker only: the TSE client serializes SE-API calls with a per-process lock.
-ExecStart=/opt/wlkserver/python/venv/bin/uvicorn python.main:app --host 0.0.0.0 --port 8000 --workers 1
+# Listens on localhost only; nginx publishes it under /api/ and terminates TLS.
+# --root-path /api keeps generated URLs (/docs, /openapi.json) behind the prefix.
+ExecStart=/opt/wlkserver/python/venv/bin/uvicorn python.main:app --host 127.0.0.1 --port 8000 --workers 1 --root-path /api
 Restart=on-failure
 RestartSec=5
 

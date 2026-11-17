@@ -1,0 +1,7 @@
+[Unit]
+Description=Daily wlkserver database backup
+After=mariadb.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/wlkserver/deployment/backup_db.sh

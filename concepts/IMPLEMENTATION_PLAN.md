@@ -611,9 +611,9 @@ Security pitfalls of using unencrypted HTTP within a local network:
 
 **Recommendation**: Use HTTPS with an internal CA certificate (Option 1) - the setup cost is small (one-time) and it removes the clear-text pitfalls entirely. Plain HTTP (Option 2) is only acceptable if the LAN is a managed, isolated segment without guest access.
 
-**Planned production topology: same-origin behind nginx (deferred, not implemented yet)**
+**Production topology: same-origin behind nginx (implemented 2026-11-17)**
 
-Once the frontend exists, the API and the SvelteKit client are planned to be served from **one origin** behind nginx:
+The API and the SvelteKit client are served from **one origin** behind nginx:
 
 - nginx serves the built frontend (adapter-node or static build) at `/`.
 - nginx proxies the API under a path prefix: `location /api/ { proxy_pass http://127.0.0.1:8000/; }`.
@@ -621,8 +621,7 @@ Once the frontend exists, the API and the SvelteKit client are planned to be ser
 - Run Uvicorn with `--root-path /api` so the generated OpenAPI schema and `/docs` produce correct URLs behind the prefix.
 - nginx terminates TLS with the internal CA certificate (Option 1 above) and redirects/blocks plain HTTP.
 - Because frontend and API share an origin, **CORS is not exercised in production**. The `CORS_ORIGINS` allowlist stays for the Vite dev server (`:5173`) and for any deployment where the client is served from a different host; it remains irrelevant for scripts.
-- This is a deployment-time arrangement, not an API change. Caddy or Uvicorn with a certificate directly are equivalent alternatives; the nginx variant is the one documented here.
-- Still to be written: the nginx site config, the TLS certificate setup and the backup procedure (tracked in `concepts/TODO.md`). A fresh-install guide for Ubuntu (MariaDB packages, database users, `deployment/create_db.sql`, venv/.env, systemd unit in `deployment/`) is in `README.md`.
+- This is a deployment-time arrangement, not an API change. Caddy or Uvicorn with a certificate directly are equivalent alternatives; the nginx variant is the one implemented, in `deployment/`: `nginx-wlkserver.conf` (site), `make_tls_cert.sh` (internal CA + server certificate), `backup_db.sh` + `wlkserver-backup.service`/`.timer` (daily dumps with retention), and the step-by-step guide in `deployment/README.md`. `wlkserver.service` binds `127.0.0.1` with `--root-path /api`. A fresh-install guide for Ubuntu (MariaDB packages, database users, `deployment/create_db.sql`, venv/.env, systemd unit) is in `deployment/README.md`.
 
 **Calling the API from automation scripts (planned use case)**
 
@@ -893,4 +892,4 @@ Note: There are deliberately **no** `routers/verkauf_mwst.py` and `routers/verka
 6. **Remaining business logic** (2026-10-28 audit, see above): none; #1-#7 done
 7. **Training mode**: run a second API instance with `TRAINING_MODE=1` and `TRAINING_DB_URL`; `POST /training/reset` reseeds the sandbox
 8. **Import/Export**: CSV exports for Bestellung and Inventur exist; ODS export is deferred to a later phase (needs an ODS library and the Java templates)
-9. **Documentation**: migration guide (Java POS → API), database schema reference, consistent docstrings, deployment/HTTPS docs (same-origin nginx topology and script automation are documented in Phase 7.4; fresh-install guide + `deployment/create_db.sql` + systemd unit exist, nginx site config/TLS/backup artifacts still missing)
+9. **Documentation**: migration guide (Java POS → API), database schema reference, consistent docstrings. Deployment is documented: same-origin nginx topology and script automation in Phase 7.4, fresh-install guide + `create_db.sql` + systemd units + nginx site config/TLS script/backup timer in `deployment/`
