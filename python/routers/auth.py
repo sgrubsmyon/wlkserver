@@ -16,7 +16,7 @@ from ..schemas import (
     UserPublic,
 )
 from ..session import SessionDep
-from ..utils.auth import verify_password, create_token, decode_token
+from ..utils.auth import hash_password, verify_password, create_token, decode_token
 from ..utils.pagination import paginate
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -29,6 +29,15 @@ from pydantic import BaseModel
 class LoginPayload(BaseModel):
     username: str
     password: str
+
+
+class PasswordChangePayload(BaseModel):
+    current_password: str
+    new_password: str
+
+
+class ThemePayload(BaseModel):
+    pref_theme: str
 
 
 # Failed-login throttling (in-memory; the API runs as a single worker).
@@ -116,6 +125,32 @@ def logout(session: SessionDep, credentials: Annotated[Optional[HTTPAuthorizatio
 @router.get("/me")
 def me(user: User = Depends(require_user)):
     return UserPublic.model_validate(user).model_dump()
+
+
+@router.patch("/me", response_model=UserPublic)
+def update_me(payload: ThemePayload, session: SessionDep, user: User = Depends(require_user)):
+    """Self-service preferences (currently the preferred theme)."""
+    if payload.pref_theme not in ("light", "dark"):
+        raise HTTPException(status_code=422, detail="pref_theme must be 'light' or 'dark'")
+    user.pref_theme = payload.pref_theme
+    session.add(user)
+    session.commit()
+    session.refresh(user)
+    return UserPublic.model_validate(user)
+
+
+@router.post("/passwort")
+def change_password(payload: PasswordChangePayload, session: SessionDep,
+                    user: User = Depends(require_user)):
+    """Change the own password; the current one must match."""
+    if not verify_password(payload.current_password, user.password_hash):
+        raise HTTPException(status_code=400, detail="Current password is wrong")
+    if len(payload.new_password) < 8:
+        raise HTTPException(status_code=422, detail="New password must be at least 8 characters")
+    user.password_hash = hash_password(payload.new_password)
+    session.add(user)
+    session.commit()
+    return {"message": "Password changed"}
 
 
 # aliases

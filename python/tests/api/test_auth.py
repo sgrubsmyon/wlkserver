@@ -84,3 +84,48 @@ def test_login_audit_requires_admin(client, session):
     r = client.get("/auth/anmeldungen", headers=admin_headers)
     assert r.status_code == 200
     assert {row["user_id"] for row in r.json()} == {session.exec(select(User).where(User.username == "test")).one().user_id, admin.user_id}
+
+
+def test_self_service_theme_and_password(client, session):
+    _, headers = _login(client)
+
+    r = client.patch("/auth/me", json={"pref_theme": "dark"}, headers=headers)
+    assert r.status_code == 200
+    assert r.json()["pref_theme"] == "dark"
+    assert client.patch("/auth/me", json={"pref_theme": "blue"},
+                        headers=headers).status_code == 422
+
+    r = client.post("/auth/passwort", json={
+        "current_password": "wrong", "new_password": "neuespasswort"}, headers=headers)
+    assert r.status_code == 400
+    r = client.post("/auth/passwort", json={
+        "current_password": "test", "new_password": "neuespasswort"}, headers=headers)
+    assert r.status_code == 200
+    assert _login(client, password="neuespasswort")[0].status_code == 200
+
+
+def test_delete_user_rules(client, session):
+    _, headers = _login(client)
+    me = client.get("/auth/me", headers=headers).json()
+    assert client.delete(f"/users/{me['user_id']}", headers=headers).status_code == 403
+
+    admin = User(username="admin", password_hash=hash_password("admin"),
+                 role="admin", active=True)
+    admin.user_id = None
+    session.add(admin)
+    session.commit()
+    session.refresh(admin)
+    _, admin_headers = _login(client, "admin", "admin")
+
+    # a user with logins keeps the auditing trail and is deactivated instead
+    assert client.delete(f"/users/{me['user_id']}", headers=admin_headers).status_code == 400
+
+    victim = User(username="opfer", password_hash=hash_password("x"),
+                  role="mitarbeiter", active=True)
+    victim.user_id = None
+    session.add(victim)
+    session.commit()
+    session.refresh(victim)
+    assert client.delete(f"/users/{victim.user_id}", headers=admin_headers).status_code == 200
+    # the admin must not delete itself
+    assert client.delete(f"/users/{admin.user_id}", headers=admin_headers).status_code == 400

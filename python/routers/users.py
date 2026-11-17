@@ -1,6 +1,7 @@
 from typing import Annotated, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy.exc import IntegrityError
 from sqlmodel import select
 
 from ..models import User
@@ -98,6 +99,34 @@ def deactivate_user(user_id: int, session: SessionDep, _admin=Depends(require_ad
     session.commit()
     session.refresh(u)
     return UserPublic.model_validate(u)
+
+
+@router.delete("/{user_id}")
+def delete_user(user_id: int, session: SessionDep, admin: User = Depends(require_admin)):
+    """Delete an account. Self-deletion and removing the last admin are refused."""
+    u = session.get(User, user_id)
+    if not u:
+        raise HTTPException(status_code=404, detail="User not found")
+    if u.user_id == admin.user_id:
+        raise HTTPException(status_code=400, detail="Cannot delete the own account")
+    if u.role == "admin" and u.active:
+        remaining = session.exec(
+            select(User).where(User.role == "admin", User.active == True,
+                               User.user_id != user_id)
+        ).all()
+        if not remaining:
+            raise HTTPException(status_code=400, detail="Cannot delete the last active admin")
+    try:
+        session.delete(u)
+        session.commit()
+    except IntegrityError:
+        # Bookkeeping references (sales, logins, ...) must not be orphaned.
+        session.rollback()
+        raise HTTPException(
+            status_code=400,
+            detail="User has transactions and cannot be deleted; deactivate instead",
+        )
+    return {"message": "User deleted"}
 
 
 @router.post("/{user_id}/reset-password", response_model=UserPublic)

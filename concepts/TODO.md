@@ -66,6 +66,7 @@
 - [x] Zaehlprotokoll router - CRU + /abrechnung/{id}
 - [x] Bestellung router - CRUD incl. positions (`details` on create/update, returned by GET single)
 - [x] TSE router - transaction CRUD + status/init + export endpoints (stub adapter)
+- [x] User self-service - `PATCH /auth/me` (own `pref_theme`), `POST /auth/passwort` (change own password, current one required) and admin `DELETE /users/{id}` (refused for the own account, the last active admin and accounts with bookkeeping references) (2026-11-17)
 - [x] Warenkorb router - stateless cart preview: `/hinzufuegen` (article + Pfand + active Rabattaktion), `/leergut` (negative Pfand row), `/rabatt` (per-article and receipt-level discount rows), `/summen` (subtotal, VAT split, discounts, change); shares `expand_details`/`receipt_discount_rows` with `POST /verkauf` so the preview cannot diverge from the receipt (2026-11-17)
 - [x] Main API setup with all routers included
 - [x] Database session management
