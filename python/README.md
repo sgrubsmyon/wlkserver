@@ -20,19 +20,29 @@ fastapi dev --port 8080
 
 ## Run in production mode
 
-From the repository root, so that the `python.main` package imports resolve and
-the venv's `uvicorn` is used instead of a system-wide one:
+Run from the `python/` directory, where the venv lives. `--app-dir ..` puts the
+repository root on the import path, so the `python.main` package resolves:
 
 ```
-python/venv/bin/uvicorn python.main:app --host 0.0.0.0 --port 8000
+venv/bin/uvicorn --app-dir .. python.main:app --host 0.0.0.0 --port 8000
 ```
+
+Or from the repository root:
+
+```
+python/venv/bin/uvicorn --app-dir . python.main:app --host 0.0.0.0 --port 8000
+```
+
+Without `--app-dir`, or when started from any other directory, uvicorn cannot
+find the package and fails with `ModuleNotFoundError: No module named 'python'`.
 
 Keep it at one worker (`--workers 1`, the default): the TSE client serializes
 SE-API calls with a per-process lock, so a second worker would break that
 guarantee.
 
-For a server, use the systemd unit in `../deployment/wlkserver.service`: adjust
-its paths and `User`, then
+For a server, use the systemd unit in `../deployment/wlkserver.service` (its
+`WorkingDirectory` is the repository root, so no `--app-dir` is needed there):
+adjust its paths and `User`, then from the repository root
 
 ```
 sudo cp deployment/wlkserver.service /etc/systemd/system/
