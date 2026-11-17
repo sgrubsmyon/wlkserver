@@ -217,3 +217,19 @@ def test_anzahlung_preview_zeroes_articles_and_adds_deposit_rows(client, session
     anzahlung_rows = [row for row in rows if row["kind"] == "anzahlung"]
     assert len(anzahlung_rows) == 1
     assert anzahlung_rows[0]["ges_preis"] == 3.0
+
+
+def test_sale_accepts_negative_return_position(client, session):
+    with_pfand, _, _ = _seed(session)
+    r = client.post("/verkauf/", json={
+        "ec_zahlung": False,
+        "verkauf_details": [{
+            "artikel_id": with_pfand.artikel_id,
+            "stueckzahl": 1,
+            "ges_preis": -10.0,
+        }],
+        "kunde_gibt": 0,
+    })
+    assert r.status_code == 200, r.json()
+    details = client.get(f"/verkauf/{r.json()['rechnungs_nr']}").json()["verkauf_details"]
+    assert any(detail["ges_preis"] < 0 for detail in details)

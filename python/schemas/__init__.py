@@ -235,8 +235,9 @@ class VerkaufDetailsCreate(VerkaufDetailsBase):
     # Manual per-line discount; negative values are a price increase (Aufschlag).
     rabatt_absolut: float | None = None
     # Explicit line total (e.g. `variabler_preis` articles); defaults to the
-    # article price times the quantity.
-    ges_preis: float | None = Field(default=None, ge=0)
+    # article price times the quantity. Negative totals are returns (Leergut,
+    # Rückgabe), which carry a negative price like Java's cashier rows.
+    ges_preis: float | None = None
 
 
 class KassenstandPublic(SQLModel):
