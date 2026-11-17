@@ -890,6 +890,6 @@ Note: There are deliberately **no** `routers/verkauf_mwst.py` and `routers/verka
 4. **Coverage**: target reached; remaining gaps: tse_client.py 44%, users 33%, rabattaktion 33%
 5. **Validation**: done (model constraints + `ensure_*` helpers wired, see TODO "Validation Framework")
 6. **Remaining business logic** (2026-10-28 audit, see above): none; #1-#7 done
-7. **Training mode**: run a second API instance with `TRAINING_MODE=1` and `TRAINING_DB_URL`; `POST /training/reset` reseeds the sandbox
+7. **Training mode**: run the second instance via `deployment/wlkserver-training.service` (`TRAINING_MODE=1`, port 8001, `TRAINING_DB_URL` from `.env`); `POST /training/reset` reseeds the sandbox
 8. **Import/Export**: CSV exports for Bestellung and Inventur exist; ODS export is deferred to a later phase (needs an ODS library and the Java templates)
 9. **Documentation**: migration guide (Java POS → API), database schema reference, consistent docstrings. Deployment is documented: same-origin nginx topology and script automation in Phase 7.4, fresh-install guide + `create_db.sql` + systemd units + nginx site config/TLS script/backup timer in `deployment/`

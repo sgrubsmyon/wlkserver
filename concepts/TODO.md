@@ -569,7 +569,7 @@ The remaining imported items are quality/production tasks, tracked below.
 4. **Coverage**: target 80%+ reached; remaining gaps: tse_client.py 44%, users 33%, rabattaktion 33%
 5. **Validation**: done (model constraints + `ensure_*` helpers wired, see Validation Framework)
 6. **Remaining business logic**: none from the 2026-10-28 audit and none from the edge-case validation pass; only the untested TSE hardware adapter remains (see "Business-logic gaps")
-7. **Training mode**: the sandbox database covers every operation; run a second API instance with `TRAINING_MODE=1` and `TRAINING_DB_URL` for it
+7. **Training mode**: the sandbox database covers every operation; run the second instance via `deployment/wlkserver-training.service` (sets `TRAINING_MODE=1`, port 8001, uses `TRAINING_DB_URL` from `.env`)
 8. **Import/Export**: CSV exports for Bestellung and Inventur exist; ODS export is deferred to a later phase (see "Phase 7" above)
 9. **Documentation**: migration guide (Java POS → API), database schema reference, consistent docstrings, deployment/HTTPS docs
 

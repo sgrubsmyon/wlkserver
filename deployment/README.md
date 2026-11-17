@@ -213,6 +213,36 @@ Both are irreplaceable (AUTH_SECRET, TimeAdmin PIN, TSE progress) and must be
 backed up separately with restrictive permissions - the TSE PUKs exist only on
 paper.
 
+## 8. Training instance (sandbox)
+
+`deployment/wlkserver-training.service` runs a second API instance against a
+separate database. It sets `TRAINING_MODE=1` in the unit itself; do **not** put
+`TRAINING_MODE` into `python/.env`, because the production unit reads that file
+too. The sandbox URL belongs in `.env` (it is ignored while training mode is
+off):
+
+```
+TRAINING_DB_URL=mariadb+mariadbconnector://kassenadmin:your-admin-password@localhost/kasse_training
+```
+
+`deployment/create_db.sql` already creates `kasse_training` and its grant. The
+instance creates the schema and seeds the test catalog on first start, mirrors
+the production users, and never wipes data on restart (`POST /training/reset`
+is the only reset). It signs receipts on the real TSE and needs the same
+`SupplementaryGroups=dialout` as the production unit.
+
+```
+sudo cp deployment/wlkserver-training.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now wlkserver-training
+journalctl -u wlkserver-training -f
+```
+
+The instance listens on `127.0.0.1:8001` only. Publish it through nginx (a
+separate `server` block or a `location` with a matching `--root-path`) if POS
+clients should reach it over the network.
+
+
 
 ## Updating
 

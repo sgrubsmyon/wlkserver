@@ -1,0 +1,24 @@
+[Unit]
+Description=Weltladenkasse API, training sandbox (wlkserver)
+Wants=network-online.target
+After=network-online.target mariadb.service wlkserver.service
+
+[Service]
+Type=simple
+# Second instance against TRAINING_DB_URL. TRAINING_MODE must be set HERE and
+# never in python/.env: .env is also read by the production unit, which would
+# then run against the sandbox. Real environment variables win over .env.
+Environment=TRAINING_MODE=1
+WorkingDirectory=/opt/wlkserver
+User=wlkserver
+Group=wlkserver
+# The sandbox signs receipts on the real TSE.
+#SupplementaryGroups=dialout
+# One worker only: the TSE client serializes SE-API calls with a per-process lock.
+# Separate port; the API stays on localhost unless a reverse proxy publishes it.
+ExecStart=/opt/wlkserver/python/venv/bin/uvicorn python.main:app --host 127.0.0.1 --port 8001 --workers 1
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
