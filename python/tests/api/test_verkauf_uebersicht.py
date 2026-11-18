@@ -253,3 +253,25 @@ def test_sale_detail_shows_discount_action_name(client, session):
     detail = client.get(f"/verkauf/{v.rechnungs_nr}").json()["verkauf_details"][0]
     assert detail["rabatt_id"] == aktion.rabatt_id
     assert detail["aktionsname"] == "Sommeraktion"
+
+
+def test_uebersicht_filters_by_date_range(client, session):
+    from datetime import timedelta
+
+    old = Verkauf(verkaufsdatum=datetime.now(timezone.utc) - timedelta(days=30),
+                  ec_zahlung=False)
+    new = Verkauf(verkaufsdatum=datetime.now(timezone.utc) - timedelta(days=1),
+                  ec_zahlung=False)
+    session.add(old)
+    session.add(new)
+    session.commit()
+    session.refresh(old)
+    session.refresh(new)
+
+    von = (datetime.now(timezone.utc) - timedelta(days=2)).isoformat()
+    body = client.get("/verkauf/uebersicht", params={"nur_heute": True, "von": von}).json()
+    assert [row["rechnungs_nr"] for row in body] == [new.rechnungs_nr]
+
+    bis = (datetime.now(timezone.utc) - timedelta(days=2)).isoformat()
+    body = client.get("/verkauf/uebersicht", params={"nur_heute": True, "bis": bis}).json()
+    assert [row["rechnungs_nr"] for row in body] == [old.rechnungs_nr]

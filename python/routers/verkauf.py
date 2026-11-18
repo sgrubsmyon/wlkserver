@@ -70,6 +70,8 @@ def read_verkaeufe(
 def read_verkauf_uebersicht(
     session: SessionDep,
     nur_heute: bool = False,
+    von: Optional[datetime] = None,
+    bis: Optional[datetime] = None,
     limit: Annotated[int, Query(le=500)] = 500,
 ):
     """Sales overview for the client list.
@@ -86,6 +88,10 @@ def read_verkauf_uebersicht(
         selection = selection.where(Verkauf.rechnungs_nr > last_bis)
     else:
         selection = selection.where(Verkauf.rechnungs_nr <= last_bis)
+    if von is not None:
+        selection = selection.where(Verkauf.verkaufsdatum >= von)
+    if bis is not None:
+        selection = selection.where(Verkauf.verkaufsdatum <= bis)
 
     verkaeufe = session.exec(
         selection.order_by(Verkauf.verkaufsdatum.desc(), Verkauf.rechnungs_nr.desc())
