@@ -242,3 +242,22 @@ def test_sale_accepts_negative_return_position(client, session):
     assert r.status_code == 200, r.json()
     details = client.get(f"/verkauf/{r.json()['rechnungs_nr']}").json()["verkauf_details"]
     assert any(detail["ges_preis"] < 0 for detail in details)
+
+
+def test_hinzufuegen_includes_discount_action_name(client, session):
+    from datetime import datetime, timezone
+    from python.models import Rabattaktion
+
+    _, without_pfand, _ = _seed(session)
+    session.add(Rabattaktion(
+        aktionsname="Sommeraktion", rabatt_relativ=0.1,
+        artikel_id=without_pfand.artikel_id, von=datetime.now(timezone.utc),
+    ))
+    session.commit()
+
+    rows = client.post("/warenkorb/hinzufuegen", json={
+        "artikel_id": without_pfand.artikel_id}).json()
+    rabatt = [row for row in rows if row["kind"] == "rabatt"]
+    assert len(rabatt) == 1
+    assert rabatt[0]["aktionsname"] == "Sommeraktion"
+    assert rabatt[0]["parent_ref"] == rows[0]["ref"]

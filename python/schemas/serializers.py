@@ -18,6 +18,8 @@ def verkauf_public(verkauf, include_details=True, include_mwst=True) -> dict:
                 "artikel_variabler_preis": (
                     d.artikel.variabler_preis if d.artikel else False),
                 "ist_pfand": bool(d.artikel.pfand) if d.artikel else False,
+                "aktionsname": (
+                    d.rabattaktion.aktionsname if d.rabattaktion else None),
             }) for d in (verkauf.verkauf_details or [])
         ]
     if include_mwst:

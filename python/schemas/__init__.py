@@ -566,6 +566,7 @@ class WarenkorbPosition(SQLModel):
     mwst_satz: float = 0.0
     variabler_preis: bool = False
     rabatt_id: int | None = None
+    aktionsname: str | None = None
     # Per-unit discount for the sale payload (`VerkaufDetailsCreate.rabatt_absolut`).
     rabatt_absolut: float | None = None
     # True if this row already carries a discount (receipt discounts skip it).

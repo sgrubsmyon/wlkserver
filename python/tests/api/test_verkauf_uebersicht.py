@@ -207,3 +207,49 @@ def test_sale_detail_resolves_redeemed_voucher_number(client, session):
 
     body = client.get(f"/verkauf/{v.rechnungs_nr}").json()
     assert body["verkauf_details"][0]["gutschein_nr"] == 4711
+
+
+def test_sale_detail_shows_discount_action_name(client, session):
+    from python.models import Rabattaktion
+
+    m = Mwst(mwst_satz=0.19, dsfinvk_ust_schluessel=1)
+    session.add(m)
+    session.commit()
+    session.refresh(m)
+    pg = Produktgruppe(produktgruppen_name="Aktion", mwst_id=m.mwst_id)
+    session.add(pg)
+    session.commit()
+    session.refresh(pg)
+    lieferant = Lieferant(lieferant_name="L")
+    session.add(lieferant)
+    session.commit()
+    session.refresh(lieferant)
+    rabatt_artikel = Artikel(
+        artikel_nr="RABATT1", artikel_name="Rabatt",
+        produktgruppen_id=pg.produktgruppen_id, lieferant_id=lieferant.lieferant_id,
+    )
+    session.add(rabatt_artikel)
+    session.commit()
+    session.refresh(rabatt_artikel)
+    aktion = Rabattaktion(
+        aktionsname="Sommeraktion", rabatt_relativ=0.1,
+        von=datetime.now(timezone.utc),
+    )
+    session.add(aktion)
+    session.commit()
+    session.refresh(aktion)
+
+    v = Verkauf(verkaufsdatum=datetime.now(timezone.utc), ec_zahlung=False)
+    session.add(v)
+    session.commit()
+    session.refresh(v)
+    session.add(VerkaufDetails(
+        position=None, stueckzahl=2, ges_preis=-1.0, mwst_satz=0.19,
+        rechnungs_nr=v.rechnungs_nr, artikel_id=rabatt_artikel.artikel_id,
+        rabatt_id=aktion.rabatt_id,
+    ))
+    session.commit()
+
+    detail = client.get(f"/verkauf/{v.rechnungs_nr}").json()["verkauf_details"][0]
+    assert detail["rabatt_id"] == aktion.rabatt_id
+    assert detail["aktionsname"] == "Sommeraktion"

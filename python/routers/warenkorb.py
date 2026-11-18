@@ -17,7 +17,7 @@ from ..business.sale_workflow import (
     receipt_discount_rows,
     calculate_mwst_summary,
 )
-from ..models import Artikel, VerkaufDetails
+from ..models import Artikel, Rabattaktion, VerkaufDetails
 from ..schemas import (
     VerkaufDetailsCreate,
     WarenkorbHinzufuegen,
@@ -53,6 +53,9 @@ def _position(session: SessionDep, detail, ref, parent_ref=None, kind="artikel",
     stueckzahl = detail.stueckzahl or 1
     row_kind = SPECIAL_KINDS.get(artikel.artikel_nr, kind) if artikel else kind
     lieferant = artikel.lieferant if artikel is not None else None
+    aktion = None
+    if detail.rabatt_id is not None:
+        aktion = session.get(Rabattaktion, detail.rabatt_id)
     unit = (Decimal(str(detail.ges_preis)) / Decimal(stueckzahl)).quantize(
         CENT, rounding=ROUND_HALF_UP)
     return WarenkorbPosition(
@@ -70,6 +73,7 @@ def _position(session: SessionDep, detail, ref, parent_ref=None, kind="artikel",
         mwst_satz=float(detail.mwst_satz),
         variabler_preis=bool(artikel.variabler_preis) if artikel is not None else False,
         rabatt_id=detail.rabatt_id,
+        aktionsname=aktion.aktionsname if aktion is not None else None,
         rabatt_absolut=rabatt_absolut,
         hat_rabatt=hat_rabatt,
     )
