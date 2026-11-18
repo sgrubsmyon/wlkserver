@@ -231,6 +231,7 @@ class VerkaufDetailsPublic(VerkaufDetailsBase):
     artikel_vk_preis: float | None = None
     artikel_variabler_preis: bool = False
     ist_pfand: bool = False
+    gutschein_nr: int | None = None
     aktionsname: str | None = None
 
 

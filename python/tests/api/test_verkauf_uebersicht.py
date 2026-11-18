@@ -163,3 +163,47 @@ def test_sale_details_mark_pfand_rows(client, session):
 
     detail = client.get(f"/verkauf/{v.rechnungs_nr}").json()["verkauf_details"][0]
     assert detail["ist_pfand"] is True
+
+
+def test_sale_detail_resolves_redeemed_voucher_number(client, session):
+    from python.models import Gutschein
+
+    m = Mwst(mwst_satz=0.0, dsfinvk_ust_schluessel=1)
+    session.add(m)
+    session.commit()
+    session.refresh(m)
+    pg = Produktgruppe(produktgruppen_name="Gutschein", mwst_id=m.mwst_id)
+    session.add(pg)
+    session.commit()
+    session.refresh(pg)
+    lieferant = Lieferant(lieferant_name="L")
+    session.add(lieferant)
+    session.commit()
+    session.refresh(lieferant)
+    einloesung = Artikel(
+        artikel_nr="GUTSCHEINEINLOES", artikel_name="Gutschein eingelöst",
+        produktgruppen_id=pg.produktgruppen_id, lieferant_id=lieferant.lieferant_id,
+    )
+    session.add(einloesung)
+    session.commit()
+    session.refresh(einloesung)
+
+    v = Verkauf(verkaufsdatum=datetime.now(timezone.utc), ec_zahlung=False)
+    session.add(v)
+    session.commit()
+    session.refresh(v)
+    detail = VerkaufDetails(
+        position=1, stueckzahl=1, ges_preis=-5.0, mwst_satz=0.0,
+        rechnungs_nr=v.rechnungs_nr, artikel_id=einloesung.artikel_id,
+    )
+    session.add(detail)
+    session.commit()
+    session.refresh(detail)
+    session.add(Gutschein(
+        gutschein_nr=4711, datum=datetime.now(timezone.utc),
+        gutschein_in_vd_id=None, einloesung_in_vd_id=detail.vd_id, restbetrag=0.0,
+    ))
+    session.commit()
+
+    body = client.get(f"/verkauf/{v.rechnungs_nr}").json()
+    assert body["verkauf_details"][0]["gutschein_nr"] == 4711

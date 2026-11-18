@@ -13,6 +13,7 @@ from sqlmodel import func, select
 
 from ..models import (
     AbrechnungTag,
+    Gutschein,
     User,
     Verkauf,
 )
@@ -125,7 +126,18 @@ def read_single_verkauf(
     v = session.get(Verkauf, rechnungs_nr)
     if not v:
         raise HTTPException(status_code=404, detail="Verkauf not found")
-    return verkauf_public(v, include_details=include_details, include_mwst=include_mwst)
+    result = verkauf_public(v, include_details=include_details, include_mwst=include_mwst)
+    if include_details:
+        # The redemption row stores no number itself; resolve it via the voucher.
+        details = result["verkauf_details"]
+        vd_ids = [detail.vd_id for detail in details]
+        vouchers = session.exec(
+            select(Gutschein).where(Gutschein.einloesung_in_vd_id.in_(vd_ids))
+        ).all()
+        by_vd = {voucher.einloesung_in_vd_id: voucher.gutschein_nr for voucher in vouchers}
+        for detail in details:
+            detail.gutschein_nr = by_vd.get(detail.vd_id)
+    return result
 
 
 @router.post("/", response_model=VerkaufPublic)
