@@ -56,7 +56,7 @@
 - [x] MwSt router - Admin-only CRUD (POST/PUT/PATCH/DELETE) + read
 - [x] Pfand router - Admin-only CRUD (POST/PUT/PATCH/DELETE) + read
 - [x] Rabattaktion router - Full CRUD with date validation and update restrictions
-- [x] Verkauf router - Create, Read, Storno functionality
+- [x] Verkauf router - Create, Read, Storno functionality; `GET /verkauf/uebersicht` lists sales split at the last daily settlement (`nur_heute`) with sums, 7 %/19 % VAT and username; `GET /verkauf/{nr}` details include `artikel_nr`, `lieferant_kurzname`, `artikel_vk_preis` (2026-11-18)
 - [x] Kassenstand router - CR + /aktuell + rechnungen filter
 - [x] Gutschein router - CR + redemption + ausstehend/eingeloest
 - [x] Anzahlung router - CR + aufloesen + offen/aufgeloest + details

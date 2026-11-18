@@ -226,6 +226,10 @@ class VerkaufDetailsPublic(VerkaufDetailsBase):
     rabatt_id: int | None
     artikel_name: str | None = None
     artikel_kurzname: str | None = None
+    artikel_nr: str | None = None
+    lieferant_kurzname: str | None = None
+    artikel_vk_preis: float | None = None
+    artikel_variabler_preis: bool = False
     aktionsname: str | None = None
 
 

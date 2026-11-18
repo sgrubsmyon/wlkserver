@@ -9,9 +9,11 @@ from datetime import datetime
 from typing import Annotated, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlmodel import select
+from sqlmodel import func, select
 
 from ..models import (
+    AbrechnungTag,
+    User,
     Verkauf,
 )
 from ..schemas import (
@@ -61,6 +63,55 @@ def read_verkaeufe(
         verkauf_public(v, include_details=include_details, include_mwst=include_mwst)
         for v in verkaeufe
     ]
+
+
+@router.get("/uebersicht")
+def read_verkauf_uebersicht(
+    session: SessionDep,
+    nur_heute: bool = False,
+    limit: Annotated[int, Query(le=500)] = 500,
+):
+    """Sales overview for the client list.
+
+    `nur_heute` returns the sales after the last daily settlement (the ones
+    that can still be stornoed); otherwise the ones already settled.
+    """
+    last_bis = session.exec(select(func.max(AbrechnungTag.rechnungs_nr_bis))).one()
+    selection = select(Verkauf)
+    if last_bis is None:
+        if not nur_heute:
+            return []
+    elif nur_heute:
+        selection = selection.where(Verkauf.rechnungs_nr > last_bis)
+    else:
+        selection = selection.where(Verkauf.rechnungs_nr <= last_bis)
+
+    verkaeufe = session.exec(
+        selection.order_by(Verkauf.verkaufsdatum.desc(), Verkauf.rechnungs_nr.desc())
+        .limit(limit)
+    ).all()
+
+    result = []
+    for verkauf in verkaeufe:
+        details = verkauf.verkauf_details or []
+        mwst = {
+            round(float(row.mwst_satz), 4): float(row.mwst_betrag)
+            for row in (verkauf.verkauf_mwst or [])
+        }
+        user = session.get(User, verkauf.user_id) if verkauf.user_id is not None else None
+        result.append({
+            "rechnungs_nr": verkauf.rechnungs_nr,
+            "verkaufsdatum": verkauf.verkaufsdatum,
+            "summe": round(sum(float(d.ges_preis or 0) for d in details), 2),
+            "mwst_7": mwst.get(0.07, 0.0),
+            "mwst_19": mwst.get(0.19, 0.0),
+            "ec_zahlung": verkauf.ec_zahlung,
+            "kunde_gibt": verkauf.kunde_gibt,
+            "storno_von": verkauf.storno_von,
+            "user_id": verkauf.user_id,
+            "username": user.username if user is not None else None,
+        })
+    return result
 
 
 @router.get("/{rechnungs_nr}")
