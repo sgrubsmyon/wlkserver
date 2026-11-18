@@ -230,6 +230,7 @@ class VerkaufDetailsPublic(VerkaufDetailsBase):
     lieferant_kurzname: str | None = None
     artikel_vk_preis: float | None = None
     artikel_variabler_preis: bool = False
+    ist_pfand: bool = False
     aktionsname: str | None = None
 
 

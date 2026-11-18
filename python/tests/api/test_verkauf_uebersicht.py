@@ -123,3 +123,43 @@ def test_sale_details_carry_article_number_and_supplier(client, session):
     assert detail["artikel_nr"] == "A1"
     assert detail["lieferant_kurzname"] == "HOF"
     assert detail["artikel_vk_preis"] == 2.0
+
+
+def test_sale_details_mark_pfand_rows(client, session):
+    from python.models import Pfand
+
+    m = Mwst(mwst_satz=0.19, dsfinvk_ust_schluessel=1)
+    session.add(m)
+    session.commit()
+    session.refresh(m)
+    pg = Produktgruppe(produktgruppen_name="Pfand PG", mwst_id=m.mwst_id)
+    session.add(pg)
+    session.commit()
+    session.refresh(pg)
+    lieferant = Lieferant(lieferant_name="L")
+    session.add(lieferant)
+    session.commit()
+    session.refresh(lieferant)
+    bottle = Artikel(
+        artikel_nr="F1", artikel_name="Flasche", produktgruppen_id=pg.produktgruppen_id,
+        lieferant_id=lieferant.lieferant_id, vk_preis=1.0,
+    )
+    session.add(bottle)
+    session.commit()
+    session.refresh(bottle)
+    pfand = Pfand(artikel_id=bottle.artikel_id)
+    session.add(pfand)
+    session.commit()
+
+    v = Verkauf(verkaufsdatum=datetime.now(timezone.utc), ec_zahlung=False)
+    session.add(v)
+    session.commit()
+    session.refresh(v)
+    session.add(VerkaufDetails(
+        position=1, stueckzahl=1, ges_preis=1.0, mwst_satz=0.19,
+        rechnungs_nr=v.rechnungs_nr, artikel_id=bottle.artikel_id,
+    ))
+    session.commit()
+
+    detail = client.get(f"/verkauf/{v.rechnungs_nr}").json()["verkauf_details"][0]
+    assert detail["ist_pfand"] is True
