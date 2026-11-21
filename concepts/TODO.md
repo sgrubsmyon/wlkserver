@@ -499,7 +499,7 @@ The remaining imported items are quality/production tasks, tracked below.
 ## 🏭 Production Readiness Findings (2026-10-22)
 
 - [x] **Integration against a real MariaDB** (2026-11-17) - `python/tests/conftest.py` switches to MariaDB when `TEST_DATABASE_URL` is set (refuses a database name without `test`, `create_all(checkfirst=True)` keeps an existing schema's real DDL) and truncates all tables before each test; `deployment/create_test_db.sh` creates `kasse_test` as root from the canonical schema (NOT `../git/mysql/generateDB.sql`, which lacks migrations 01-05) with the test/training database section stripped, and `python/run_tests_mariadb.sh` runs the suite (asks for the `kassenadmin` password). Full suite green on both backends (333 passed each). Findings: `DELETE /bestellung/{nr}` deleted the parent before its detail rows (SQLite hid the FK violation) - `_delete_details` now bulk-deletes; a storno unit test inserted a `Gutschein` before its sale detail in one flush; 18 tests relied on SQLite's disabled FKs via the model defaults `lieferant_id=1`/`produktgruppen_id=8` - the new `master_data` fixture seeds those rows.
-- [ ] Not yet covered on MariaDB: `test_concurrent_sales_are_consistent` still builds its own SQLite engine, so `SELECT ... FOR UPDATE` needs a MariaDB variant.
+- [x] MariaDB concurrency test (2026-11-21) - `tests/api/test_concurrency.py` (skipped without `TEST_DATABASE_URL`) runs 4 parallel sales and 4 parallel voucher issuances, each request on its own MariaDB connection, with the in-process `KASSENSTAND_LOCK`/`VOUCHER_LOCK` monkeypatched away: only the row locks may serialize them (distinct receipts, balance 140, voucher numbers 200-203). A direct test holds `SELECT ... FOR UPDATE` on the latest `kassenstand` row and asserts a second connection times out (`innodb_lock_wait_timeout=1`), then succeeds after rollback - verified to fail when `with_for_update()` is removed. The SQLite concurrency test in `test_integration.py` still covers the single-process case.
 - [x] **Frontend readiness** - CORS is configured in `python/main.py` (`CORS_ORIGINS` env var, defaults to the SvelteKit dev server on port 5173); `GET /bestellung` has a date filter. Keep the OpenAPI schema stable for the generated client.
 - [x] **Training mode** - `TRAINING_MODE` + `TRAINING_DB_URL` run the whole API instance against a separate persistent sandbox database (schema created from `models/tables.py`, production users mirrored, short catalog seeded only when the sandbox is empty, `POST /training/reset` clears and reseeds); a restart never wipes training data. In-memory SQLite is rejected: training receipts are signed on the TSE, so their rows must survive restarts. Every table is sandboxed, including master-data edits, which the Java POS `training_*` tables did not cover. TSE exports and automatic DSFinV-K writes are skipped (audit #7).
 - [x] **Deployment** (2026-11-17) - setup, HTTPS and auth are documented in `python/README.md` and `deployment/README.md` (nginx/TLS/backups included); the Java-POS migration guide is `docs/MIGRATION_JAVA_TO_API.md` and the schema reference is `docs/DATABASE.md`.
@@ -557,16 +557,16 @@ The remaining imported items are quality/production tasks, tracked below.
 - **Remaining Java logic**: only the untested TSE hardware adapter and the ODT text exports (price tags/receipt; postponed until their templates use placeholder markers); audit gaps #1-#7, the edge-case validation pass and the ODS exports are closed
 
 ### Testing Status
-- **Test Files**: 37, split into `tests/unit/` (176 domain/service tests) and `tests/api/` (166 contract tests)
+- **Test Files**: 43, split into `tests/unit/` (176 domain/service tests) and `tests/api/` (177 contract tests; 3 of them need `TEST_DATABASE_URL`)
 - **Test Coverage**: 90% measured with pytest-cov (target 80% achieved)
 
 ---
 
 ## 🚀 Recommended Next Steps
 
-1. **Real database validation**: done (2026-11-17, full suite green on `kasse_test`); only the concurrency test still runs on SQLite
+1. **Real database validation**: done (2026-11-17, full suite green on `kasse_test`); concurrency with only the DB row locks is covered by `tests/api/test_concurrency.py` (2026-11-21)
 2. **Frontend readiness**: CORS is configured via `CORS_ORIGINS` (defaults to the SvelteKit dev server); keep the OpenAPI schema stable
-3. **Integration tests**: done in `test_integration.py` (workflows, cross-entity effects, concurrent sales)
+3. **Integration tests**: done in `test_integration.py` (workflows, cross-entity effects, concurrent sales); MariaDB row-lock concurrency in `test_concurrency.py`
 4. **Coverage**: target 80%+ reached; remaining gaps: tse_client.py 44%, users 33%, rabattaktion 33%
 5. **Validation**: done (model constraints + `ensure_*` helpers wired, see Validation Framework)
 6. **Remaining business logic**: none from the 2026-10-28 audit, the edge-case validation pass or the ODS exports; open are the untested TSE hardware adapter and the postponed ODT text exports (see "Business-logic gaps")

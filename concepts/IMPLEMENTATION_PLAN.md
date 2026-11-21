@@ -755,7 +755,7 @@ Steps 1-3 are what "proper separation of concerns" means for the success criteri
 - Tests default to in-memory SQLite, which does not enforce foreign keys and ignores `UNSIGNED`/`YEAR`/`TIMESTAMP` semantics
 - `TEST_DATABASE_URL` switches the `session` fixture to MariaDB and truncates all tables before each test. `deployment/create_test_db.sh` creates `kasse_test` from `deployment/create_db.sql` (generateDB.sql + migrations 01-05), `python/run_tests_mariadb.sh` runs the suite
 - Done 2026-11-17: 333 passed on both backends. Findings fixed: `DELETE /bestellung/{nr}` deleted the parent before its detail rows (`_delete_details` now bulk-deletes), a storno test's voucher row was inserted before its sale detail, and 18 tests relied on SQLite's disabled FKs (new `master_data` fixture)
-- Still open: `test_concurrent_sales_are_consistent` builds its own SQLite engine, so `SELECT ... FOR UPDATE` is not exercised on MariaDB
+- Done: `tests/api/test_concurrency.py` (2026-11-21) disables the process locks and runs 4 parallel sales and 4 parallel voucher issuances on separate MariaDB connections (distinct receipts, consistent balance, distinct numbers), and asserts that a held `SELECT ... FOR UPDATE` blocks a second connection (lock wait timeout) until rollback. `test_concurrent_sales_are_consistent` remains the single-process SQLite case.
 
 ### Test Files
 Existing: `test_mwst.py`, `test_pfand.py`, `test_kassenstand.py`, `test_gutschein.py`, `test_anzahlung.py`, `test_abrechnung_tag.py`, `test_abrechnung_monat.py`, `test_abrechnung_jahr.py`, `test_zaehlprotokoll.py`, `test_bestellung.py` (incl. positions), `test_auth.py`, `test_vat_calculator.py`, `test_verkauf_storno.py`, `test_tse.py`, `test_sale_workflow.py`, `test_storno_logic.py`, `test_import_export.py`, smoke tests for Phases 2-5, `test_timestamps.py`.
@@ -898,7 +898,7 @@ Note: There are deliberately **no** `routers/verkauf_mwst.py` and `routers/verka
 
 ## Next Steps
 
-1. **Real database validation**: done (2026-11-17); next is a MariaDB variant of the concurrency test so `SELECT ... FOR UPDATE` is exercised
+1. **Real database validation**: done (2026-11-17); MariaDB row-lock concurrency covered by `tests/api/test_concurrency.py` (2026-11-21)
 2. **Frontend readiness**: CORS is configured via `CORS_ORIGINS`; keep the OpenAPI schema stable
 3. **Integration tests**: done in `test_integration.py` (workflows, cross-entity effects, concurrent sales)
 4. **Coverage**: target reached; remaining gaps: tse_client.py 44%, users 33%, rabattaktion 33%

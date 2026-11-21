@@ -75,6 +75,18 @@ def session():
 
 
 @pytest.fixture
+def mariadb_engine():
+    """The MariaDB test engine; the test is skipped without `TEST_DATABASE_URL`.
+
+    Use it for tests that need several independent sessions/connections, which
+    the single `session` fixture cannot provide.
+    """
+    if not TEST_DATABASE_URL:
+        pytest.skip("requires TEST_DATABASE_URL (see deployment/create_test_db.sh)")
+    return _mariadb_engine()
+
+
+@pytest.fixture
 def master_data(session):
     """The rows the model defaults rely on: `lieferant_id=1`, `produktgruppen_id=8`."""
     session.add(Lieferant(lieferant_id=1, lieferant_name="unbekannt"))
