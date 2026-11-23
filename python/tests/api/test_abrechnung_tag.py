@@ -75,6 +75,30 @@ def _seed_artikel(session, vk_preis=10.0, mwst_satz=0.19):
     return a
 
 
+def test_list_includes_count_protocol(client, session):
+    a = _seed_artikel(session)
+    client.post("/verkauf/", json={
+        "verkauf_details": [{"artikel_id": a.artikel_id, "stueckzahl": 1}],
+    })
+    r = client.post("/abrechnung/tag/", json={
+        "zaehlprotokoll": {
+            "kommentar": "Kasse stimmt",
+            "details": [{"anzahl": 2, "einheit": 10}, {"anzahl": 1, "einheit": 5}],
+        }
+    })
+    assert r.status_code == 200
+
+    proto = client.get("/abrechnung/tag/").json()[0]["zaehlprotokolle"][0]
+    assert proto["kommentar"] == "Kasse stimmt"
+    assert proto["aktiv"] is True
+    assert proto["details"] == [{"einheit": 5.0, "anzahl": 1}, {"einheit": 10.0, "anzahl": 2}]
+    assert proto["summe"] == 25.0
+    assert proto["soll_kassenstand"] == 10.0
+    assert proto["differenz"] == 15.0
+    # no later manual "Tagesabschluss" booking exists in the web flow yet
+    assert proto["tageseinnahmen"] is None
+
+
 def test_preview_before_and_after_settlement(client, session):
     a = _seed_artikel(session)
     nr = client.post("/verkauf/", json={

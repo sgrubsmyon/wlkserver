@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import logging
 from datetime import date, datetime, time, timezone
+from decimal import Decimal
 
 from sqlmodel import Session, select
 
@@ -17,6 +18,8 @@ from ..models import (
     Kassenstand,
     Mwst,
     TSETransaction,
+    Zaehlprotokoll,
+    ZaehlprotokollDetails,
 )
 from ..schemas import (
     AbrechnungJahrPublic,
@@ -98,7 +101,73 @@ def settlement_uebersicht(
             }
             for v in vat_rows
         ]
+        if kind == "tag":
+            obj["zaehlprotokolle"] = _count_protocols(session, row)
         result.append(obj)
+    return result
+
+
+def _amount(value) -> Decimal:
+    """Column value (Decimal from MariaDB, float from SQLite) as cents-safe Decimal."""
+    return Decimal(str(value))
+
+
+def _count_protocols(session: Session, settlement: AbrechnungTag) -> list[dict]:
+    """The settlement's count protocols, newest first, with their comparisons.
+
+    Mirrors `AbrechnungenTag.queryZaehlprotokoll` of the Java POS: the counted sum
+    is compared with the balance linked to the settlement (Soll-Kassenstand) and
+    with the first later `Tagesabschluss` balance of a manual booking (the cash
+    takings of the day).
+    """
+    linked = (
+        session.get(Kassenstand, settlement.kassenstand_id)
+        if settlement.kassenstand_id is not None
+        else None
+    )
+    soll = _amount(linked.neuer_kassenstand) if linked is not None else None
+    later = None
+    if settlement.kassenstand_id is not None:
+        later = session.exec(
+            select(Kassenstand)
+            .where(
+                Kassenstand.kassenstand_id > settlement.kassenstand_id,
+                Kassenstand.manuell == True,
+                Kassenstand.entnahme == False,
+                Kassenstand.kommentar == "Tagesabschluss",
+            )
+            .order_by(Kassenstand.kassenstand_id)
+        ).first()
+    neuer = _amount(later.neuer_kassenstand) if later is not None else None
+
+    protocols = session.exec(
+        select(Zaehlprotokoll)
+        .where(Zaehlprotokoll.abrechnung_tag_id == settlement.id)
+        .order_by(Zaehlprotokoll.id.desc())
+    ).all()
+    result = []
+    for protocol in protocols:
+        details = session.exec(
+            select(ZaehlprotokollDetails)
+            .where(ZaehlprotokollDetails.zaehlprotokoll_id == protocol.id)
+            .order_by(ZaehlprotokollDetails.einheit)
+        ).all()
+        summe = sum((_amount(d.einheit) * d.anzahl for d in details), Decimal("0"))
+        result.append(
+            {
+                "id": protocol.id,
+                "zeitpunkt": protocol.zeitpunkt.isoformat(),
+                "kommentar": protocol.kommentar,
+                "aktiv": bool(protocol.aktiv),
+                "details": [
+                    {"einheit": float(d.einheit), "anzahl": d.anzahl} for d in details
+                ],
+                "summe": float(summe),
+                "soll_kassenstand": float(soll) if soll is not None else None,
+                "differenz": float(summe - soll) if soll is not None else None,
+                "tageseinnahmen": float(summe - neuer) if neuer is not None else None,
+            }
+        )
     return result
 
 
