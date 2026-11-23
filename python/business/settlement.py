@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import date, datetime, time, timezone
 
 from sqlmodel import Session, select
 
@@ -19,11 +19,14 @@ from ..models import (
     TSETransaction,
 )
 from ..schemas import (
+    AbrechnungJahrPublic,
+    AbrechnungMonatPublic,
     AbrechnungTagCreate,
     AbrechnungTagPublic,
 )
 from ..config import tse_id, training_mode
 from ..repositories import latest_kassenstand
+from ..utils.pagination import paginate
 from .cash_register import aggregate_period, open_period_range
 from .count_protocol import insert_count_protocol
 from .errors import DomainError
@@ -35,6 +38,68 @@ logger = logging.getLogger(__name__)
 def last_settlement(session: Session) -> AbrechnungTag | None:
     """Most recent Tagesabschluss row, or None when nothing was settled yet."""
     return session.exec(select(AbrechnungTag).order_by(AbrechnungTag.id.desc())).first()
+
+
+_SETTLEMENTS = {
+    "tag": (AbrechnungTag, AbrechnungTagMwst, AbrechnungTagPublic),
+    "monat": (AbrechnungMonat, AbrechnungMonatMwst, AbrechnungMonatPublic),
+    "jahr": (AbrechnungJahr, AbrechnungJahrMwst, AbrechnungJahrPublic),
+}
+
+
+def settlement_uebersicht(
+    session: Session,
+    kind: str,
+    von: date | None = None,
+    bis: date | None = None,
+    offset: int = 0,
+    limit: int = 100,
+    desc: bool = True,
+) -> list[dict]:
+    """Settlements of one kind including their VAT rows, newest first by default.
+
+    The Abrechnungen page shows one column per settlement with all table columns
+    and the per-rate VAT values, so everything is returned in one request. `von`/
+    `bis` limit the settlement date (for yearly settlements the year it contains).
+    """
+    model, vat_model, public = _SETTLEMENTS[kind]
+    column = {
+        "tag": AbrechnungTag.zeitpunkt,
+        "monat": AbrechnungMonat.monat,
+        "jahr": AbrechnungJahr.jahr,
+    }[kind]
+    selection = select(model)
+    if kind == "jahr":
+        if von is not None:
+            selection = selection.where(column >= von.year)
+        if bis is not None:
+            selection = selection.where(column <= bis.year)
+    else:
+        if von is not None:
+            start = datetime.combine(von, time.min, timezone.utc) if kind == "tag" else von
+            selection = selection.where(column >= start)
+        if bis is not None:
+            end = datetime.combine(bis, time.max, timezone.utc) if kind == "tag" else bis
+            selection = selection.where(column <= end)
+    order = column.desc() if desc else column.asc()
+    rows = paginate(session, selection, offset, limit, order)
+    result = []
+    for row in rows:
+        obj = public.model_validate(row).model_dump()
+        vat_rows = session.exec(
+            select(vat_model).where(vat_model.id == row.id).order_by(vat_model.mwst_satz)
+        ).all()
+        obj["mwst"] = [
+            {
+                "mwst_satz": float(v.mwst_satz),
+                "mwst_netto": float(v.mwst_netto),
+                "mwst_betrag": float(v.mwst_betrag),
+                "bar_brutto": float(v.bar_brutto),
+            }
+            for v in vat_rows
+        ]
+        result.append(obj)
+    return result
 
 
 def _configured_tse_id() -> int | None:

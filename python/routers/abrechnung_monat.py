@@ -25,7 +25,7 @@ from ..schemas import (
 )
 from ..session import SessionDep
 from ..dependencies import bearer_scheme, require_user
-from ..utils.pagination import paginate
+from ..business.settlement import settlement_uebersicht
 
 router = APIRouter(
     prefix="/abrechnung/monat",
@@ -59,13 +59,13 @@ def _parse_month(value) -> date:
 def read_abrechnung_monate(
     session: SessionDep,
     desc: bool = False,
+    von: Optional[date] = None,
+    bis: Optional[date] = None,
     offset: int = 0,
     limit: Annotated[int, Query(le=100)] = 100,
-) -> list[AbrechnungMonatPublic]:
-    """List monthly settlements with pagination, ascending or descending by id."""
-    order = AbrechnungMonat.id.desc() if desc else AbrechnungMonat.id
-    rows = paginate(session, select(AbrechnungMonat), offset, limit, order)
-    return [AbrechnungMonatPublic.model_validate(r) for r in rows]
+) -> list[dict]:
+    """List monthly settlements with their VAT rows, optionally limited to a date range."""
+    return settlement_uebersicht(session, "monat", von, bis, offset, limit, desc)
 
 
 @router.get("/offen")

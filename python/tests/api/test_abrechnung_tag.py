@@ -27,6 +27,11 @@ def test_flow(client):
     r = client.get("/abrechnung/tag/")
     assert r.status_code == 200
     assert len(r.json()) == 1
+    item = r.json()[0]
+    assert item["id"] == tid
+    assert isinstance(item["mwst"], list)
+    assert client.get("/abrechnung/tag/", params={"von": "2000-01-01"}).json() == r.json()
+    assert client.get("/abrechnung/tag/", params={"bis": "2000-01-01"}).json() == []
     r = client.get("/abrechnung/tag/offen")
     assert r.status_code == 200
 

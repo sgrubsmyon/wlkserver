@@ -148,6 +148,7 @@
 - [x] POST /abrechnung/tag (Tagesabschluss: period since the last settlement, VAT/`bar_brutto` aggregation, storno/retouren reporting, links the current Kassenstand entry)
 - [x] GET /abrechnung/tag/offen
 - [x] GET /abrechnung/tag/vorschau (read-only preview of the open Tagesabschluss)
+- [x] GET /abrechnung/tag|monat|jahr return each settlement with its `_mwst` rows and accept `von`/`bis` date filters (used by the client's Abrechnungen page)
 - [x] Automatic incremental TSE export (best-effort) wired into POST /abrechnung/tag - step 3
 - [x] Stornos/retouren handled in mwst + bar aggregation; entnahmen subtracted from closing balance (step 5)
 - [x] Full Java aggregation parity (storno/retouren reporting in abrechnung response) - items 5-8

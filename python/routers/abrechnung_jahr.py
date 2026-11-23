@@ -25,7 +25,7 @@ from ..schemas import (
 )
 from ..session import SessionDep
 from ..dependencies import bearer_scheme, require_user
-from ..utils.pagination import paginate
+from ..business.settlement import settlement_uebersicht
 
 router = APIRouter(
     prefix="/abrechnung/jahr",
@@ -38,13 +38,13 @@ router = APIRouter(
 def read_abrechnung_jahre(
     session: SessionDep,
     desc: bool = False,
+    von: Optional[date] = None,
+    bis: Optional[date] = None,
     offset: int = 0,
     limit: Annotated[int, Query(le=100)] = 100,
-) -> list[AbrechnungJahrPublic]:
-    """List yearly settlements with pagination, ascending or descending by id."""
-    order = AbrechnungJahr.id.desc() if desc else AbrechnungJahr.id
-    rows = paginate(session, select(AbrechnungJahr), offset, limit, order)
-    return [AbrechnungJahrPublic.model_validate(r) for r in rows]
+) -> list[dict]:
+    """List yearly settlements with their VAT rows, optionally limited to a date range."""
+    return settlement_uebersicht(session, "jahr", von, bis, offset, limit, desc)
 
 
 @router.get("/offen")

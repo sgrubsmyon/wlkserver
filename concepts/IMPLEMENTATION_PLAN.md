@@ -237,6 +237,8 @@ All functional audit gaps and the edge-case validation pass are done; the only r
 - POST /abrechnung/tag - Create daily settlement. This single endpoint performs the complete Tagesabschluss (aggregating the day's sales, VAT aggregation, linking the current Kassenstand entry, running the automatic incremental TSE export, linking counting protocols) - there is no separate "finalize" step. The counted cash is recorded beforehand as a manual `POST /kassenstand` entry; `GET /abrechnung/tag/vorschau` returns the same figures read-only for the cashier.
 - GET /abrechnung/tag/offen - Check for incomplete daily settlements
 
+The list endpoints of all three settlement levels (`/abrechnung/tag`, `/monat`, `/jahr`) return each row together with its `_mwst` rows (`mwst` key) and accept `von`/`bis` (ISO date) filters, so the Abrechnungen page builds one column per settlement from a single request (`business.settlement.settlement_uebersicht`).
+
 **Business logic from Java:**
 - `../git/src/org/weltladen_bonn/pos/kasse/AbrechnungenTag.java` - Daily settlement logic (incl. `exportTSELog()` for the automatic TSE export)
 - `../git/src/org/weltladen_bonn/pos/kasse/Abrechnungen.java` - Base settlement functionality

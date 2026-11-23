@@ -5,6 +5,7 @@ the VAT rows, an incremental TSE export, the count protocol and the DSFinV-K fil
 (Java `insertTagesAbrechnung`). The preview runs the same calculation read-only.
 """
 from typing import Annotated, Optional
+from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlmodel import select
@@ -22,8 +23,11 @@ from ..schemas import (
 from ..session import SessionDep
 from ..dependencies import require_user
 from ..business.cash_register import end_of_day_procedure
-from ..business.settlement import create_daily_settlement, last_settlement
-from ..utils.pagination import paginate
+from ..business.settlement import (
+    create_daily_settlement,
+    last_settlement,
+    settlement_uebersicht,
+)
 
 router = APIRouter(
     prefix="/abrechnung/tag",
@@ -36,13 +40,13 @@ router = APIRouter(
 def read_abrechnung_tags(
     session: SessionDep,
     desc: bool = False,
+    von: Optional[date] = None,
+    bis: Optional[date] = None,
     offset: int = 0,
     limit: Annotated[int, Query(le=100)] = 100,
-) -> list[AbrechnungTagPublic]:
-    """List daily settlements with pagination, ascending or descending by id."""
-    order = AbrechnungTag.id.desc() if desc else AbrechnungTag.id
-    rows = paginate(session, select(AbrechnungTag), offset, limit, order)
-    return [AbrechnungTagPublic.model_validate(r) for r in rows]
+) -> list[dict]:
+    """List daily settlements with their VAT rows, optionally limited to a date range."""
+    return settlement_uebersicht(session, "tag", von, bis, offset, limit, desc)
 
 
 @router.get("/offen")
